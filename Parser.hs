@@ -4,6 +4,7 @@ module Parser where
 
 import Control.Applicative
 import Control.Monad
+import Control.Monad.IO.Class
 
 import Text.Trifecta
 import "indentation-trifecta" Text.Trifecta.Indentation
@@ -27,25 +28,25 @@ frankStyle = IdentifierStyle {
   , _styleReservedHighlight = Hi.ReservedIdentifier }
 
 identifier :: MonadicParsing m => m String
-identifier = Tok.ident langStyle
+identifier = Tok.ident frankStyle
 
 reserved :: MonadicParsing m => String -> m ()
-reserved = Tok.reserve langStyle
+reserved = Tok.reserve frankStyle
 
 prog :: (Applicative m, MonadicParsing m, IndentationParsing m) => m RawProg
-prog = MkRawProg $ many tterm
+prog = MkRawProg <$> many tterm
 
 tterm :: (MonadicParsing m, IndentationParsing m) => m RawTopTm
-tterm = MkRawDataTm <$> adt <|>
+tterm = MkRawDataTm <$> parseDataT <|>
         MkRawSigTm <$> try parseMHSig <|>
         MkRawDefTm <$> parseMHCls
 
-adt :: (MonadicParsing m, IndentationParsing m) => m AlgDataType
-adt = do reserved "data"
-         name <- identifier
-         symbol "="
-         xs <- localIndentation Gt ctrlist
-         return (Info (name, xs))
+parseDataT :: (MonadicParsing m, IndentationParsing m) => m DataT
+parseDataT = do reserved "data"
+                name <- identifier
+                symbol "="
+                xs <- localIndentation Gt ctrlist
+                return $ MkDT name xs
 
 ctrlist :: (MonadicParsing m, IndentationParsing m) => m [Ctr]
 ctrlist = sepBy parseCtr (symbol "|")
@@ -76,16 +77,20 @@ parseCType = do ports <- many parsePort
 parsePort :: MonadicParsing m => m Port
 parsePort = do m <- optional $ between (symbol "<") (symbol ">")
                       (sepBy parseAdj' (symbol ","))
-               case m of
-                 Nothing -> return MkIdAdj
-                 Just es -> makeAdj es []
+               let port = (case m of
+                              Nothing -> MkIdAdj
+                              Just es -> makeAdj es MkIdAdj)
+               ty <- parseVType
+               return $ MkPort port ty
 
-parseEffIns :: MonadicParsing m => m [EffIn]
-parseEffIns = do m <- optional $ between (symbol "<") (symbol ">")
-                      (sepBy adjustments (symbol ","))
-                 case m of
-                   Just es -> return es
-                   Nothing -> return []                   
+parsePeg :: MonadicParsing m => m Peg
+parsePeg = do m <- optional $ between (symbol "<") (symbol ">")
+                      (sepBy parseAb' (symbol ","))
+              let peg = (case m of
+                            Nothing -> MkOpenAb
+                            Just es -> makeAb es MkOpenAb)
+              ty <- parseVType
+              return $ MkPeg peg ty
 
 parseAdj' :: MonadicParsing m => m Adj
 parseAdj' = do x <- identifier
@@ -93,16 +98,24 @@ parseAdj' = do x <- identifier
                return (MkAdjPlus MkIdAdj x ts)
 
 makeAdj :: [Adj] -> Adj -> Adj
-makeAdj ((MkAdjPlus MkIdAdj id ts) : adjs') adj =
-  makeAdj adjs' (MkAdjPlus adj id ts)
-makeAdj ((MkAdjPlus adj _ _) : _) _ =
-  assertParsedOk (Left "identity adjustment") adj
+makeAdj ((MkAdjPlus MkIdAdj id ts) : adjs) adj =
+  makeAdj adjs (MkAdjPlus adj id ts)
 makeAdj [] adj = adj
+makeAdj _ _ = error "expected identity adjustment"
+
+parseAb' :: MonadicParsing m => m Ab
+parseAb' = do x <- identifier
+              ts <- many parseVType
+              return (MkAbPlus MkOpenAb x ts)
+
+makeAb :: [Ab] -> Ab -> Ab
+makeAb ((MkAbPlus MkOpenAb id ts) : abs) ab = makeAb abs (MkAbPlus ab id ts)
+makeAb [] ab = ab
+makeAb _ _ = error "expected open ability"
 
 parseVType :: MonadicParsing m => m VType
-parseVType = MkSCTy $ try parseCType <|>
-             (do x <- identifier
-                 return (MkTVar x))
+parseVType = MkSCTy <$> try parseCType <|>
+             MkTVar <$> identifier
 
 parseTm :: (MonadicParsing m, IndentationParsing m) => m Tm
 parseTm = MkSC <$> parseSComp <|>
@@ -124,16 +137,34 @@ parseApp = do x <- identifier
               return $ MkApp x args
 
 parseClause :: (MonadicParsing m, IndentationParsing m) => m Clause
-parseClause = do ps <- sepBy1 identifier (symbol ",")
+parseClause = do ps <- sepBy1 (parseVPat >>= return . MkVPat) (symbol ",")
                  symbol "->"
                  tm <- parseTm
                  return $ MkCls ps tm
+
+parsePattern :: MonadicParsing m => m Pattern
+parsePattern = parseCPat <|> MkVPat <$> parseVPat
+
+parseCPat :: MonadicParsing m => m Pattern
+parseCPat = do symbol "<"
+               x <- identifier
+               symbol ">"
+               return (MkThkPat x)
+
+parseVPat :: MonadicParsing m => m ValuePat
+parseVPat = parseDataTPat <|> (do x <- identifier
+                                  return $ MkVarPat x)
+
+parseDataTPat :: MonadicParsing m => m ValuePat
+parseDataTPat = between (symbol ")") (symbol ")") $ do k <- identifier
+                                                       ps <- many parseVPat
+                                                       return $ MkDataPat k ps
 
 parseSComp :: (MonadicParsing m, IndentationParsing m) => m SComp
 parseSComp =
   absoluteIndentation $ do cs <- between (symbol "{") (symbol "}") $
                                  sepBy1 parseClause (symbol "|")
-                                 return $ MkSComp sc
+                           return $ MkSComp cs
 
 evalCharIndentationParserT :: Monad m => IndentationParserT Char m a ->
                               IndentationState -> m a
@@ -143,18 +174,12 @@ evalTokenIndentationParserT :: Monad m => IndentationParserT Token m a ->
                                IndentationState -> m a
 evalTokenIndentationParserT = evalIndentationParserT
 
-runParse ev input
- = let indA = ev lang $ mkIndentationState 0 infIndentation True Ge
-   in case parseString indA mempty input of
-    Failure err -> Left (show err)
-    Success t -> Right t
+runParseFromFileEx ev fname =
+  let indA = ev prog $ mkIndentationState 0 infIndentation True Ge in
+  do res <- parseFromFileEx indA fname
+     case res of
+       Failure err -> print err
+       Success t -> print $ "Parsing " ++ (show fname) ++ " succeeded!"
 
-runCharParse = runParse evalCharIndentationParserT
-runTokenParse = runParse evalTokenIndentationParserT
-
-assertParsedOk :: (Show err, Show a, Eq a) => Either err a -> a -> Assertion
-assertParsedOk actual expected =
-  case actual of
-   Right ok -> assertEqual "parsing succeeded, but " expected ok
-   Left err -> assertFailure ("parse failed with " ++ show err
-                              ++ ", expected " ++ show expected)
+runCharParse = runParseFromFileEx evalCharIndentationParserT
+runTokenParse = runParseFromFileEx evalTokenIndentationParserT

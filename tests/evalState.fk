@@ -1,0 +1,5 @@
+evalState : X -> <State X>X    -> Y
+evalState   x        <t>        =  runState x' (k Unit)
+evalState   x         y         =  y
+
+

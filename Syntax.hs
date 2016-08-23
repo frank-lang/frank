@@ -48,7 +48,7 @@ type Id = String
 data CType = MkCType [Port] Peg
 data Port = MkPort Adj VType
 data Peg = MkPeg Ab VType
-data VType = MkDTTy | MkSCTy CType | MkTVar
+data VType = MkDTTy | MkSCTy CType | MkTVar Id
 
 -- Adjustments
 data Adj = MkIdAdj | MkAdjPlus Adj Id [VType]
