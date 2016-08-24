@@ -203,15 +203,20 @@ runTokenParseFromFile = runParseFromFileEx evalTokenIndentationParserT
 runCharParse = runParse evalCharIndentationParserT
 runTokenParse = runParse evalTokenIndentationParserT
 
-input1 = unlines [ "data Bool = tt | ff"
-                 , "state : S -> <State S>X -> X"]
- --                 , "state s <t> = nil"]
+input = ["tests/evalState.fk"]
 
-output1c = runCharParse input1
-output1t = runTokenParse input1
-expected1 = MkRawProg []
-                
-assertParsedOk :: (Show err, Show a, Eq a) => Either err a -> a -> Assertion
+outputc = map runCharParseFromFile input
+outputt = map runTokenParseFromFile input
+expfiles = ["tests/evalState.expected"]
+expected = map getExpectedOutput expfiles
+
+getExpectedOutput :: String -> IO Prog
+getExpectedOutput fname = do src <- readFile fname
+                             prog <- read src :: RawProg
+                             return prog
+
+assertParsedOk :: (Show err, Show a, Eq a) => Either err a -> a
+                  -> Assertion
 assertParsedOk actual expected =
   case actual of
    Right ok -> assertEqual "parsing succeeded, but " expected ok
