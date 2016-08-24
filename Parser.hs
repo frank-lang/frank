@@ -14,6 +14,9 @@ import Text.Parser.Token as Tok
 import qualified Text.Parser.Token.Highlight as Hi
 import qualified Data.HashSet as HashSet
 
+import Test.Tasty (TestTree, testGroup)
+import Test.Tasty.HUnit (testCase, assertEqual, assertFailure, Assertion)
+
 import Syntax
 
 type MonadicParsing m = (TokenParsing m, Monad m)
@@ -59,7 +62,7 @@ parseCtr = do name <- identifier
 parseMHSig :: (MonadicParsing m, IndentationParsing m) => m MHSig
 parseMHSig = do name <- identifier
                 symbol ":"
-                ty <- parseVType
+                ty <- parseCType
                 return (MkSig name ty)
 
 parseMHCls :: (MonadicParsing m, IndentationParsing m) => m MHCls
@@ -70,13 +73,20 @@ parseMHCls = do name <- identifier
                 return $ MkMHCls name (MkCls ps tm)
 
 parseCType :: MonadicParsing m => m CType
-parseCType = do ports <- many parsePort
-                peg <- parsePeg
+parseCType = do (ports, peg) <- parsePortsAndPeg
                 return $ MkCType ports peg
+
+parsePortsAndPeg :: MonadicParsing m => m ([Port], Peg)
+parsePortsAndPeg = try (do port <- parsePort
+                           symbol "->" -- Might fail; previous parse was peg.
+                           (ports, peg) <- parsePortsAndPeg
+                           return (port : ports, peg)) <|>
+                       (do peg <- parsePeg
+                           return ([], peg))
 
 parsePort :: MonadicParsing m => m Port
 parsePort = do m <- optional $ between (symbol "<") (symbol ">")
-                      (sepBy parseAdj' (symbol ","))
+                    (sepBy parseAdj' (symbol ","))
                let port = (case m of
                               Nothing -> MkIdAdj
                               Just es -> makeAdj es MkIdAdj)
@@ -84,8 +94,8 @@ parsePort = do m <- optional $ between (symbol "<") (symbol ">")
                return $ MkPort port ty
 
 parsePeg :: MonadicParsing m => m Peg
-parsePeg = do m <- optional $ between (symbol "<") (symbol ">")
-                      (sepBy parseAb' (symbol ","))
+parsePeg = do m <- optional $ between (symbol "[") (symbol "]")
+                   (sepBy parseAb' (symbol ","))
               let peg = (case m of
                             Nothing -> MkOpenAb
                             Just es -> makeAb es MkOpenAb)
@@ -114,7 +124,7 @@ makeAb [] ab = ab
 makeAb _ _ = error "expected open ability"
 
 parseVType :: MonadicParsing m => m VType
-parseVType = MkSCTy <$> try parseCType <|>
+parseVType = MkSCTy <$> try (between (symbol "{") (symbol "}") parseCType) <|>
              MkTVar <$> identifier
 
 parseTm :: (MonadicParsing m, IndentationParsing m) => m Tm
@@ -174,6 +184,12 @@ evalTokenIndentationParserT :: Monad m => IndentationParserT Token m a ->
                                IndentationState -> m a
 evalTokenIndentationParserT = evalIndentationParserT
 
+runParse ev input
+ = let indA = ev prog $ mkIndentationState 0 infIndentation True Ge
+   in case parseString indA mempty input of
+    Failure err -> Left (show err)
+    Success t -> Right t
+
 runParseFromFileEx ev fname =
   let indA = ev prog $ mkIndentationState 0 infIndentation True Ge in
   do res <- parseFromFileEx indA fname
@@ -181,5 +197,36 @@ runParseFromFileEx ev fname =
        Failure err -> print err
        Success t -> print $ "Parsing " ++ (show fname) ++ " succeeded!"
 
-runCharParse = runParseFromFileEx evalCharIndentationParserT
-runTokenParse = runParseFromFileEx evalTokenIndentationParserT
+runCharParseFromFile = runParseFromFileEx evalCharIndentationParserT
+runTokenParseFromFile = runParseFromFileEx evalTokenIndentationParserT
+
+runCharParse = runParse evalCharIndentationParserT
+runTokenParse = runParse evalTokenIndentationParserT
+
+input1 = unlines [ "data Bool = tt | ff"
+                 , "state : S -> <State S>X -> X"]
+ --                 , "state s <t> = nil"]
+
+output1c = runCharParse input1
+output1t = runTokenParse input1
+expected1 = MkRawProg []
+                
+assertParsedOk :: (Show err, Show a, Eq a) => Either err a -> a -> Assertion
+assertParsedOk actual expected =
+  case actual of
+   Right ok -> assertEqual "parsing succeeded, but " expected ok
+   Left err -> assertFailure ("parse failed with " ++ show err
+                              ++ ", expected " ++ show expected)
+
+allTests :: TestTree
+allTests =
+  testGroup "Frank (trifecta)"
+  [
+    testGroup "char parsing"
+    [ testCase "1" $ assertParsedOk output1c expected1
+    ]
+  , testGroup "token parsing"
+    [ testCase "1" $ assertParsedOk output1t expected1
+    ]
+  ]
+
