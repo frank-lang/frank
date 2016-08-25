@@ -1,5 +1,9 @@
 MkRawProg
- [MkRawSigTm (MkSig "evalState"
+ [MkRawItfTm (MkItf "State" ["x"]
+           	   [MkCmd "get" (MkCType [] (MkPeg MkOpenAb (MkTVar "x")))
+ 	  	   ,MkCmd "put" (MkCType [MkPort MkIdAdj (MkTVar "x")]
+		   	      	         (MkPeg MkOpenAb (MkTVar "Unit")))])
+ ,MkRawSigTm (MkSig "evalState"
    (MkCType [ MkPort MkIdAdj (MkTVar "X")
             , MkPort (MkAdjPlus MkIdAdj "State" [MkTVar "X"]) (MkTVar "Y")]
             (MkPeg MkOpenAb (MkTVar "Y"))))

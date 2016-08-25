@@ -9,6 +9,7 @@ data RawProg = MkRawProg [RawTopTm]
 
 -- A raw term collects multihandler signatures and clauses separately.
 data RawTopTm = MkRawDataTm DataT | MkRawSigTm MHSig | MkRawDefTm MHCls
+              | MkRawItfTm Itf
               deriving (Show, Read, Eq)
 
 -- A top-level multihandler signature and clause
@@ -58,7 +59,13 @@ data SComp = MkSComp [Clause]
 data DataT = MkDT Id [Ctr]
            deriving (Show, Read, Eq)
 
+data Itf = MkItf Id [Id] [Cmd]
+         deriving (Show, Read, Eq)
+
 data Ctr = MkCtr Id [VType]
+         deriving (Show, Read, Eq)
+
+data Cmd = MkCmd Id CType
          deriving (Show, Read, Eq)
 
 data Pattern = MkVPat ValuePat | MkCmdPat Id [ValuePat] Id | MkThkPat Id

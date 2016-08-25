@@ -26,7 +26,7 @@ frankStyle = IdentifierStyle {
     _styleName = "Frank"
   , _styleStart = satisfy isAlpha
   , _styleLetter = satisfy (\c -> isAlpha c || c == '\'')
-  , _styleReserved = HashSet.fromList ["data"]
+  , _styleReserved = HashSet.fromList ["data", "interface"]
   , _styleHighlight = Hi.Identifier
   , _styleReservedHighlight = Hi.ReservedIdentifier }
 
@@ -42,7 +42,8 @@ prog = MkRawProg <$> many tterm
 tterm :: (MonadicParsing m, IndentationParsing m) => m RawTopTm
 tterm = MkRawDataTm <$> parseDataT <|>
         MkRawSigTm <$> try parseMHSig <|>
-        MkRawDefTm <$> parseMHCls
+        MkRawDefTm <$> parseMHCls <|>
+        MkRawItfTm <$> parseItf
 
 parseDataT :: (MonadicParsing m, IndentationParsing m) => m DataT
 parseDataT = do reserved "data"
@@ -71,6 +72,20 @@ parseMHCls = do name <- identifier
                 symbol "="
                 tm <- localIndentation Gt parseRawTm
                 return $ MkMHCls name (MkRawCls ps tm)
+
+parseItf :: (MonadicParsing m, IndentationParsing m) => m Itf
+parseItf = do reserved "interface"
+              name <- identifier
+              ps <- many identifier
+              symbol "="
+              xs <- localIndentation Gt $ sepBy1 parseCmd (symbol "|")
+              return (MkItf name ps xs)
+
+parseCmd :: MonadicParsing m => m Cmd
+parseCmd = do cmd <- identifier
+              symbol ":"
+              sig <- parseCType
+              return (MkCmd cmd sig)
 
 parseCType :: MonadicParsing m => m CType
 parseCType = do (ports, peg) <- parsePortsAndPeg
