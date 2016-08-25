@@ -61,7 +61,7 @@ data DataT = MkDT Id [Ctr]
 data Ctr = MkCtr Id [VType]
          deriving (Show, Read, Eq)
 
-data Pattern = MkVPat ValuePat | MkCmdPat | MkThkPat Id
+data Pattern = MkVPat ValuePat | MkCmdPat Id [ValuePat] Id | MkThkPat Id
              deriving (Show, Read, Eq)
 
 data ValuePat = MkVarPat Id | MkDataPat Id [ValuePat]

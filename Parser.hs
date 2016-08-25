@@ -25,7 +25,7 @@ frankStyle :: MonadicParsing m => IdentifierStyle m
 frankStyle = IdentifierStyle {
     _styleName = "Frank"
   , _styleStart = satisfy isAlpha
-  , _styleLetter = satisfy isAlpha
+  , _styleLetter = satisfy (\c -> isAlpha c || c == '\'')
   , _styleReserved = HashSet.fromList ["data"]
   , _styleHighlight = Hi.Identifier
   , _styleReservedHighlight = Hi.ReservedIdentifier }
@@ -151,13 +151,22 @@ parseRawClause = do ps <- sepBy1 (parseVPat >>= return . MkVPat) (symbol ",")
                     return $ MkRawCls ps tm
 
 parsePattern :: MonadicParsing m => m Pattern
-parsePattern = parseCPat <|> MkVPat <$> parseVPat
+parsePattern = try parseCPat <|> MkVPat <$> parseVPat
 
 parseCPat :: MonadicParsing m => m Pattern
-parseCPat = do symbol "<"
-               x <- identifier
-               symbol ">"
-               return (MkThkPat x)
+parseCPat = between (symbol "<") (symbol ">") $
+            try parseCmdPat <|> parseThunkPat
+
+parseThunkPat :: MonadicParsing m => m Pattern
+parseThunkPat = do x <- identifier
+                   return (MkThkPat x)
+
+parseCmdPat :: MonadicParsing m => m Pattern
+parseCmdPat = do cmd <- identifier
+                 ps <- many parseVPat
+                 symbol "->"
+                 g <- identifier
+                 return (MkCmdPat cmd ps g)
 
 parseVPat :: MonadicParsing m => m ValuePat
 parseVPat = parseDataTPat <|> (do x <- identifier
