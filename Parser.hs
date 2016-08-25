@@ -69,8 +69,8 @@ parseMHCls :: (MonadicParsing m, IndentationParsing m) => m MHCls
 parseMHCls = do name <- identifier
                 ps <- many parsePattern
                 symbol "="
-                tm <- localIndentation Gt parseTm
-                return $ MkMHCls name (MkCls ps tm)
+                tm <- localIndentation Gt parseRawTm
+                return $ MkMHCls name (MkRawCls ps tm)
 
 parseCType :: MonadicParsing m => m CType
 parseCType = do (ports, peg) <- parsePortsAndPeg
@@ -127,30 +127,28 @@ parseVType :: MonadicParsing m => m VType
 parseVType = MkSCTy <$> try (between (symbol "{") (symbol "}") parseCType) <|>
              MkTVar <$> identifier
 
-parseTm :: (MonadicParsing m, IndentationParsing m) => m Tm
-parseTm = MkSC <$> parseSComp <|>
-          MkDCon <$> try parseDCon <|>
-          MkUse <$> parseUse
+parseRawTm :: (MonadicParsing m, IndentationParsing m) => m RawTm
+parseRawTm = MkRawSC <$> parseRawSComp <|>
+             try parseComb <|>
+             parseRawTm'
 
-parseDCon :: (MonadicParsing m, IndentationParsing m) => m DataCon
-parseDCon = do k <- identifier
-               args <- many parseTm
-               return (MkDataCon k args)
+parseId :: (MonadicParsing m, IndentationParsing m) => m RawTm
+parseId = do x <- identifier
+             return $ MkRawId x
 
-parseUse :: (MonadicParsing m, IndentationParsing m) => m Use
-parseUse = try parseApp <|> (do x <- identifier
-                                return $ MkIdent x)
+parseRawTm' :: (MonadicParsing m, IndentationParsing m) => m RawTm
+parseRawTm' = parens parseRawTm <|> parseId
 
-parseApp :: (MonadicParsing m, IndentationParsing m) => m Use
-parseApp = do x <- identifier
-              args <- choice [some parseTm, symbol "!" >> pure []]
-              return $ MkApp x args
+parseComb :: (MonadicParsing m, IndentationParsing m) => m RawTm
+parseComb = do x <- identifier
+               args <- choice [some parseRawTm', symbol "!" >> pure []]
+               return $ MkRawComb x args
 
-parseClause :: (MonadicParsing m, IndentationParsing m) => m Clause
-parseClause = do ps <- sepBy1 (parseVPat >>= return . MkVPat) (symbol ",")
-                 symbol "->"
-                 tm <- parseTm
-                 return $ MkCls ps tm
+parseRawClause :: (MonadicParsing m, IndentationParsing m) => m RawClause
+parseRawClause = do ps <- sepBy1 (parseVPat >>= return . MkVPat) (symbol ",")
+                    symbol "->"
+                    tm <- parseRawTm
+                    return $ MkRawCls ps tm
 
 parsePattern :: MonadicParsing m => m Pattern
 parsePattern = parseCPat <|> MkVPat <$> parseVPat
@@ -170,11 +168,11 @@ parseDataTPat = between (symbol ")") (symbol ")") $ do k <- identifier
                                                        ps <- many parseVPat
                                                        return $ MkDataPat k ps
 
-parseSComp :: (MonadicParsing m, IndentationParsing m) => m SComp
-parseSComp =
+parseRawSComp :: (MonadicParsing m, IndentationParsing m) => m RawSComp
+parseRawSComp =
   absoluteIndentation $ do cs <- between (symbol "{") (symbol "}") $
-                                 sepBy1 parseClause (symbol "|")
-                           return $ MkSComp cs
+                                 sepBy1 parseRawClause (symbol "|")
+                           return $ MkRawSComp cs
 
 evalCharIndentationParserT :: Monad m => IndentationParserT Char m a ->
                               IndentationState -> m a
@@ -194,8 +192,8 @@ runParseFromFileEx ev fname =
   let indA = ev prog $ mkIndentationState 0 infIndentation True Ge in
   do res <- parseFromFileEx indA fname
      case res of
-       Failure err -> print err
-       Success t -> print $ "Parsing " ++ (show fname) ++ " succeeded!"
+       Failure err -> return $ Left (show err)
+       Success t -> return $ Right t
 
 runCharParseFromFile = runParseFromFileEx evalCharIndentationParserT
 runTokenParseFromFile = runParseFromFileEx evalTokenIndentationParserT
@@ -208,30 +206,32 @@ input = ["tests/evalState.fk"]
 outputc = map runCharParseFromFile input
 outputt = map runTokenParseFromFile input
 expfiles = ["tests/evalState.expected"]
-expected = map getExpectedOutput expfiles
+expectedRes = map getExpectedOutput expfiles
 
-getExpectedOutput :: String -> IO Prog
+getExpectedOutput :: String -> IO RawProg
 getExpectedOutput fname = do src <- readFile fname
-                             prog <- read src :: RawProg
-                             return prog
+                             return (read src :: RawProg)
 
-assertParsedOk :: (Show err, Show a, Eq a) => Either err a -> a
+assertParsedOk :: (Show err, Show a, Eq a) => IO (Either err a) -> IO a
                   -> Assertion
 assertParsedOk actual expected =
-  case actual of
-   Right ok -> assertEqual "parsing succeeded, but " expected ok
-   Left err -> assertFailure ("parse failed with " ++ show err
-                              ++ ", expected " ++ show expected)
+  do x <- actual
+     case x of
+       Right ok -> do y <- expected
+                      assertEqual "parsing succeeded, but " y ok
+       Left err -> do y <- expected
+                      assertFailure ("parse failed with " ++ show err
+                                     ++ ", expected " ++ show y)
 
 allTests :: TestTree
 allTests =
   testGroup "Frank (trifecta)"
   [
-    testGroup "char parsing"
-    [ testCase "1" $ assertParsedOk output1c expected1
-    ]
-  , testGroup "token parsing"
-    [ testCase "1" $ assertParsedOk output1t expected1
-    ]
+    testGroup "char parsing" $
+    map (uncurry testCase) $
+    zip input $ map (uncurry assertParsedOk) (zip outputc expectedRes),
+    testGroup "token parsing" $
+    map (uncurry testCase) $
+    zip input $ map (uncurry assertParsedOk) (zip outputt expectedRes)
   ]
 

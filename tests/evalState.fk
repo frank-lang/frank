@@ -1,5 +1,5 @@
-evalState : X -> <State X>X    -> Y
-evalState   x        <t>        =  runState x' (k Unit)
-evalState   x         y         =  y
+evalState : X -> <State X>Y    -> Y
+evalState   x        <t>        = evalState x (k Unit)
+evalState   x         y         = y
 
 
