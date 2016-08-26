@@ -23,6 +23,7 @@ data RawClause = MkRawCls [Pattern] RawTm
                deriving (Show, Read, Eq)
 
 data RawTm = MkRawId Id | MkRawComb Id [RawTm] | MkRawSC RawSComp | MkRawLet
+           | MkRawStr String | MkRawInt Integer | MkRawTmSeq RawTm RawTm
            deriving (Show, Read, Eq)
 
 data RawSComp = MkRawSComp [RawClause]
@@ -89,7 +90,7 @@ data Port = MkPort Adj VType
 data Peg = MkPeg Ab VType
          deriving (Show, Read, Eq)
 
-data VType = MkDTTy | MkSCTy CType | MkTVar Id
+data VType = MkDTTy | MkSCTy CType | MkTVar Id | MkStringTy | MkIntTy
            deriving (Show, Read, Eq)
 
 -- Adjustments

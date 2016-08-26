@@ -24,9 +24,9 @@ type MonadicParsing m = (TokenParsing m, Monad m)
 frankStyle :: MonadicParsing m => IdentifierStyle m
 frankStyle = IdentifierStyle {
     _styleName = "Frank"
-  , _styleStart = satisfy isAlpha
-  , _styleLetter = satisfy (\c -> isAlpha c || c == '\'')
-  , _styleReserved = HashSet.fromList ["data", "interface"]
+  , _styleStart = satisfy (\c -> isAlpha c || c == '_')
+  , _styleLetter = satisfy (\c -> isAlpha c || c == '_' || c == '\'')
+  , _styleReserved = HashSet.fromList ["data", "interface", "String", "Int"]
   , _styleHighlight = Hi.Identifier
   , _styleReservedHighlight = Hi.ReservedIdentifier }
 
@@ -70,8 +70,8 @@ parseMHCls :: (MonadicParsing m, IndentationParsing m) => m MHCls
 parseMHCls = do name <- identifier
                 ps <- many parsePattern
                 symbol "="
-                tm <- localIndentation Gt parseRawTm
-                return $ MkMHCls name (MkRawCls ps tm)
+                seq <- localIndentation Gt parseRawTmSeq
+                return $ MkMHCls name (MkRawCls ps seq)
 
 parseItf :: (MonadicParsing m, IndentationParsing m) => m Itf
 parseItf = do reserved "interface"
@@ -140,7 +140,16 @@ makeAb _ _ = error "expected open ability"
 
 parseVType :: MonadicParsing m => m VType
 parseVType = MkSCTy <$> try (between (symbol "{") (symbol "}") parseCType) <|>
+             MkStringTy <$ reserved "String" <|>
+             MkIntTy <$ reserved "Int" <|>
              MkTVar <$> identifier
+
+parseRawTmSeq :: (MonadicParsing m, IndentationParsing m) => m RawTm
+parseRawTmSeq = try (do tm1 <- parseRawTm
+                        symbol ";"
+                        tm2 <- parseRawTm
+                        return $ MkRawTmSeq tm1 tm2) <|>
+                parseRawTm
 
 parseRawTm :: (MonadicParsing m, IndentationParsing m) => m RawTm
 parseRawTm = MkRawSC <$> parseRawSComp <|>
@@ -151,8 +160,17 @@ parseId :: (MonadicParsing m, IndentationParsing m) => m RawTm
 parseId = do x <- identifier
              return $ MkRawId x
 
+parseNullaryComb :: (MonadicParsing m, IndentationParsing m) => m RawTm
+parseNullaryComb = do x <- identifier
+                      symbol "!"
+                      return $ MkRawComb x []
+
 parseRawTm' :: (MonadicParsing m, IndentationParsing m) => m RawTm
-parseRawTm' = parens parseRawTm <|> parseId
+parseRawTm' = parens parseRawTmSeq <|>
+              try parseNullaryComb <|>
+              parseId <|>
+              MkRawStr <$> stringLiteral <|>
+              MkRawInt <$> integer
 
 parseComb :: (MonadicParsing m, IndentationParsing m) => m RawTm
 parseComb = do x <- identifier
@@ -162,8 +180,8 @@ parseComb = do x <- identifier
 parseRawClause :: (MonadicParsing m, IndentationParsing m) => m RawClause
 parseRawClause = do ps <- sepBy1 (parseVPat >>= return . MkVPat) (symbol ",")
                     symbol "->"
-                    tm <- parseRawTm
-                    return $ MkRawCls ps tm
+                    seq <- parseRawTmSeq
+                    return $ MkRawCls ps seq
 
 parsePattern :: MonadicParsing m => m Pattern
 parsePattern = try parseCPat <|> MkVPat <$> parseVPat
@@ -258,4 +276,3 @@ allTests =
     map (uncurry testCase) $
     zip input $ map (uncurry assertParsedOk) (zip outputt expectedRes)
   ]
-

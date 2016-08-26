@@ -19,4 +19,13 @@ MkRawProg
 	     	    	            ,MkRawComb "k" [MkRawId "x"]])))
  ,MkRawDefTm (MkMHCls "evalState" (MkRawCls [MkVPat (MkVarPat "x")
                                             ,MkVPat (MkVarPat "y")]
-					    (MkRawId "y")))]
+					    (MkRawId "y")))
+ ,MkRawSigTm (MkSig "main" (MkCType [] (MkPeg MkOpenAb MkStringTy)))
+ ,MkRawDefTm (MkMHCls "main" (MkRawCls []
+ 	     	      	       (MkRawComb "evalState"
+			         [MkRawStr "Hello"
+			       	 ,MkRawTmSeq (MkRawComb "put"
+				 	       [MkRawComb "strcat"
+                                                 [MkRawComb "get" []
+					         ,MkRawStr " World!\n"]])
+				 	     (MkRawComb "get" [])])))]
