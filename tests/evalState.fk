@@ -1,5 +1,5 @@
-interface State x = get : x
-	          | put : x -> Unit
+interface State X = get : X
+	          | put : X -> Unit
 
 evalState : X -> <State X>Y    -> Y
 evalState   x    <put x' -> k>  = evalState x' (k Unit)

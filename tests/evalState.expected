@@ -1,12 +1,16 @@
 MkRawProg
- [MkRawItfTm (MkItf "State" ["x"]
-           	   [MkCmd "get" (MkCType [] (MkPeg MkOpenAb (MkTVar "x")))
- 	  	   ,MkCmd "put" (MkCType [MkPort MkIdAdj (MkTVar "x")]
-		   	      	         (MkPeg MkOpenAb (MkTVar "Unit")))])
+ [MkRawItfTm (MkItf "State" ["X"]
+           	   [MkCmd "get" (MkCType [] (MkPeg MkOpenAb
+		   	  		    	   (MkDTTy "X" MkEmpAb [])))
+ 	  	   ,MkCmd "put" (MkCType [MkPort MkIdAdj
+		   	  		 	 (MkDTTy "X" MkEmpAb [])]
+		   	      	         (MkPeg MkOpenAb
+					 	(MkDTTy "Unit" MkEmpAb [])))])
  ,MkRawSigTm (MkSig "evalState"
-   (MkCType [ MkPort MkIdAdj (MkTVar "X")
-            , MkPort (MkAdjPlus MkIdAdj "State" [MkTVar "X"]) (MkTVar "Y")]
-            (MkPeg MkOpenAb (MkTVar "Y"))))
+   (MkCType [ MkPort MkIdAdj (MkDTTy "X" MkEmpAb [])
+            , MkPort (MkAdjPlus MkIdAdj "State"
+	      	       [MkDTTy "X" MkEmpAb []]) (MkDTTy "Y" MkEmpAb [])]
+            (MkPeg MkOpenAb (MkDTTy "Y" MkEmpAb []))))
  ,MkRawDefTm (MkMHCls "evalState"
  	     	      (MkRawCls [MkVPat (MkVarPat "x")
                                 ,MkCmdPat "put" [MkVarPat "x'"] "k"]

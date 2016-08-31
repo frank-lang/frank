@@ -57,7 +57,7 @@ data SComp = MkSComp [Clause]
 {---------------}
 {- Parts of the grammar that pre-processing leaves unchanged. -}
 
-data DataT = MkDT Id [Ctr]
+data DataT = MkDT Id [Id] [Ctr]
            deriving (Show, Read, Eq)
 
 data Itf = MkItf Id [Id] [Cmd]
@@ -90,7 +90,8 @@ data Port = MkPort Adj VType
 data Peg = MkPeg Ab VType
          deriving (Show, Read, Eq)
 
-data VType = MkDTTy | MkSCTy CType | MkTVar Id | MkStringTy | MkIntTy
+data VType = MkDTTy Id Ab [VType] | MkSCTy CType
+           | MkTVar Id | MkStringTy | MkIntTy
            deriving (Show, Read, Eq)
 
 -- Adjustments
