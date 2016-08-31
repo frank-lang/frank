@@ -1,3 +1,5 @@
+{-# LANGUAGE DataKinds #-}
+{-# LANGUAGE GADTs #-}
 module RefineSyntax where
 
 import Control.Monad
@@ -13,7 +15,7 @@ data RState = MkRState { interfaces :: [Id]
                        , handlers :: [Id]
                        , ctrs :: [Id]
                        , cmds :: [Id]
-                       , program :: Prog}
+                       , program :: Prog Refined}
 
 getRState :: Refine RState
 getRState = get
@@ -41,46 +43,46 @@ putRMHs :: [Id] -> Refine ()
 putRMHs xs = do s <- getRState
                 putRState $ s { handlers = xs }
 
-getItfs :: [RawTopTm] -> [Itf]
+getItfs :: [TopTm Raw] -> [Itf Raw]
 getItfs xs = getItfs' xs []
-  where getItfs' :: [RawTopTm] -> [Itf] -> [Itf]
-        getItfs' ((MkRawItfTm itf) : xs) ys = getItfs' xs (itf : ys)
+  where getItfs' :: [TopTm Raw] -> [Itf Raw] -> [Itf Raw]
+        getItfs' ((MkItfTm itf) : xs) ys = getItfs' xs (itf : ys)
         getItfs' (_ : xs) ys = getItfs' xs ys
         getItfs' [] ys = ys
 
-collectINames :: [Itf] -> [Id]
+collectINames :: [Itf Raw] -> [Id]
 collectINames ((MkItf itf _ _) : xs) = itf : (collectINames xs)
 collectINames [] = []
 
-getCmds :: Itf -> [Cmd]
+getCmds :: Itf Raw -> [Cmd Raw]
 getCmds (MkItf _ _ xs) = xs
 
-collectCmds :: [Cmd] -> [Id]
+collectCmds :: [Cmd Raw] -> [Id]
 collectCmds ((MkCmd cmd _) : xs) = cmd : (collectCmds xs)
 collectCmds [] = []
 
-getDataTs :: [RawTopTm] -> [DataT]
+getDataTs :: [TopTm Raw] -> [DataT Raw]
 getDataTs xs = getDataTs' xs []
-  where getDataTs' :: [RawTopTm] -> [DataT] -> [DataT]
-        getDataTs' ((MkRawDataTm dt) : xs) ys = getDataTs' xs (dt : ys)
+  where getDataTs' :: [TopTm Raw] -> [DataT Raw] -> [DataT Raw]
+        getDataTs' ((MkDataTm dt) : xs) ys = getDataTs' xs (dt : ys)
         getDataTs' (_ : xs) ys = getDataTs' xs ys
         getDataTs' [] ys = ys
 
-collectDTNames :: [DataT] -> [Id]
-collectDTNames ((MkDT dt _) : xs) = dt : (collectDTNames xs)
+collectDTNames :: [DataT Raw] -> [Id]
+collectDTNames ((MkDT dt _ _) : xs) = dt : (collectDTNames xs)
 collectDTNames [] = []
 
-getCtrs :: DataT -> [Ctr]
-getCtrs (MkDT _ xs) = xs
+getCtrs :: DataT Raw -> [Ctr Raw]
+getCtrs (MkDT _ _ xs) = xs
 
-collectCtrs :: [Ctr] -> [Id]
+collectCtrs :: [Ctr Raw] -> [Id]
 collectCtrs ((MkCtr ctr _) : xs) = ctr : (collectCtrs xs)
 collectCtrs [] = []
 
-getHdrSigs :: [RawTopTm] -> [MHSig]
+getHdrSigs :: [TopTm Raw] -> [MHSig]
 getHdrSigs xs = getHdrSigs' xs []
-  where getHdrSigs' :: [RawTopTm] -> [MHSig] -> [MHSig]
-        getHdrSigs' ((MkRawSigTm sig) : xs) ys = getHdrSigs' xs (sig : ys)
+  where getHdrSigs' :: [TopTm Raw] -> [MHSig] -> [MHSig]
+        getHdrSigs' ((MkSigTm sig) : xs) ys = getHdrSigs' xs (sig : ys)
         getHdrSigs' (_ : xs) ys = getHdrSigs' xs ys
         getHdrSigs' [] ys = ys
 
@@ -88,8 +90,8 @@ collectMHNames :: [MHSig] -> [Id]
 collectMHNames ((MkSig hdr _) : xs) = hdr : (collectMHNames xs)
 collectMHNames [] = []
 
-getHdrDefs :: [RawTopTm] -> [MHCls] -> [MHCls]
-getHdrDefs ((MkRawDefTm def) : xs) ys = getHdrDefs xs (def : ys)
+getHdrDefs :: [TopTm Raw] -> [MHCls] -> [MHCls]
+getHdrDefs ((MkClsTm cls) : xs) ys = getHdrDefs xs (cls : ys)
 getHdrDefs (_ : xs) ys = getHdrDefs xs ys
 getHdrDefs [] ys = ys
 
@@ -114,16 +116,16 @@ addCmd xs x = addName xs x "duplicate command:"
 addMH :: [Id] -> Id -> Refine [Id]
 addMH xs x = addName xs x "duplicate multihandler:"
 
-refine :: RawProg -> Either String Prog
+refine :: Prog Raw -> Either String (Prog Refined)
 refine prog = evalState (runExceptT (refine' prog)) initRefine
 
-refine' :: RawProg -> Refine Prog
+refine' :: Prog Raw -> Refine (Prog Refined)
 refine' prog = do initialiseRState prog
                   i <- getRState
                   return $ program i
 
-initialiseRState :: RawProg -> Refine ()
-initialiseRState (MkRawProg xs) =
+initialiseRState :: Prog Raw -> Refine ()
+initialiseRState (MkProg xs) =
   do i <- getRState
      let itfs = getItfs xs
          dts = getDataTs xs
