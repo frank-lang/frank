@@ -1,73 +1,93 @@
+{-# LANGUAGE DataKinds #-}
+{-# LANGUAGE GADTs #-}
+{-# LANGUAGE StandaloneDeriving #-}
 -- The raw abstract syntax and (refined) abstract syntax for Frank
 module Syntax where
 
 {-------------------}
-{-- The raw syntax as parsed in from the file. --}
+{-- Syntax description: raw syntax comes from the parser and preprocessed into
+    refined syntax. --}
 
-data RawProg = MkRawProg [RawTopTm]
-             deriving (Show, Read, Eq)
+data SyntaxDesc = Raw | Refined
 
--- A raw term collects multihandler signatures and clauses separately.
-data RawTopTm = MkRawDataTm DataT | MkRawSigTm MHSig | MkRawDefTm MHCls
-              | MkRawItfTm Itf
-              deriving (Show, Read, Eq)
+{-- The raw syntax as parsed in from the file and the refined syntax produced
+    by a preprocessing stage before typechecking are simultaneously defined
+    using GADT syntax. --}
 
--- A top-level multihandler signature and clause
-data MHSig = MkSig Id CType
-           deriving (Show, Read, Eq)
-
-data MHCls = MkMHCls Id RawClause
-           deriving (Show, Read, Eq)
-
-data RawClause = MkRawCls [Pattern] RawTm
-               deriving (Show, Read, Eq)
-
-data RawTm = MkRawId Id | MkRawComb Id [RawTm] | MkRawSC RawSComp | MkRawLet
-           | MkRawStr String | MkRawInt Integer | MkRawTmSeq RawTm RawTm
-           deriving (Show, Read, Eq)
-
-data RawSComp = MkRawSComp [RawClause]
-              deriving (Show, Read, Eq)
-{-------------------}
-{-- The (refined) syntax as produced by the pre-processing stage. --}
-
-data Prog = MkProg [TopTm]
-          deriving (Show, Read, Eq)
-
--- A top-level term collects multihandler signatures and clauses in one
--- definition.
-data TopTm = MkDataT DataT | MkDefTm MHDef
-           deriving (Show, Read, Eq)
-
-data MHDef = MkDef Id VType [Clause]
-           deriving (Show, Read, Eq)
-
--- A clause for a multihandler definition
-data Clause = MkCls [Pattern] Tm
+data Prog a = MkProg [TopTm a]
             deriving (Show, Read, Eq)
 
-data Tm = MkUse Use | MkDCon DataCon | MkSC SComp | MkLet
-        deriving (Show, Read, Eq)
-
-data Use = MkIdent Id | MkApp Id [Tm]
-         deriving (Show, Read, Eq)
-
-data SComp = MkSComp [Clause]
-           deriving (Show, Read, Eq)
 {---------------}
-{- Parts of the grammar that pre-processing leaves unchanged. -}
+{- Parts of the grammar specific to the raw syntax. -}
 
-data DataT = MkDT Id [Id] [Ctr]
+-- A top-level multihandler signature and clause.
+data MHSig = MkSig Id (CType Raw)
+             deriving (Show, Read, Eq)
+
+data MHCls = MkMHCls Id (Clause Raw)
            deriving (Show, Read, Eq)
 
-data Itf = MkItf Id [Id] [Cmd]
+{---------------}
+{- Parts of the grammar specific to the refined syntax. -}
+data MHDef = MkDef Id (VType Refined) [Clause Refined]
+           deriving (Show, Read, Eq)
+
+data Use = MkIdent Id | MkApp Id [Tm Refined]
          deriving (Show, Read, Eq)
 
-data Ctr = MkCtr Id [VType]
-         deriving (Show, Read, Eq)
+data DataCon = MkDataCon Id [Tm Refined]
+             deriving (Show, Read, Eq)
 
-data Cmd = MkCmd Id CType
-         deriving (Show, Read, Eq)
+{---------------}
+{- Parts of the grammar independent of the syntax. -}
+
+-- A raw term collects multihandler signatures and clauses separately. A
+-- refined top-level term collects multihandler signatures and clauses in one
+-- definition.
+data TopTm a where
+  MkDataTm :: DataT a -> TopTm a
+  MkItfTm :: Itf a -> TopTm a
+  MkSigTm :: MHSig -> TopTm Raw
+  MkClsTm :: MHCls -> TopTm Raw
+  MkDefTm :: MHDef -> TopTm Refined
+
+deriving instance (Show) (TopTm a)
+deriving instance (Read) (TopTm a)
+deriving instance (Eq) (TopTm a)
+
+data Tm a where
+  MkRawId :: Id -> Tm Raw
+  MkRawComb :: Id -> [Tm Raw] -> Tm Raw
+  MkSC :: SComp a -> Tm a
+  MkLet :: Tm a
+  MkStr :: String -> Tm a
+  MkInt :: Integer -> Tm a
+  MkTmSeq :: Tm a -> Tm a -> Tm a
+  MkUse :: Use -> Tm Refined
+  MkDCon :: DataCon -> Tm Refined
+
+deriving instance (Show) (Tm a)
+deriving instance (Read) (Tm a)
+deriving instance (Eq) (Tm a)
+
+-- A clause for a multihandler definition
+data Clause a = MkCls [Pattern] (Tm a)
+              deriving (Show, Read, Eq)
+
+data SComp a = MkSComp [Clause a]
+           deriving (Show, Read, Eq)
+
+data DataT a = MkDT Id [Id] [Ctr a]
+             deriving (Show, Read, Eq)
+
+data Itf a = MkItf Id [Id] [Cmd a]
+           deriving (Show, Read, Eq)
+
+data Ctr a = MkCtr Id [VType a]
+           deriving (Show, Read, Eq)
+
+data Cmd a = MkCmd Id (CType a)
+           deriving (Show, Read, Eq)
 
 data Pattern = MkVPat ValuePat | MkCmdPat Id [ValuePat] Id | MkThkPat Id
              deriving (Show, Read, Eq)
@@ -75,29 +95,35 @@ data Pattern = MkVPat ValuePat | MkCmdPat Id [ValuePat] Id | MkThkPat Id
 data ValuePat = MkVarPat Id | MkDataPat Id [ValuePat]
               deriving (Show, Read, Eq)
 
-data DataCon = MkDataCon Id [Tm]
-             deriving (Show, Read, Eq)
-
 type Id = String
 
 -- Type hierarchy
-data CType = MkCType [Port] Peg
+data CType a = MkCType [Port a] (Peg a)
            deriving (Show, Read, Eq)
 
-data Port = MkPort Adj VType
+data Port a = MkPort (Adj a) (VType a)
           deriving (Show, Read, Eq)
 
-data Peg = MkPeg Ab VType
-         deriving (Show, Read, Eq)
-
-data VType = MkDTTy Id Ab [VType] | MkSCTy CType
-           | MkTVar Id | MkStringTy | MkIntTy
+data Peg a = MkPeg (Ab a) (VType a)
            deriving (Show, Read, Eq)
 
+data VType a where
+  MkDTTy :: Id -> Ab a -> [VType a] -> VType a
+  MkSCTy :: CType a -> VType a
+  MkTVar :: Id -> VType Raw
+  MkRTVar :: Id -> VType Refined
+  MkFTVar :: Id -> VType Refined
+  MkStringTy :: VType a
+  MkIntTy :: VType a
+
+deriving instance (Show) (VType a)
+deriving instance (Read) (VType a)
+deriving instance (Eq) (VType a)
+
 -- Adjustments
-data Adj = MkIdAdj | MkAdjPlus Adj Id [VType]
-         deriving (Show, Read, Eq)
+data Adj a = MkIdAdj | MkAdjPlus (Adj a) Id [VType a]
+           deriving (Show, Read, Eq)
 
 -- Abilities
-data Ab = MkEmpAb | MkAbPlus Ab Id [VType] | MkOpenAb
-        deriving (Show, Read, Eq)
+data Ab a = MkEmpAb | MkAbPlus (Ab a) Id [VType a] | MkOpenAb
+          deriving (Show, Read, Eq)
