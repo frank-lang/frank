@@ -1,4 +1,5 @@
 {-# LANGUAGE PackageImports, ConstraintKinds #-}
+{-# LANGUAGE DataKinds #-}
 -- A simple parser for the Frank language
 module Parser where
 
@@ -18,6 +19,7 @@ import Test.Tasty (TestTree, testGroup)
 import Test.Tasty.HUnit (testCase, assertEqual, assertFailure, Assertion)
 
 import Syntax
+import qualified ExpectedTestOutput as ETO
 
 type MonadicParsing m = (TokenParsing m, IndentationParsing m, Monad m)
 
@@ -36,16 +38,16 @@ identifier = Tok.ident frankStyle
 reserved :: MonadicParsing m => String -> m ()
 reserved = Tok.reserve frankStyle
 
-prog :: (Applicative m, MonadicParsing m) => m RawProg
-prog = MkRawProg <$> many tterm
+prog :: (Applicative m, MonadicParsing m) => m (Prog Raw)
+prog = MkProg <$> many tterm
 
-tterm :: MonadicParsing m => m RawTopTm
-tterm = MkRawDataTm <$> parseDataT <|>
-        MkRawSigTm <$> try parseMHSig <|>
-        MkRawDefTm <$> parseMHCls <|>
-        MkRawItfTm <$> parseItf
+tterm :: MonadicParsing m => m (TopTm Raw)
+tterm = MkDataTm <$> parseDataT <|>
+        MkSigTm <$> try parseMHSig <|>
+        MkClsTm <$> parseMHCls <|>
+        MkItfTm <$> parseItf
 
-parseDataT :: MonadicParsing m => m DataT
+parseDataT :: MonadicParsing m => m (DataT Raw)
 parseDataT = do reserved "data"
                 name <- identifier
                 ps <- many identifier
@@ -53,10 +55,10 @@ parseDataT = do reserved "data"
                 xs <- localIndentation Gt ctrlist
                 return $ MkDT name ps xs
 
-ctrlist :: MonadicParsing m => m [Ctr]
+ctrlist :: MonadicParsing m => m [Ctr Raw]
 ctrlist = sepBy parseCtr (symbol "|")
 
-parseCtr :: MonadicParsing m => m Ctr
+parseCtr :: MonadicParsing m => m (Ctr Raw)
 parseCtr = do name <- identifier
               args <- many parseVType
               return $ MkCtr name args
@@ -72,9 +74,9 @@ parseMHCls = do name <- identifier
                 ps <- many parsePattern
                 symbol "="
                 seq <- localIndentation Gt parseRawTmSeq
-                return $ MkMHCls name (MkRawCls ps seq)
+                return $ MkMHCls name (MkCls ps seq)
 
-parseItf :: MonadicParsing m => m Itf
+parseItf :: MonadicParsing m => m (Itf Raw)
 parseItf = do reserved "interface"
               name <- identifier
               ps <- many identifier
@@ -82,17 +84,17 @@ parseItf = do reserved "interface"
               xs <- localIndentation Gt $ sepBy1 parseCmd (symbol "|")
               return (MkItf name ps xs)
 
-parseCmd :: MonadicParsing m => m Cmd
+parseCmd :: MonadicParsing m => m (Cmd Raw)
 parseCmd = do cmd <- identifier
               symbol ":"
               sig <- parseCType
               return (MkCmd cmd sig)
 
-parseCType :: MonadicParsing m => m CType
+parseCType :: MonadicParsing m => m (CType Raw)
 parseCType = do (ports, peg) <- parsePortsAndPeg
                 return $ MkCType ports peg
 
-parsePortsAndPeg :: MonadicParsing m => m ([Port], Peg)
+parsePortsAndPeg :: MonadicParsing m => m ([Port Raw], Peg Raw)
 parsePortsAndPeg = try (do port <- parsePort
                            symbol "->" -- Might fail; previous parse was peg.
                            (ports, peg) <- parsePortsAndPeg
@@ -100,60 +102,60 @@ parsePortsAndPeg = try (do port <- parsePort
                        (do peg <- parsePeg
                            return ([], peg))
 
-parsePort :: MonadicParsing m => m Port
+parsePort :: MonadicParsing m => m (Port Raw)
 parsePort = do adj <- parseAdj
                ty <- parseVType
                return $ MkPort adj ty
 
-parsePeg :: MonadicParsing m => m Peg
+parsePeg :: MonadicParsing m => m (Peg Raw)
 parsePeg = do ab <- parseAb
               ty <- parseVType
               return $ MkPeg ab ty
 
-parseAdj :: MonadicParsing m => m Adj
+parseAdj :: MonadicParsing m => m (Adj Raw)
 parseAdj = do adj <- optional $ angles (sepBy parseAdj' (symbol ","))
               case adj of
                 Nothing -> return MkIdAdj
                 Just es -> return $ makeAdj es MkIdAdj
 
-parseAdj' :: MonadicParsing m => m Adj
+parseAdj' :: MonadicParsing m => m (Adj Raw)
 parseAdj' = do x <- identifier
                ts <- many parseVType
                return (MkAdjPlus MkIdAdj x ts)
 
-makeAdj :: [Adj] -> Adj -> Adj
+makeAdj :: [Adj Raw] -> Adj Raw -> Adj Raw
 makeAdj ((MkAdjPlus MkIdAdj id ts) : adjs) adj =
   makeAdj adjs (MkAdjPlus adj id ts)
 makeAdj [] adj = adj
 makeAdj _ _ = error "expected identity adjustment"
 
-parseDTAb :: MonadicParsing m => m Ab
+parseDTAb :: MonadicParsing m => m (Ab Raw)
 parseDTAb = do ab <- optional $ brackets (sepBy parseAb' (symbol ","))
                case ab of
                  Nothing -> return $ MkEmpAb -- pure data types
                  Just es -> return $ makeAb es MkOpenAb
 
-parseAb :: MonadicParsing m => m Ab
+parseAb :: MonadicParsing m => m (Ab Raw)
 parseAb = do ab <- optional $ brackets (sepBy parseAb' (symbol ","))
              case ab of
                Nothing -> return MkOpenAb
                Just es -> return $ makeAb es MkOpenAb
 
-parseAb' :: MonadicParsing m => m Ab
+parseAb' :: MonadicParsing m => m (Ab Raw)
 parseAb' = do x <- identifier
               ts <- many parseVType
               return (MkAbPlus MkOpenAb x ts)
 
-makeAb :: [Ab] -> Ab -> Ab
+makeAb :: [Ab Raw] -> Ab Raw -> Ab Raw
 makeAb ((MkAbPlus MkOpenAb id ts) : abs) ab = makeAb abs (MkAbPlus ab id ts)
 makeAb [] ab = ab
 makeAb _ _ = error "expected open ability"
 
-parseVType :: MonadicParsing m => m VType
+parseVType :: MonadicParsing m => m (VType Raw)
 parseVType = try parseDTType <|>
              parseVType'
 
-parseVType' :: MonadicParsing m => m VType
+parseVType' :: MonadicParsing m => m (VType Raw)
 parseVType' = parens parseVType <|>
               MkSCTy <$> try (braces parseCType) <|>
               MkStringTy <$ reserved "String" <|>
@@ -161,50 +163,50 @@ parseVType' = parens parseVType <|>
               MkTVar <$> identifier
 
 -- Parse a potential datatype. Note it may actually be a type variable.
-parseDTType :: MonadicParsing m => m VType
+parseDTType :: MonadicParsing m => m (VType Raw)
 parseDTType = do x <- identifier
                  ab <- parseDTAb
                  ps <- localIndentation Gt $ many parseVType'
                  return $ MkDTTy x ab ps
 
-parseRawTmSeq :: MonadicParsing m => m RawTm
+parseRawTmSeq :: MonadicParsing m => m (Tm Raw)
 parseRawTmSeq = try (do tm1 <- parseRawTm
                         symbol ";"
                         tm2 <- parseRawTm
-                        return $ MkRawTmSeq tm1 tm2) <|>
+                        return $ MkTmSeq tm1 tm2) <|>
                 parseRawTm
 
-parseRawTm :: MonadicParsing m => m RawTm
-parseRawTm = MkRawSC <$> parseRawSComp <|>
+parseRawTm :: MonadicParsing m => m (Tm Raw)
+parseRawTm = MkSC <$> parseRawSComp <|>
              try parseComb <|>
              parseRawTm'
 
-parseId :: MonadicParsing m => m RawTm
+parseId :: MonadicParsing m => m (Tm Raw)
 parseId = do x <- identifier
              return $ MkRawId x
 
-parseNullaryComb :: MonadicParsing m => m RawTm
+parseNullaryComb :: MonadicParsing m => m (Tm Raw)
 parseNullaryComb = do x <- identifier
                       symbol "!"
                       return $ MkRawComb x []
 
-parseRawTm' :: MonadicParsing m => m RawTm
+parseRawTm' :: MonadicParsing m => m (Tm Raw)
 parseRawTm' = parens parseRawTmSeq <|>
               try parseNullaryComb <|>
               parseId <|>
-              MkRawStr <$> stringLiteral <|>
-              MkRawInt <$> integer
+              MkStr <$> stringLiteral <|>
+              MkInt <$> integer
 
-parseComb :: MonadicParsing m => m RawTm
+parseComb :: MonadicParsing m => m (Tm Raw)
 parseComb = do x <- identifier
                args <- choice [some parseRawTm', symbol "!" >> pure []]
                return $ MkRawComb x args
 
-parseRawClause :: MonadicParsing m => m RawClause
+parseRawClause :: MonadicParsing m => m (Clause Raw)
 parseRawClause = do ps <- sepBy1 (parseVPat >>= return . MkVPat) (symbol ",")
                     symbol "->"
                     seq <- parseRawTmSeq
-                    return $ MkRawCls ps seq
+                    return $ MkCls ps seq
 
 parsePattern :: MonadicParsing m => m Pattern
 parsePattern = try parseCPat <|> MkVPat <$> parseVPat
@@ -233,11 +235,11 @@ parseDataTPat = between (symbol ")") (symbol ")") $ do k <- identifier
                                                        ps <- many parseVPat
                                                        return $ MkDataPat k ps
 
-parseRawSComp :: MonadicParsing m => m RawSComp
+parseRawSComp :: MonadicParsing m => m (SComp Raw)
 parseRawSComp =
   absoluteIndentation $ do cs <- between (symbol "{") (symbol "}") $
                                  sepBy1 parseRawClause (symbol "|")
-                           return $ MkRawSComp cs
+                           return $ MkSComp cs
 
 evalCharIndentationParserT :: Monad m => IndentationParserT Char m a ->
                               IndentationState -> m a
@@ -270,12 +272,6 @@ input = ["tests/evalState.fk"]
 
 outputc = map runCharParseFromFile input
 outputt = map runTokenParseFromFile input
-expfiles = ["tests/evalState.expected"]
-expectedRes = map getExpectedOutput expfiles
-
-getExpectedOutput :: String -> IO RawProg
-getExpectedOutput fname = do src <- readFile fname
-                             return (read src :: RawProg)
 
 assertParsedOk :: (Show err, Show a, Eq a) => IO (Either err a) -> IO a
                   -> Assertion
@@ -294,8 +290,8 @@ allTests =
   [
     testGroup "char parsing" $
     map (uncurry testCase) $
-    zip input $ map (uncurry assertParsedOk) (zip outputc expectedRes),
+    zip input $ map (uncurry assertParsedOk) (zip outputc ETO.expected),
     testGroup "token parsing" $
     map (uncurry testCase) $
-    zip input $ map (uncurry assertParsedOk) (zip outputt expectedRes)
+    zip input $ map (uncurry assertParsedOk) (zip outputt ETO.expected)
   ]
