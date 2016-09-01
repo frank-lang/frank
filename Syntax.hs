@@ -9,7 +9,29 @@ module Syntax where
 {-- Syntax description: raw syntax comes from the parser and preprocessed into
     refined syntax. --}
 
-data SyntaxDesc = Raw | Refined deriving (Show, Eq)
+class NotRaw a where
+  idNotRaw :: a -> a
+
+class NotDesugared a where
+  idNotDesugared :: a -> a
+
+data Raw = MkRaw
+
+instance NotDesugared Raw where
+  idNotDesugared = Prelude.id
+
+data Refined = MkRefined
+
+instance NotDesugared Refined where
+  idNotDesugared = Prelude.id
+
+instance NotRaw Refined where
+  idNotRaw = Prelude.id
+
+data Desugared = MkDesugared
+
+instance NotRaw Desugared where
+  idNotRaw = Prelude.id
 
 {-- The raw syntax as parsed in from the file and the refined syntax produced
     by a preprocessing stage before typechecking are simultaneously defined
@@ -30,14 +52,14 @@ data MHCls = MkMHCls Id (Clause Raw)
 
 {---------------}
 {- Parts of the grammar specific to the refined syntax. -}
-data MHDef = MkDef Id (VType Refined) [Clause Refined]
+data MHDef a = MkDef Id (CType a) [Clause a]
            deriving (Show, Eq)
 
-data Use = MkIdent Id | MkApp Id [Tm Refined]
-         deriving (Show, Eq)
+data Use a = MkIdent Id | MkApp Id [Tm a]
+           deriving (Show, Eq)
 
-data DataCon = MkDataCon Id [Tm Refined]
-             deriving (Show, Eq)
+data DataCon a = MkDataCon Id [Tm a]
+               deriving (Show, Eq)
 
 {---------------}
 {- Parts of the grammar independent of the syntax. -}
@@ -50,7 +72,7 @@ data TopTm a where
   MkItfTm :: Itf a -> TopTm a
   MkSigTm :: MHSig -> TopTm Raw
   MkClsTm :: MHCls -> TopTm Raw
-  MkDefTm :: MHDef -> TopTm Refined
+  MkDefTm :: NotRaw a => MHDef a -> TopTm a
 
 deriving instance (Show) (TopTm a)
 deriving instance (Eq) (TopTm a)
@@ -63,8 +85,8 @@ data Tm a where
   MkStr :: String -> Tm a
   MkInt :: Integer -> Tm a
   MkTmSeq :: Tm a -> Tm a -> Tm a
-  MkUse :: Use -> Tm Refined
-  MkDCon :: DataCon -> Tm Refined
+  MkUse :: NotRaw a => Use a -> Tm a
+  MkDCon :: NotRaw a => DataCon a -> Tm a
 
 deriving instance (Show) (Tm a)
 deriving instance (Eq) (Tm a)
@@ -109,9 +131,9 @@ data Peg a = MkPeg (Ab a) (VType a)
 data VType a where
   MkDTTy :: Id -> Ab a -> [VType a] -> VType a
   MkSCTy :: CType a -> VType a
-  MkTVar :: Id -> VType Raw
-  MkRTVar :: Id -> VType Refined
-  MkFTVar :: Id -> VType Refined
+  MkTVar :: NotDesugared a => Id -> VType a
+  MkRTVar :: Id -> VType Desugared
+  MkFTVar :: Id -> VType Desugared
   MkStringTy :: VType a
   MkIntTy :: VType a
 
@@ -125,3 +147,16 @@ data Adj a = MkIdAdj | MkAdjPlus (Adj a) Id [VType a]
 -- Abilities
 data Ab a = MkEmpAb | MkAbPlus (Ab a) Id [VType a] | MkOpenAb
           deriving (Show, Eq)
+
+-- Fresh type variable mechanism
+data VarCounter = MkVC Id (Id -> VarCounter)
+
+-- Generate a fresh var counter seeded by the provided identifier
+fresh :: Id -> VarCounter
+fresh = f 0
+  where f :: Int -> Id -> VarCounter
+        f n id = MkVC (id ++ show n) (f (n+1))
+
+-- freshRigid :: Id -> VType Refined
+-- freshRigid id = f ("r-"++id)
+--   where f :: Id ->   MkVC id f -> (MkRTVar id, f)

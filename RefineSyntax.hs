@@ -6,17 +6,21 @@ import Control.Monad
 import Control.Monad.Except
 import Control.Monad.State
 import Data.List
+import qualified Data.Map as M
 
 import Syntax
 
 type Refine = ExceptT String (State RState)
+
+type TVarMap = M.Map Id (VType Raw)
 
 data RState = MkRState { interfaces :: [Id]
                        , datatypes :: [Id]
                        , handlers :: [Id]
                        , ctrs :: [Id]
                        , cmds :: [Id]
-                       , program :: Prog Refined}
+                       , program :: Prog Refined
+                       , tmap :: TVarMap}
 
 getRState :: Refine RState
 getRState = get
@@ -47,6 +51,14 @@ putRCmds xs = do s <- getRState
 putRMHs :: [Id] -> Refine ()
 putRMHs xs = do s <- getRState
                 putRState $ s { handlers = xs }
+
+putTMap :: TVarMap -> Refine ()
+putTMap m = do s <- getRState
+               putRState $ s { tmap = m }
+
+getTMap :: Refine TVarMap
+getTMap = do s <- getRState
+             return $ tmap s
 
 getItfs :: [TopTm Raw] -> [Itf Raw]
 getItfs xs = getItfs' xs []
@@ -100,6 +112,11 @@ getHdrDefs ((MkClsTm cls) : xs) ys = getHdrDefs xs (cls : ys)
 getHdrDefs (_ : xs) ys = getHdrDefs xs ys
 getHdrDefs [] ys = ys
 
+splitTopTm :: [TopTm Raw] -> ([MHSig], [MHCls], [DataT Raw], [Itf Raw])
+splitTopTm xs = (getHdrSigs xs, getHdrDefs xs [], dts, itfs)
+  where dts = getDataTs xs
+        itfs = getItfs xs
+
 -- Add the name if not already present
 addName :: [Id] -> Id -> String -> Refine [Id]
 addName xs x prefix = if x `elem` xs then throwError (prefix ++ show x ++
@@ -124,47 +141,96 @@ addMH xs x = addName xs x "duplicate multihandler:"
 uniqueIds :: [Id] -> Bool
 uniqueIds xs = length xs == length (nub xs)
 
-refine :: Prog Raw -> Either String (Prog Raw)
+refine :: Prog Raw -> Either String (Prog Refined)
 refine prog = evalState (runExceptT (refine' prog)) initRefine
 
-refine' :: Prog Raw -> Refine (Prog Raw)
+refine' :: Prog Raw -> Refine (Prog Refined)
 refine' (MkProg xs) = do initialiseRState xs
-                         xs <- mapM refineTopTm xs
-                         return $ MkProg xs
+                         let (sigs, defs, dts, itfs) = splitTopTm xs
+                         dtTms <- mapM refineDataT dts
+                         itfTms <- mapM refineItf itfs
+                         hdrs <- mapM (refineMH defs) sigs
+                         return $ MkProg (dtTms ++ itfTms ++ hdrs)
 
-refineTopTm :: TopTm Raw -> Refine (TopTm Raw)
-refineTopTm (MkDataTm (MkDT dt ps ctrs)) =
-  return $ MkDataTm $ MkDT dt ps ctrs
-refineTopTm (MkItfTm (MkItf itf ps cmds)) =
+refineDataT :: DataT Raw -> Refine (TopTm Refined)
+refineDataT (MkDT dt ps ctrs) =
+  if uniqueIds ps then do ctrs' <- mapM refineCtr ctrs
+                          putTMap (M.fromList $ zip ps (map MkTVar ps))
+                          return $ MkDataTm $ MkDT dt ps ctrs'
+  else throwError $ "duplicate parameter in datatype " ++ dt
+
+refineItf :: Itf Raw -> Refine (TopTm Refined)
+refineItf (MkItf itf ps cmds) =
   if uniqueIds ps then do cmds' <- mapM refineCmd cmds
+                          putTMap (M.fromList $ zip ps (map MkTVar ps))
                           return $ MkItfTm $ MkItf itf ps cmds'
   else throwError $ "duplicate parameter in interface " ++ itf
-refineTopTm tm = return tm
 
-refineCmd :: Cmd Raw -> Refine (Cmd Raw)
-refineCmd (MkCmd cmd ty) = do ty' <- refineCType ty
-                              return $ MkCmd cmd ty'
+refineCmd :: Cmd Raw -> Refine (Cmd Refined)
+refineCmd (MkCmd id ty) = do ty' <- refineCType ty
+                             return $ MkCmd id ty'
 
-refineCType :: CType Raw -> Refine (CType Raw)
+refineCtr :: Ctr Raw -> Refine (Ctr Refined)
+refineCtr (MkCtr id xs) = do xs' <- mapM refineVType xs
+                             return $ MkCtr id xs'
+
+refineCType :: CType Raw -> Refine (CType Refined)
 refineCType (MkCType xs z) = do ys <- mapM refinePort xs
                                 peg <- refinePeg z
                                 return $ MkCType ys peg
 
-refinePort :: Port Raw -> Refine (Port Raw)
-refinePort (MkPort adj ty) = do ty' <- refineVType ty
-                                return $ MkPort adj ty'
+refinePort :: Port Raw -> Refine (Port Refined)
+refinePort (MkPort adj ty) = do adj' <- refineAdj adj
+                                ty' <- refineVType ty
+                                return $ MkPort adj' ty'
 
-refinePeg :: Peg Raw -> Refine (Peg Raw)
-refinePeg (MkPeg ab ty) = do ty' <- refineVType ty
-                             return $ MkPeg ab ty'
+refinePeg :: Peg Raw -> Refine (Peg Refined)
+refinePeg (MkPeg ab ty) = do ab' <- refineAb ab
+                             ty' <- refineVType ty
+                             return $ MkPeg ab' ty'
 
-refineVType :: VType Raw -> Refine (VType Raw)
+refineAb :: Ab Raw -> Refine (Ab Refined)
+refineAb MkEmpAb = return MkEmpAb
+refineAb (MkAbPlus ab id xs) = do xs' <- mapM refineVType xs
+                                  ab' <- refineAb ab
+                                  return $ MkAbPlus ab' id xs'
+refineAb MkOpenAb = return MkOpenAb
+
+
+refineAdj :: Adj Raw -> Refine (Adj Refined)
+refineAdj (MkAdjPlus adj id xs) = do xs' <- mapM refineVType xs
+                                     adj' <- refineAdj adj
+                                     return $ MkAdjPlus adj' id xs'
+refineAdj MkIdAdj = return MkIdAdj
+
+refineVType :: VType Raw -> Refine (VType Refined)
 -- Check that dt is a datatype, otherwise it must have been a type variable.
-refineVType (MkDTTy x ab xs) = do dts <- getRDTs
-                                  case x `elem` dts of
-                                    True -> return $ MkDTTy x ab xs
-                                    False -> return $ MkTVar x
-refineVType t = return t
+refineVType (MkDTTy x ab xs) =
+  do dts <- getRDTs
+     case x `elem` dts of
+       True -> do ab' <- refineAb ab
+                  xs' <- mapM refineVType xs
+                  return $ MkDTTy x ab' xs'
+       False -> do m <- getTMap
+                   if M.member x m then return $ MkTVar x
+                   else throwError $ "no type variable " ++ x ++ " defined"
+refineVType (MkSCTy ty) = refineCType ty >>= return . MkSCTy
+refineVType (MkTVar id) = return $ MkTVar id
+refineVType MkStringTy = return MkStringTy
+refineVType MkIntTy = return MkIntTy
+
+refineMH :: [MHCls] -> MHSig -> Refine (TopTm Refined)
+refineMH xs (MkSig id ty) = do cs <- mapM refineMHCls ys
+                               ty' <- refineCType ty
+                               return $ MkDefTm $ MkDef id ty' cs
+  where ys = filter (\(MkMHCls id' _) -> id' == id) xs
+
+refineMHCls :: MHCls -> Refine (Clause Refined)
+refineMHCls (MkMHCls _ (MkCls ps tm)) = do tm' <- refineTm tm
+                                           return $ MkCls ps tm'
+
+refineTm :: Tm Raw -> Refine (Tm Refined)
+refineTm tm = return $ MkUse $ MkIdent "x"
 
 initialiseRState :: [TopTm Raw] -> Refine ()
 initialiseRState xs =
@@ -196,3 +262,4 @@ builtinDataTs = ["Unit"]
 
 initRefine :: RState
 initRefine = MkRState builtinItfs builtinDataTs [] [] builtinCmds (MkProg [])
+             M.empty
