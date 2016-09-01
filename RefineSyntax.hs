@@ -5,6 +5,7 @@ module RefineSyntax where
 import Control.Monad
 import Control.Monad.Except
 import Control.Monad.State
+import Data.List
 
 import Syntax
 
@@ -30,6 +31,10 @@ putRItfs xs = do s <- getRState
 putRDTs :: [Id] -> Refine ()
 putRDTs xs = do s <- getRState
                 putRState $ s { datatypes = xs }
+
+getRDTs :: Refine [Id]
+getRDTs = do s <- getRState
+             return $ datatypes s
 
 putRCtrs :: [Id] -> Refine ()
 putRCtrs xs = do s <- getRState
@@ -116,16 +121,53 @@ addCmd xs x = addName xs x "duplicate command:"
 addMH :: [Id] -> Id -> Refine [Id]
 addMH xs x = addName xs x "duplicate multihandler:"
 
-refine :: Prog Raw -> Either String (Prog Refined)
+uniqueIds :: [Id] -> Bool
+uniqueIds xs = length xs == length (nub xs)
+
+refine :: Prog Raw -> Either String (Prog Raw)
 refine prog = evalState (runExceptT (refine' prog)) initRefine
 
-refine' :: Prog Raw -> Refine (Prog Refined)
-refine' prog = do initialiseRState prog
-                  i <- getRState
-                  return $ program i
+refine' :: Prog Raw -> Refine (Prog Raw)
+refine' (MkProg xs) = do initialiseRState xs
+                         xs <- mapM refineTopTm xs
+                         return $ MkProg xs
 
-initialiseRState :: Prog Raw -> Refine ()
-initialiseRState (MkProg xs) =
+refineTopTm :: TopTm Raw -> Refine (TopTm Raw)
+refineTopTm (MkDataTm (MkDT dt ps ctrs)) =
+  return $ MkDataTm $ MkDT dt ps ctrs
+refineTopTm (MkItfTm (MkItf itf ps cmds)) =
+  if uniqueIds ps then do cmds' <- mapM refineCmd cmds
+                          return $ MkItfTm $ MkItf itf ps cmds'
+  else throwError $ "duplicate parameter in interface " ++ itf
+refineTopTm tm = return tm
+
+refineCmd :: Cmd Raw -> Refine (Cmd Raw)
+refineCmd (MkCmd cmd ty) = do ty' <- refineCType ty
+                              return $ MkCmd cmd ty'
+
+refineCType :: CType Raw -> Refine (CType Raw)
+refineCType (MkCType xs z) = do ys <- mapM refinePort xs
+                                peg <- refinePeg z
+                                return $ MkCType ys peg
+
+refinePort :: Port Raw -> Refine (Port Raw)
+refinePort (MkPort adj ty) = do ty' <- refineVType ty
+                                return $ MkPort adj ty'
+
+refinePeg :: Peg Raw -> Refine (Peg Raw)
+refinePeg (MkPeg ab ty) = do ty' <- refineVType ty
+                             return $ MkPeg ab ty'
+
+refineVType :: VType Raw -> Refine (VType Raw)
+-- Check that dt is a datatype, otherwise it must have been a type variable.
+refineVType (MkDTTy x ab xs) = do dts <- getRDTs
+                                  case x `elem` dts of
+                                    True -> return $ MkDTTy x ab xs
+                                    False -> return $ MkTVar x
+refineVType t = return t
+
+initialiseRState :: [TopTm Raw] -> Refine ()
+initialiseRState xs =
   do i <- getRState
      let itfs = getItfs xs
          dts = getDataTs xs
@@ -149,5 +191,8 @@ builtinCmds = ["putStrLn", "strcat"]
 builtinItfs :: [Id]
 builtinItfs = ["Console"]
 
+builtinDataTs :: [Id]
+builtinDataTs = ["Unit"]
+
 initRefine :: RState
-initRefine = MkRState builtinItfs [] [] [] builtinCmds (MkProg [])
+initRefine = MkRState builtinItfs builtinDataTs [] [] builtinCmds (MkProg [])
