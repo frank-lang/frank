@@ -14,13 +14,16 @@ type Refine = ExceptT String (State RState)
 
 type TVarMap = M.Map Id (VType Raw)
 
+data TopLevelCtxt = Interface | Datatype | Handler deriving (Show, Eq)
+
 data RState = MkRState { interfaces :: [Id]
                        , datatypes :: [Id]
                        , handlers :: [Id]
                        , ctrs :: [Id]
                        , cmds :: [Id]
                        , program :: Prog Refined
-                       , tmap :: TVarMap}
+                       , tmap :: TVarMap
+                       , tlctxt :: Maybe TopLevelCtxt }
 
 getRState :: Refine RState
 getRState = get
@@ -31,6 +34,10 @@ putRState = put
 putRItfs :: [Id] -> Refine ()
 putRItfs xs = do s <- getRState
                  putRState $ s { interfaces = xs }
+
+getRItfs :: Refine [Id]
+getRItfs = do s <- getRState
+              return $ interfaces s
 
 putRDTs :: [Id] -> Refine ()
 putRDTs xs = do s <- getRState
@@ -44,13 +51,25 @@ putRCtrs :: [Id] -> Refine ()
 putRCtrs xs = do s <- getRState
                  putRState $ s { ctrs = xs }
 
+getRCtrs :: Refine [Id]
+getRCtrs = do s <- getRState
+              return $ ctrs s
+
 putRCmds :: [Id] -> Refine ()
 putRCmds xs = do s <- getRState
                  putRState $ s { cmds = xs }
 
+getRCmds :: Refine [Id]
+getRCmds = do s <- getRState
+              return $ cmds s
+
 putRMHs :: [Id] -> Refine ()
 putRMHs xs = do s <- getRState
                 putRState $ s { handlers = xs }
+
+getRMHs :: Refine [Id]
+getRMHs = do s <- getRState
+             return $ handlers s
 
 putTMap :: TVarMap -> Refine ()
 putTMap m = do s <- getRState
@@ -59,6 +78,14 @@ putTMap m = do s <- getRState
 getTMap :: Refine TVarMap
 getTMap = do s <- getRState
              return $ tmap s
+
+getTopLevelCtxt :: Refine (Maybe TopLevelCtxt)
+getTopLevelCtxt = do s <- getRState
+                     return $ tlctxt s
+
+putTopLevelCtxt :: TopLevelCtxt -> Refine ()
+putTopLevelCtxt ctxt = do s <- getRState
+                          putRState $ s { tlctxt = Just ctxt }
 
 getItfs :: [TopTm Raw] -> [Itf Raw]
 getItfs xs = getItfs' xs []
@@ -141,28 +168,37 @@ addMH xs x = addName xs x "duplicate multihandler:"
 uniqueIds :: [Id] -> Bool
 uniqueIds xs = length xs == length (nub xs)
 
+isHdrCtxt :: Maybe TopLevelCtxt -> Bool
+isHdrCtxt (Just Handler) = True
+isHdrCtxt _ = False
+
 refine :: Prog Raw -> Either String (Prog Refined)
 refine prog = evalState (runExceptT (refine' prog)) initRefine
 
 refine' :: Prog Raw -> Refine (Prog Refined)
 refine' (MkProg xs) = do initialiseRState xs
                          let (sigs, defs, dts, itfs) = splitTopTm xs
+                         putTopLevelCtxt Datatype
                          dtTms <- mapM refineDataT dts
+                         putTopLevelCtxt Interface
                          itfTms <- mapM refineItf itfs
+                         putTopLevelCtxt Handler
                          hdrs <- mapM (refineMH defs) sigs
                          return $ MkProg (dtTms ++ itfTms ++ hdrs)
 
 refineDataT :: DataT Raw -> Refine (TopTm Refined)
 refineDataT (MkDT dt ps ctrs) =
-  if uniqueIds ps then do ctrs' <- mapM refineCtr ctrs
-                          putTMap (M.fromList $ zip ps (map MkTVar ps))
+  if uniqueIds ps then do putTMap (M.fromList $ zip ps (map MkTVar ps))
+                          ctrs' <- mapM refineCtr ctrs
+                          putTMap M.empty
                           return $ MkDataTm $ MkDT dt ps ctrs'
   else throwError $ "duplicate parameter in datatype " ++ dt
 
 refineItf :: Itf Raw -> Refine (TopTm Refined)
 refineItf (MkItf itf ps cmds) =
-  if uniqueIds ps then do cmds' <- mapM refineCmd cmds
-                          putTMap (M.fromList $ zip ps (map MkTVar ps))
+  if uniqueIds ps then do putTMap (M.fromList $ zip ps (map MkTVar ps))
+                          cmds' <- mapM refineCmd cmds
+                          putTMap M.empty
                           return $ MkItfTm $ MkItf itf ps cmds'
   else throwError $ "duplicate parameter in interface " ++ itf
 
@@ -211,8 +247,11 @@ refineVType (MkDTTy x ab xs) =
        True -> do ab' <- refineAb ab
                   xs' <- mapM refineVType xs
                   return $ MkDTTy x ab' xs'
-       False -> do m <- getTMap
-                   if M.member x m then return $ MkTVar x
+       False -> do -- interfaces or datatypes explicitly declare their type
+                   -- variables.
+                   m <- getTMap
+                   ctx <- getTopLevelCtxt
+                   if isHdrCtxt ctx || M.member x m then return $ MkTVar x
                    else throwError $ "no type variable " ++ x ++ " defined"
 refineVType (MkSCTy ty) = refineCType ty >>= return . MkSCTy
 refineVType (MkTVar id) = return $ MkTVar id
@@ -230,7 +269,36 @@ refineMHCls (MkMHCls _ (MkCls ps tm)) = do tm' <- refineTm tm
                                            return $ MkCls ps tm'
 
 refineTm :: Tm Raw -> Refine (Tm Refined)
-refineTm tm = return $ MkUse $ MkIdent "x"
+refineTm (MkRawId id) =
+  do cmds <- getRCmds
+     hdrs <- getRMHs
+     if id `elem` cmds then return $ MkUse $ MkOp $ MkCmdId id
+     else if id `elem` hdrs then return $ MkUse $ MkOp $ MkPoly id
+     else return $ MkUse $ MkOp $ MkMono id
+refineTm (MkRawComb id xs) =
+  do xs' <- mapM refineTm xs
+     ctrs <- getRCtrs
+     cmds <- getRCmds
+     hdrs <- getRMHs
+     if id `elem` ctrs then return $ MkDCon $ MkDataCon id xs'
+     else if id `elem` cmds then return $ MkUse $ MkApp (MkCmdId id) xs'
+     else if id `elem` hdrs then return $ MkUse $ MkApp (MkPoly id) xs'
+     else return $ MkUse $ MkApp (MkMono id) xs'
+refineTm (MkSC x) = do x' <- refineSComp x
+                       return $ MkSC x'
+refineTm (MkStr x) = return $ MkStr x
+refineTm (MkInt x) = return $ MkInt x
+refineTm (MkTmSeq t1 t2) = do t1' <- refineTm t1
+                              t2' <- refineTm t2
+                              return $ MkTmSeq t1' t2'
+
+refineSComp :: SComp Raw -> Refine (SComp Refined)
+refineSComp (MkSComp xs) = do xs' <- mapM refineClause xs
+                              return $ MkSComp xs'
+
+refineClause :: Clause Raw -> Refine (Clause Refined)
+refineClause (MkCls ps tm) = do tm' <- refineTm tm
+                                return $ MkCls ps tm'
 
 initialiseRState :: [TopTm Raw] -> Refine ()
 initialiseRState xs =
@@ -252,7 +320,10 @@ initialiseRState xs =
 {-- The initial state for the refinement pass. -}
 
 builtinCmds :: [Id]
-builtinCmds = ["putStrLn", "strcat"]
+builtinCmds = ["putStrLn"]
+
+builtinMHs :: [Id]
+builtinMHs = ["strcat"]
 
 builtinItfs :: [Id]
 builtinItfs = ["Console"]
@@ -261,5 +332,5 @@ builtinDataTs :: [Id]
 builtinDataTs = ["Unit"]
 
 initRefine :: RState
-initRefine = MkRState builtinItfs builtinDataTs [] [] builtinCmds (MkProg [])
-             M.empty
+initRefine = MkRState builtinItfs builtinDataTs builtinMHs [] builtinCmds
+             (MkProg []) M.empty Nothing

@@ -55,7 +55,10 @@ data MHCls = MkMHCls Id (Clause Raw)
 data MHDef a = MkDef Id (CType a) [Clause a]
            deriving (Show, Eq)
 
-data Use a = MkIdent Id | MkApp Id [Tm a]
+data Operator = MkMono Id | MkPoly Id | MkCmdId Id
+              deriving (Show, Eq)
+
+data Use a = MkOp Operator | MkApp Operator [Tm a]
            deriving (Show, Eq)
 
 data DataCon a = MkDataCon Id [Tm a]
