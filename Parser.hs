@@ -60,7 +60,7 @@ ctrlist = sepBy parseCtr (symbol "|")
 
 parseCtr :: MonadicParsing m => m (Ctr Raw)
 parseCtr = do name <- identifier
-              args <- many parseVType
+              args <- many parseVType'
               return $ MkCtr name args
 
 parseMHSig :: MonadicParsing m => m MHSig
@@ -177,8 +177,7 @@ parseRawTmSeq = try (do tm1 <- parseRawTm
                 parseRawTm
 
 parseRawTm :: MonadicParsing m => m (Tm Raw)
-parseRawTm = MkSC <$> parseRawSComp <|>
-             try parseComb <|>
+parseRawTm = try parseComb <|>
              parseRawTm'
 
 parseId :: MonadicParsing m => m (Tm Raw)
@@ -194,6 +193,7 @@ parseRawTm' :: MonadicParsing m => m (Tm Raw)
 parseRawTm' = parens parseRawTmSeq <|>
               try parseNullaryComb <|>
               parseId <|>
+              MkSC <$> parseRawSComp <|>
               MkStr <$> stringLiteral <|>
               MkInt <$> integer
 
@@ -231,15 +231,14 @@ parseVPat = parseDataTPat <|> (do x <- identifier
                                   return $ MkVarPat x)
 
 parseDataTPat :: MonadicParsing m => m ValuePat
-parseDataTPat = between (symbol ")") (symbol ")") $ do k <- identifier
-                                                       ps <- many parseVPat
-                                                       return $ MkDataPat k ps
+parseDataTPat = parens $ do k <- identifier
+                            ps <- many parseVPat
+                            return $ MkDataPat k ps
 
 parseRawSComp :: MonadicParsing m => m (SComp Raw)
-parseRawSComp =
-  absoluteIndentation $ do cs <- between (symbol "{") (symbol "}") $
-                                 sepBy1 parseRawClause (symbol "|")
-                           return $ MkSComp cs
+parseRawSComp = localIndentation Gt $ absoluteIndentation $
+                do cs <- braces $ sepBy1 parseRawClause (symbol "|")
+                   return $ MkSComp cs
 
 evalCharIndentationParserT :: Monad m => IndentationParserT Char m a ->
                               IndentationState -> m a
@@ -268,7 +267,9 @@ runTokenParseFromFile = runParseFromFileEx evalTokenIndentationParserT
 runCharParse = runParse evalCharIndentationParserT
 runTokenParse = runParse evalTokenIndentationParserT
 
-input = ["tests/evalState.fk"]
+input = [ "tests/evalState.fk"
+        , "tests/listMap.fk"
+        , "tests/suspended_computations.fk"]
 
 outputc = map runCharParseFromFile input
 outputt = map runTokenParseFromFile input

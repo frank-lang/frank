@@ -1,0 +1,9 @@
+data List X = Nil X
+            | Cons X (List X) (List X)
+
+map : {a -> b} -> List a -> List b
+map f Nil = Nil
+map f (Cons x xs) = Cons (f x) (map f xs)
+
+main : List Int
+main = map {xs -> xs} (Cons 1 (Cons 2 (Cons 3 Nil)))

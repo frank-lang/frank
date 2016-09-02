@@ -1,0 +1,15 @@
+data Three = Once | Twice | Thrice
+
+id : a -> a
+
+
+foo : Three -> {Three -> Int}
+
+id x = x
+
+foo Once = id {x -> 1}
+foo Twice = id { Once -> 1
+               | x    -> 1}
+foo Thrice = id {Once -> 1
+                |Twice -> 1
+                |x -> 2}
