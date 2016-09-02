@@ -270,9 +270,11 @@ refineMHCls (MkMHCls _ (MkCls ps tm)) = do tm' <- refineTm tm
 
 refineTm :: Tm Raw -> Refine (Tm Refined)
 refineTm (MkRawId id) =
-  do cmds <- getRCmds
+  do ctrs <- getRCtrs
+     cmds <- getRCmds
      hdrs <- getRMHs
-     if id `elem` cmds then return $ MkUse $ MkOp $ MkCmdId id
+     if id `elem` ctrs then return $ MkDCon $ MkDataCon id []
+     else if id `elem` cmds then return $ MkUse $ MkOp $ MkCmdId id
      else if id `elem` hdrs then return $ MkUse $ MkOp $ MkPoly id
      else return $ MkUse $ MkOp $ MkMono id
 refineTm (MkRawComb id xs) =
@@ -331,6 +333,9 @@ builtinItfs = ["Console"]
 builtinDataTs :: [Id]
 builtinDataTs = ["Unit"]
 
+builtinCtrs :: [Id]
+builtinCtrs = ["Unit"]
+
 initRefine :: RState
-initRefine = MkRState builtinItfs builtinDataTs builtinMHs [] builtinCmds
-             (MkProg []) M.empty Nothing
+initRefine = MkRState builtinItfs builtinDataTs builtinMHs builtinCtrs
+             builtinCmds (MkProg []) M.empty Nothing
