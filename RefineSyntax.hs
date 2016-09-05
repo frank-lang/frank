@@ -184,7 +184,14 @@ refine' (MkProg xs) = do initialiseRState xs
                          itfTms <- mapM refineItf itfs
                          putTopLevelCtxt Handler
                          hdrs <- mapM (refineMH defs) sigs
-                         return $ MkProg (dtTms ++ itfTms ++ hdrs)
+                         if existsMain hdrs then
+                            return $ MkProg (dtTms ++ itfTms ++ hdrs)
+                         else throwError $ "no main function defined."
+
+existsMain :: [TopTm Refined] -> Bool
+existsMain ((MkDefTm (MkDef id _ _)) : xs) = id == "main" || existsMain xs
+existsMain [] = False
+existsMain (_ : xs) = error "invalid top term: expected multihandler"
 
 refineDataT :: DataT Raw -> Refine (TopTm Refined)
 refineDataT (MkDT dt ps ctrs) =
