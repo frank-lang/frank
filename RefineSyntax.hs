@@ -87,9 +87,9 @@ putTopLevelCtxt :: TopLevelCtxt -> Refine ()
 putTopLevelCtxt ctxt = do s <- getRState
                           putRState $ s { tlctxt = Just ctxt }
 
-getItfs :: [TopTm Raw] -> [Itf Raw]
+getItfs :: [TopTm a] -> [Itf a]
 getItfs xs = getItfs' xs []
-  where getItfs' :: [TopTm Raw] -> [Itf Raw] -> [Itf Raw]
+  where getItfs' :: [TopTm a] -> [Itf a] -> [Itf a]
         getItfs' ((MkItfTm itf) : xs) ys = getItfs' xs (itf : ys)
         getItfs' (_ : xs) ys = getItfs' xs ys
         getItfs' [] ys = ys
@@ -105,21 +105,21 @@ collectCmds :: [Cmd Raw] -> [Id]
 collectCmds ((MkCmd cmd _) : xs) = cmd : (collectCmds xs)
 collectCmds [] = []
 
-getDataTs :: [TopTm Raw] -> [DataT Raw]
+getDataTs :: [TopTm a] -> [DataT a]
 getDataTs xs = getDataTs' xs []
-  where getDataTs' :: [TopTm Raw] -> [DataT Raw] -> [DataT Raw]
+  where getDataTs' :: [TopTm a] -> [DataT a] -> [DataT a]
         getDataTs' ((MkDataTm dt) : xs) ys = getDataTs' xs (dt : ys)
         getDataTs' (_ : xs) ys = getDataTs' xs ys
         getDataTs' [] ys = ys
 
-collectDTNames :: [DataT Raw] -> [Id]
+collectDTNames :: [DataT a] -> [Id]
 collectDTNames ((MkDT dt _ _) : xs) = dt : (collectDTNames xs)
 collectDTNames [] = []
 
-getCtrs :: DataT Raw -> [Ctr Raw]
+getCtrs :: DataT a -> [Ctr a]
 getCtrs (MkDT _ _ xs) = xs
 
-collectCtrs :: [Ctr Raw] -> [Id]
+collectCtrs :: [Ctr a] -> [Id]
 collectCtrs ((MkCtr ctr _) : xs) = ctr : (collectCtrs xs)
 collectCtrs [] = []
 
