@@ -7,6 +7,7 @@ import Control.Monad.State
 
 import Data.List
 import qualified Data.Map.Strict as M
+import qualified Data.Set as S
 
 import Syntax
 import RefineSyntax
@@ -25,20 +26,29 @@ type Compile = State CState
 
 type ItfCmdMap = M.Map Id [Id]
 
-data CState = MkCState { imap :: ItfCmdMap }
+data CState = MkCState { imap :: ItfCmdMap
+                       , atoms :: S.Set String}
 
 initCState :: CState
-initCState = MkCState M.empty
+initCState = MkCState M.empty S.empty
 
 getCState :: Compile CState
 getCState = get
 
-setCState :: CState -> Compile ()
-setCState = put
+putCState :: CState -> Compile ()
+putCState = put
 
 getCCmds :: Id -> Compile [Id]
 getCCmds itf = do s <- getCState
                   return $ M.findWithDefault [] itf (imap s)
+
+addAtom :: Id -> Compile ()
+addAtom id = do s <- getCState
+                putCState $ s { atoms = S.insert id (atoms s) }
+
+isAtom :: Id -> Compile Bool
+isAtom id = do s <- getCState
+               return $ S.member id (atoms s)
 
 compile :: Prog Refined -> String -> IO ()
 compile (MkProg xs) dst = do print (show res)
@@ -66,10 +76,25 @@ compileTopTm _ = return [] -- interfaces are ignored for now. add to a map?
 -- how to do pattern matching correctly? maybe they are just n-adic functions
 -- too? pure ones are just pure functions, etc.
 compileDatatype :: DataT Refined -> Compile [S.Def S.Exp]
-compileDatatype (MkDT _ _ xs) = mapM compileCtr xs
+compileDatatype (MkDT _ _ xs) = do xs <- nonNullary xs
+                                   mapM compileCtr xs
+
+nonNullary :: [Ctr Refined] -> Compile [Ctr Refined]
+nonNullary ((MkCtr id []) : xs) = do addAtom id
+                                     nonNullary xs
+nonNullary (x : xs) = do xs' <- nonNullary xs
+                         return $ x : xs'
 
 compileCtr :: Ctr Refined -> Compile (S.Def S.Exp)
-compileCtr (MkCtr id xs) = return $ id S.:= S.EV ""
+compileCtr (MkCtr id ts) = do let xs = take (length ts) $ repeat "x"
+                                  xs' = zipWith f xs [1..]
+                                  args = map (S.PV . S.VPV) xs'
+                                  e = if (length xs') >= 2 then
+                                        foldl1 (S.:&) $ map S.EV xs'
+                                      else
+                                        S.EV $ head xs'
+                                  f x n = x ++ (show n)
+                              return $ S.DF id [] [(args, e)]
 
 -- use the type to generate the signature of commands handled
 -- generate a clause 1-to-1 correspondence
