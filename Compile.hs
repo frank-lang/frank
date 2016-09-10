@@ -133,7 +133,29 @@ compileVPat (MkDataPat id xs) = return $ S.VPA id
 
 
 compileTm :: Tm Refined -> Compile S.Exp
-compileTm tm = return $ S.EV "tm"
+compileTm (MkSC sc) = return $ S.EV "sc"
+compileTm MkLet = return $ S.EV "let"
+compileTm (MkStr s) = return $ S.EX $ map Left s
+compileTm (MkInt n) = return $ S.EI n
+compileTm (MkTmSeq t1 t2) = (S.:!) <$> compileTm t1 <*> compileTm t2
+compileTm (MkUse u) = compileUse u
+compileTm (MkDCon d) = compileDataCon d
 
--- use the mappings of interface names to constructors to obtain the commands
--- use the constructor mapping to generate atoms for constructors
+compileUse :: Use Refined -> Compile S.Exp
+compileUse (MkOp op) = compileOp op
+compileUse (MkApp op xs) = S.:$ <$> compileOp op <*> compileTm xs
+
+compileDataCon :: DataCon Refined -> Compile S.Exp
+compileDataCon (MkDataCon id []) = return $ S.EA id
+compileDataCon (MkDataCon id xs) = do xs' <- compileTm xs
+                                      return $ (S.EV id) S.:$ xs'
+
+compileOp :: Operator -> Compile S.Exp
+compileOp (MkMono id) = do b <- isAtom id
+                           return $ if b then S.EA id
+                                    else S.EV id
+compileOp (MkPoly id) = return $ EV id
+compileOp (MkCmdId id) = return $ EA id
+
+-- use the mappings of interface names to obtain the commands
+

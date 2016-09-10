@@ -7,6 +7,7 @@ import Shonky.Syntax
 
 data Val
   = VA String
+  | VI Integer
   | Val :&& Val
   | VX String
   | VF Env [[String]] [([Pat], Exp)]
@@ -51,6 +52,7 @@ fetch g y = go g where
 compute :: Env -> Exp -> [Frame] -> Comp
 compute g (EV x)       ls = consume (fetch g x) ls
 compute g (EA a)       ls = consume (VA a) ls
+compute g (EI n)       ls = consume (VI n) ls
 compute g (a :& d)     ls = compute g a (Car g d : ls)
 compute g (f :$ as)    ls = compute g f (Fun g as : ls)
 compute g (e :! f)     ls = compute g e (Seq g f : ls)

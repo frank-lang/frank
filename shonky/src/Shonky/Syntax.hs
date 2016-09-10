@@ -8,6 +8,7 @@ import Data.List
 
 data Exp
   = EV String
+  | EI Integer
   | EA String
   | Exp :& Exp
   | Exp :$ [Exp]
