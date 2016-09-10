@@ -35,6 +35,7 @@ data Pat
 
 data VPat
   = VPV String
+  | VPI Integer
   | VPA String
   | VPat :&: VPat
   | VPX [Either Char VPat]
@@ -52,11 +53,17 @@ pId = do c <- pLike pChar isAlphaNum
          cs <- many (pLike pChar (\c -> isAlphaNum c || c == '\''))
          return (c : cs)
 
+pInteger :: P Integer
+pInteger = do cs <- some (pLike pChar isDigit)
+              let x = concatMap (show . toInteger . digitToInt) cs
+              return $ (read x :: Integer)
+
 pP :: String -> P ()
 pP s = () <$ traverse (pLike pChar . (==)) s
 
 pExp :: P Exp
 pExp = ((EV <$> pId
+       <|> EI <$> pInteger
        <|> EA <$ pP "'" <*> pId
        <|> EX <$ pP "[|" <*> pText pExp
        <|> id <$ pP "[" <*> pLisp pExp (EA "") (:&)
@@ -123,6 +130,7 @@ pPat = PT <$ pP "{" <* pGap <*> pId <* pGap <* pP "}"
 
 pVPat :: P VPat
 pVPat = VPV <$> pId
+  <|> VPI <$> pInteger
   <|> VPA <$ pP "'" <*> pId
   <|> VPX <$ pP "[|" <*> pText pVPat
   <|> VPQ <$ pP "=" <* pGap <*> pId
@@ -216,6 +224,7 @@ ppPat (PC cmd ps k) = "{'" ++ cmd ++ "(" ++ args ++ ") -> " ++ k ++ "}"
 
 ppVPat :: VPat -> String
 ppVPat (VPV x) = x
+ppVPat (VPI n) = show n
 ppVPat (VPA x) = "'" ++ x
 ppVPat (VPX xs) = "[|" ++ ppText ppVPat xs
 
