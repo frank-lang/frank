@@ -142,5 +142,9 @@ expected = [
                     ,MkClsTm
                      (MkMHCls "minusTwoOnZero"
                       (MkCls [MkVPat (MkVarPat "n")] (MkInt 0)))
+                    ,MkSigTm (MkSig "main"
+                              (MkCType [] (MkPeg MkOpenAb MkIntTy)))
+                    ,MkClsTm (MkMHCls "main"
+                              (MkCls [] (MkRawComb "fib" [MkInt 5])))
                     ]
   ]

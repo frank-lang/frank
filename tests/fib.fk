@@ -9,3 +9,6 @@ fib n = fib (n-1) + fib (n-2)
 minusTwoOnZero : Int -> Int
 minusTwoOnZero 0 = -2
 minusTwoOnZero n = 0
+
+main : Int
+main = fib 5

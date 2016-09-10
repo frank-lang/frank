@@ -5,7 +5,7 @@ import RefineSyntax
 import qualified ExpectedTestOutput as ETO
 
 main :: IO ()
-main = do p <- head ETO.expected -- evalState.fk
+main = do p <- last ETO.expected -- fib.fk
           case refine p of
             Left err -> print err
-            Right p' -> compile p' "evalState"
+            Right p' -> compile p' "fib"

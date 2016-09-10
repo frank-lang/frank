@@ -130,7 +130,8 @@ compilePattern (MkThkPat id) = return $ S.PT id
 compileVPat :: ValuePat -> Compile S.VPat
 compileVPat (MkVarPat id) = return $ S.VPV id
 compileVPat (MkDataPat id xs) = return $ S.VPA id
-
+compileVPat (MkIntPat n) = return $ S.VPI n
+compileVPat (MkStrPat s) = return $ S.VPX $ map Left s
 
 compileTm :: Tm Refined -> Compile S.Exp
 compileTm (MkSC sc) = return $ S.EV "sc"

@@ -177,12 +177,12 @@ ppProg xs = unlines $ map ppDef xs
 
 ppDef :: Def Exp -> String
 ppDef (id := e) = id ++ " -> " ++ ppExp e
-ppDef (DF id [] ys) = ppCSep (\x -> id ++ (ppClause x)) ys
+ppDef (DF id [] ys) = ppCSep (\x -> id ++ (ppClause x)) (reverse ys)
 ppDef (DF id xs ys) = unlines hdr
   where hdr = [header, cs]
         header = id ++ "(" ++ args ++ "):"
         args = intercalate "," (map (intercalate " ") xs)
-        cs = unlines $ f $ map (\x -> id ++ (ppClause x)) ys
+        cs = unlines $ f $ map (\x -> id ++ (ppClause x)) (reverse ys)
         f (xs:[]) = [xs] -- don't add separator in last case
         f (xs:xss) = (xs ++ ",") : f xss
 
@@ -207,8 +207,12 @@ ppClause (ps, e) = rhs ++ " -> " ++ lhs
   where rhs = "(" ++ (ppCSep ppPat ps) ++ ")"
         lhs = ppExp e
 
+isBuiltinOp :: String -> Bool
+isBuiltinOp x = x `elem` ["+","-","*","/"]
+
 ppExp :: Exp -> String
-ppExp (EV x) = x
+ppExp (EV x) = if isBuiltinOp x then "(" ++ x ++ ")" else x
+ppExp (EI n) = show n
 ppExp (EA x) = "'" ++ x
 ppExp (EX xs) = "[|" ++ ppText ppExp xs
 ppExp (e :& e') = "" -- cons cell
