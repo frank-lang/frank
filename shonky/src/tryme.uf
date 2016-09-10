@@ -1,0 +1,22 @@
+cond(,,):
+cond('tt,f,g) -> f(),
+cond('ff,f,g) -> g()
+
+choose(,):
+choose(f,g) -> cond('bit(),f,g)
+
+catch(fail,):
+catch(x,f) -> x,
+catch({fail() -> k},f) -> f()
+
+search(bit):
+search(x) -> x,
+search({bit() -> k}) -> catch(k('tt),{k('ff)})
+
+foo():
+foo() -> [|mumble mumble `fred` mumble|]
+
+elem(,):
+elem(x,[=x|y]) -> 'tt,
+elem(x,[z|y]) -> elem(x,y),
+elem(x,z) -> 'ff

@@ -1,0 +1,140 @@
+elem(x,[=x|xs]) -> 'tt,
+elem(x,[z|xs]) -> elem(x,xs),
+elem(x,y) -> 'ff
+
+alphaNum -> [|0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz|]
+isAlphaNum(c) -> elem(c,alphaNum)
+
+whitespace -> [| \t\n|]
+isSpace(c) -> elem(c,whitespace)
+
+case(x,f) -> f(x)
+
+state(,get set):
+state(s,x) -> [x,s],
+state(s,{'get() -> k}) -> state(s,k(s)),
+state(s,{'set(s1) -> k}) -> state(s1,k([]))
+
+catch(abort,):
+catch(x,f) -> x,
+catch({'abort() -> k},f) -> f()
+
+protect(f) -> {|
+  s -> 'get()
+  t([x,s]) -> 'set(s); x
+  |}t(state(s,f()))
+
+eat() -> case('get(),{([c|s]) -> 'set(s); c})
+
+if('tt,f,g) -> f(),
+if('ff,f,g) -> g()
+
+like(p,x) -> if(p(x),{x},{'abort()})
+
+many(f) -> catch([protect(f)|many(f)],{[]})
+
+some(f) -> [protect(f)|many(f)]
+
+collapse([]) -> [||],
+collapse([x|y]) -> [|`x``collapse(y)`|]
+
+ident() -> collapse(some({like(isAlphaNum,eat())}))
+
+gap() -> many({like(isSpace,eat())}); []
+
+choice([]) -> 'abort(),
+choice([f|fs]) -> catch(protect(f),{choice(fs)})
+
+eq(x,=x) -> 'tt,
+eq(x,y) -> 'ff
+
+must('tt) -> [],
+must('ff) -> 'abort()
+
+gimme(c) -> must(eq(eat(),c))
+
+map(f,[x|xs]) -> [f(x)|map(f,xs)],
+map(f,[]) -> []
+
+punc(cs) -> map(gimme,cs); gap()
+
+prog() -> gap(); many({def()/ gap()})
+
+leaf() -> choice([{['var,ident()]}, {['atom,gimme([|'|]);ident()]}])
+
+exp() -> choice(
+  [{app(choice(
+     [leaf
+     ,{['text/punc([|\[\||])|text(exp)]}
+     ,{punc([|[|]); lisp(exp)}
+     ,{['fun/punc([|{|])| choice(
+        [{[[], [[],exp()]]}
+        ,{[choice([handles,{[]}]) | csep(clause, [])]}
+     ])/ gap(); punc([|}|])]}
+     ]))}
+  ,{['let/map(gimme,[|{\||]),prog()/punc([|\|}|]),exp()]}
+  ])
+
+text(f) -> choice(
+  [{[]/map(gimme,[|\|\]|])}
+  ,{[[punc([|\`|]); f()/ punc([|\`|])]|text(f)]}
+  ,{glom(choice([{gimme([|\\|]);esc(eat())},eat]),text(f))}
+  ])
+
+esc('n) -> [|\n|],
+esc('t) -> [|\t|],
+esc('b) -> [|\b|],
+esc(c) -> c
+
+
+glom(c,t) -> case(t,
+  { ([[x]|y]) -> [[|`c`|]|t]
+  , ([x|y]) -> [[|`c``x`|]|y]
+  , (z) -> [[|`c`|]|t]
+  })
+
+handles() -> punc([|(|]); csep({many({ident()/ gap()})}, [|)|])/
+  gap(); punc([|:|])
+
+lisp(f) -> {|
+  nil() -> gimme([|]|]); ['atom,[||]]
+  cell() -> ['cons,f(),cdr()]
+  cdr() -> gap(); choice(
+    [nil,{punc([|\||]); f()/ gap(); gimme([|]|])},{punc([|,|]); cell()}])
+  |}choice([nil,cell])
+
+clause() -> [punc([|(|]); csep(pat,[|)|]), gap(); punc([|->|]); exp()]
+
+pat() -> choice(
+  [{punc([|{|]); choice(
+     [{['thunk,  ident()]}
+     ,{['call, gimme([|'|]); ident(), punc([|(|]); csep(pat,[|)|]),
+        gap(); punc([|->|]); ident()]}
+     ])/ gap(); gimme([|}|])}
+  ,{['val, vpat()]}
+  ])
+
+vpat() -> choice(
+  [{leaf()}
+  ,{app(['eq, punc([|=|]); ident()])}
+  ,{punc([|[|]); lisp(vpat)}
+  ])
+
+def() -> choice([{['val,ident(),gap(); punc([|->|]); exp()]},{rules(ident())}])
+
+rules(f) -> ['def, f| choice(
+  [{[handles() | gap(); csep({map(gimme,f); clause()},[])]}
+  ,{[[], clause() | many({gap(); punc([|,|]); map(gimme,f); clause()})]}
+  ])]
+
+csep(f,t) -> {|
+  end() -> map(gimme,t); []
+  more() -> gap(); choice([{[punc([|,|]); f()|more()]},end])
+  |}choice([{[f()|more()]},end])
+  
+app(f) -> choice(
+  [{punc([|(|]); app(['app,f|csep(exp,[|)|])])}
+  ,{punc([|;|]); app(['seq,f,exp()])}
+  ,{punc([|/|]); app(['qes,f,exp()])}
+  ,{f}
+  ])
