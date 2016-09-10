@@ -174,20 +174,25 @@ ppDef (DF id xs ys) = unlines hdr
   where hdr = [header, cs]
         header = id ++ "(" ++ args ++ "):"
         args = intercalate "," (map (intercalate " ") xs)
-        cs = unlines $ map (\x -> id ++ (ppClause x)) ys
+        cs = unlines $ f $ map (\x -> id ++ (ppClause x)) ys
+        f (xs:[]) = [xs] -- don't add separator in last case
+        f (xs:xss) = (xs ++ ",") : f xss
 
 ppCSep :: (a -> String) -> [a] -> String
 ppCSep f xs = intercalate "," $ map f xs
 
 ppText :: (a -> String) -> [Either Char a] -> String
-ppText f ((Left c) : xs)
-  | isEscChar c = "\\" ++ [c] ++ (ppText f xs)
-  | otherwise = [c] ++ (ppText f xs)
+ppText f ((Left c) : xs) = escChar c ++ (ppText f xs)
 ppText f ((Right x) : xs) = "`" ++ (f x) ++ "`" ++ (ppText f xs)
 ppText f [] = "|]"
 
 isEscChar :: Char -> Bool
 isEscChar c = any (c ==) ['\n','\t','\b']
+
+escChar :: Char -> String
+escChar c = f [('\n', "\\n"),('\t', "\\t"),('\b', "\\b")]
+  where f ((c',s):xs) = if c == c' then s else f xs
+        f [] = [c]
 
 ppClause :: ([Pat], Exp) -> String
 ppClause (ps, e) = rhs ++ " -> " ++ lhs
@@ -197,7 +202,7 @@ ppClause (ps, e) = rhs ++ " -> " ++ lhs
 ppExp :: Exp -> String
 ppExp (EV x) = x
 ppExp (EA x) = "'" ++ x
-ppExp (EX xs) = ""
+ppExp (EX xs) = "[|" ++ ppText ppExp xs
 ppExp (e :& e') = "" -- cons cell
 ppExp (f :$ xs) = ppExp f ++ "(" ++ ppCSep ppExp xs ++ ")"
 ppExp (e :! e') = ppExp e ++ ";" ++ ppExp e'
@@ -212,7 +217,7 @@ ppPat (PC cmd ps k) = "{'" ++ cmd ++ "(" ++ args ++ ") -> " ++ k ++ "}"
 ppVPat :: VPat -> String
 ppVPat (VPV x) = x
 ppVPat (VPA x) = "'" ++ x
-ppVPat (VPX xs) = "[|" ++ ppText ppVPat xs ++ "|]"
+ppVPat (VPX xs) = "[|" ++ ppText ppVPat xs
 
 --newtype PP x = PP {print :: x -> String}
 

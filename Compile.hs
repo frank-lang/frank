@@ -51,7 +51,7 @@ isAtom id = do s <- getCState
                return $ S.member id (atoms s)
 
 compile :: Prog Refined -> String -> IO ()
-compile (MkProg xs) dst = do print (show res)
+compile (MkProg xs) dst = do print res
                              writeFile (dst ++ ".uf") (S.ppProg res)
   where res = evalState (compile' xs) st
         st = initialiseItfMap initCState (getItfs xs)
@@ -143,19 +143,18 @@ compileTm (MkDCon d) = compileDataCon d
 
 compileUse :: Use Refined -> Compile S.Exp
 compileUse (MkOp op) = compileOp op
-compileUse (MkApp op xs) = S.:$ <$> compileOp op <*> compileTm xs
+compileUse (MkApp op xs) = (S.:$) <$> compileOp op <*> mapM compileTm xs
 
 compileDataCon :: DataCon Refined -> Compile S.Exp
 compileDataCon (MkDataCon id []) = return $ S.EA id
-compileDataCon (MkDataCon id xs) = do xs' <- compileTm xs
+compileDataCon (MkDataCon id xs) = do xs' <- mapM compileTm xs
                                       return $ (S.EV id) S.:$ xs'
 
 compileOp :: Operator -> Compile S.Exp
 compileOp (MkMono id) = do b <- isAtom id
                            return $ if b then S.EA id
                                     else S.EV id
-compileOp (MkPoly id) = return $ EV id
-compileOp (MkCmdId id) = return $ EA id
+compileOp (MkPoly id) = return $ S.EV id
+compileOp (MkCmdId id) = return $ S.EA id
 
 -- use the mappings of interface names to obtain the commands
-

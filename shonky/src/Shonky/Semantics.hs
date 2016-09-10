@@ -195,6 +195,11 @@ txt (VA a)     = a
 txt (VX a)     = a
 txt (u :&& v)  = txt u ++ txt v
 
+builtins :: Env
+builtins = Empty :/ [DF "strcat" []
+                     [([PV (VPV "x"), PV (VPV "y")],
+                       EX [Right (EV "x"), Right (EV "y")])]]
+
 prog :: Env -> [Def Exp] -> Env
 prog g ds = g' where
   g' = g :/ map ev ds
@@ -206,7 +211,7 @@ load :: String -> IO Env
 load x = do
   s <- readFile (x ++ ".uf")
   let Just (d, "") = parse pProg s
-  return (prog Empty d)
+  return (prog builtins d)
 
 try :: Env -> String -> Comp
 try g s = compute g e [] where

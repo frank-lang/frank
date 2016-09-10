@@ -1,0 +1,7 @@
+main() -> evalState([|Hello|],'put(strcat('get(),[| World!\n|]));'get())
+evalState(,put get):
+evalState(x,y) -> y,
+evalState(x,{'get() -> k}) -> evalState(x,k(x)),
+evalState(x,{'put(x') -> k}) -> evalState(x',k('Unit))
+
+
