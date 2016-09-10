@@ -44,6 +44,7 @@ expected = [
                          [MkRawComb "get" []
                          ,MkStr " World!\n"]])
                (MkRawComb "get" [])])))]
+  -- tests/listMap.fk
   ,return $
    MkProg
    [MkDataTm (MkDT "List" ["X"]
@@ -79,6 +80,7 @@ expected = [
                          [MkInt 2
                          ,MkRawComb "Cons" [MkInt 3
                                            ,MkRawId "Nil"]]]])))]
+   -- tests/suspended_computations.fk
   ,return $
    MkProg [MkDataTm (MkDT "Three" [] [MkCtr "Once" []
                                      ,MkCtr "Twice" []
@@ -112,5 +114,33 @@ expected = [
                              [MkCls [MkVPat (MkVarPat "Once")] (MkInt 1)
                              ,MkCls [MkVPat (MkVarPat "Twice")] (MkInt 1)
                              ,MkCls [MkVPat (MkVarPat "x")] (MkInt 2)])])))]
-
+   -- tests/fib.fk
+  , return $ MkProg [MkSigTm (MkSig "fib"
+                              (MkCType [MkPort MkIdAdj MkIntTy]
+                               (MkPeg MkOpenAb MkIntTy)))
+                    ,MkClsTm (MkMHCls "fib"
+                              (MkCls [MkVPat (MkIntPat 0)] (MkInt 0)))
+                    ,MkClsTm (MkMHCls "fib"
+                              (MkCls [MkVPat (MkIntPat 1)] (MkInt 1)))
+                    ,MkClsTm (MkMHCls "fib"
+                              (MkCls [MkVPat (MkIntPat 2)] (MkInt 1)))
+                    ,MkClsTm
+                     (MkMHCls "fib"
+                      (MkCls [MkVPat (MkVarPat "n")]
+                       (MkRawComb "+"
+                        [ MkRawComb "fib" [MkRawComb "-" [MkRawId "n"
+                                                         ,MkInt 1]]
+                        , MkRawComb "fib" [MkRawComb "-" [MkRawId "n"
+                                                         ,MkInt 2]]])))
+                    ,MkSigTm (MkSig "minusTwoOnZero"
+                              (MkCType [MkPort MkIdAdj MkIntTy]
+                               (MkPeg MkOpenAb MkIntTy)))
+                    ,MkClsTm
+                     (MkMHCls "minusTwoOnZero"
+                      (MkCls [MkVPat (MkIntPat 0)]
+                       (MkRawComb "-" [MkInt 0,MkInt 2])))
+                    ,MkClsTm
+                     (MkMHCls "minusTwoOnZero"
+                      (MkCls [MkVPat (MkVarPat "n")] (MkInt 0)))
+                    ]
   ]

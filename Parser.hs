@@ -39,7 +39,7 @@ reserved :: MonadicParsing m => String -> m ()
 reserved = Tok.reserve frankStyle
 
 prog :: (Applicative m, MonadicParsing m) => m (Prog Raw)
-prog = MkProg <$> many tterm
+prog = MkProg <$ spaces <*> many tterm
 
 tterm :: MonadicParsing m => m (TopTm Raw)
 tterm = MkDataTm <$> parseDataT <|>
@@ -177,8 +177,25 @@ parseRawTmSeq = try (do tm1 <- parseRawTm
                 parseRawTm
 
 parseRawTm :: MonadicParsing m => m (Tm Raw)
-parseRawTm = try parseComb <|>
+parseRawTm = try parseRawOpTm <|>
              parseRawTm'
+
+parseRawOpTm :: MonadicParsing m => m (Tm Raw)
+parseRawOpTm = do uminus <- optional $ symbol "-"
+                  tm1 <- parseRawOperandTm
+                  let tm1' = case uminus of
+                        Just _ -> MkRawComb "-" [MkInt 0,tm1]
+                        Nothing -> tm1
+                  (do op <- choice $ map symbol ["+","-","*","/"]
+                      tm2 <- parseRawOperandTm
+                      return $ MkRawComb op [tm1', tm2]) <|> return tm1'
+
+parseRawOperandTm :: MonadicParsing m => m (Tm Raw)
+parseRawOperandTm = try parseComb <|>
+                    parens parseRawOpTm <|>
+                    try parseNullaryComb <|>
+                    parseId <|>
+                    MkInt <$> natural
 
 parseId :: MonadicParsing m => m (Tm Raw)
 parseId = do x <- identifier
@@ -195,7 +212,7 @@ parseRawTm' = parens parseRawTmSeq <|>
               parseId <|>
               MkSC <$> parseRawSComp <|>
               MkStr <$> stringLiteral <|>
-              MkInt <$> integer
+              MkInt <$> natural
 
 parseComb :: MonadicParsing m => m (Tm Raw)
 parseComb = do x <- identifier
@@ -227,8 +244,11 @@ parseCmdPat = do cmd <- identifier
                  return (MkCmdPat cmd ps g)
 
 parseVPat :: MonadicParsing m => m ValuePat
-parseVPat = parseDataTPat <|> (do x <- identifier
-                                  return $ MkVarPat x)
+parseVPat = parseDataTPat <|>
+            (do x <- identifier
+                return $ MkVarPat x) <|>
+            MkIntPat <$> try integer <|> -- try block for unary minus
+            MkStrPat <$> stringLiteral
 
 parseDataTPat :: MonadicParsing m => m ValuePat
 parseDataTPat = parens $ do k <- identifier
@@ -269,7 +289,8 @@ runTokenParse = runParse evalTokenIndentationParserT
 
 input = [ "tests/evalState.fk"
         , "tests/listMap.fk"
-        , "tests/suspended_computations.fk"]
+        , "tests/suspended_computations.fk"
+        , "tests/fib.fk"]
 
 outputc = map runCharParseFromFile input
 outputt = map runTokenParseFromFile input
