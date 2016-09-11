@@ -1,0 +1,9 @@
+main() -> fact(5)
+
+fact():
+fact(0) -> 1,
+fact(n) -> mult(n,fact(minus(n,1)))
+
+mult():
+mult(0,y) -> 0,
+mult(x,y) -> plus(mult(minus(x,1),y),y)

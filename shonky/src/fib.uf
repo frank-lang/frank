@@ -1,0 +1,13 @@
+main() -> fib(5)
+minusTwoOnZero():
+minusTwoOnZero(0) -> minus(0,2),
+minusTwoOnZero(n) -> 0
+
+
+fib():
+fib(0) -> 0,
+fib(1) -> 1,
+fib(2) -> 1,
+fib(n) -> plus(fib(minus(n,1)),fib(minus(n,2)))
+
+

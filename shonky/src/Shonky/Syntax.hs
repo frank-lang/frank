@@ -50,7 +50,7 @@ pGap :: P ()
 pGap = () <$ many (pLike pChar isSpace)
 
 pId :: P String
-pId = do c <- pLike pChar isAlphaNum
+pId = do c <- pLike pChar isAlpha
          cs <- many (pLike pChar (\c -> isAlphaNum c || c == '\''))
          return (c : cs)
 
@@ -208,14 +208,12 @@ ppClause (ps, e) = rhs ++ " -> " ++ lhs
   where rhs = "(" ++ (ppCSep ppPat ps) ++ ")"
         lhs = ppExp e
 
-builtins :: M.Map String String
-builtins = M.fromList [("+", "plus")
-                      ,("-", "minus")
-                      ,("*", "mult")
-                      ,("/", "div")]
+ppBuiltins :: M.Map String String
+ppBuiltins = M.fromList [("+", "plus")
+                        ,("-", "minus")]
 
 ppExp :: Exp -> String
-ppExp (EV x) = case M.lookup x builtins of
+ppExp (EV x) = case M.lookup x ppBuiltins of
   Just v -> v
   Nothing -> x
 ppExp (EI n) = show n

@@ -3,6 +3,8 @@ module Shonky.Semantics where
 import Control.Monad
 import Debug.Trace
 
+import qualified Data.Map.Strict as M
+
 import Shonky.Syntax
 
 data Val
@@ -11,6 +13,7 @@ data Val
   | Val :&& Val
   | VX String
   | VF Env [[String]] [([Pat], Exp)]
+  | VB String Env
   | VC Comp
   | VK [Frame]
   deriving Show
@@ -37,6 +40,23 @@ data Frame
   | Txt Env [Char] [Either Char Exp]
   deriving Show
 
+plus :: Env -> [Comp] -> Val
+plus g [a1,a2] = VI (f a1 + f a2)
+  where f x = case x of
+          Ret (VI n) -> n
+          _ -> error "plus: argument not an integer"
+plus g _ = error "plus: incorrect number of arguments, expected 2."
+
+minus :: Env -> [Comp] -> Val
+minus g [a1,a2] = VI (f a1 - f a2)
+  where f x = case x of
+          Ret (VI n) -> n
+          _ -> error "minus: argument not an integer"
+minus g _ = error "minus: incorrect number of arguments, expected 2."
+
+builtins :: M.Map String (Env -> [Comp] -> Val)
+builtins = M.fromList [("plus", plus), ("minus", minus)]
+
 fetch :: Env -> String -> Val
 fetch g y = go g where
   go h@(g' :/ ds) = defetch ds where
@@ -45,6 +65,7 @@ fetch g y = go g where
       | x == y = v
       | otherwise = defetch ds
     defetch (DF x hss pes : ds)
+      | M.member x builtins && x == y = VB x h
       | x == y = VF h hss pes
       | otherwise = defetch ds
   go _ = error $ concat ["fetch ",y,show g]
@@ -54,9 +75,7 @@ compute g (EV x)       ls = consume (fetch g x) ls
 compute g (EA a)       ls = consume (VA a) ls
 compute g (EI n)       ls = consume (VI n) ls
 compute g (a :& d)     ls = compute g a (Car g d : ls)
-compute g (f :$ as)    ls =
-  | f == EV "(+)" = _
-  | otherwise = compute g f (Fun g as : ls)
+compute g (f :$ as)    ls = compute g f (Fun g as : ls)
 compute g (e :! f)     ls = compute g e (Seq g f : ls)
 compute g (e :// f)    ls = compute g e (Qes g f : ls)
 compute g (EF hss pes) ls = consume (VF g hss pes) ls
@@ -105,6 +124,9 @@ args f cs g (hs : hss) (e : es) ls = compute g e (Arg hs f cs g hss es : ls)
 
 apply :: Val -> [Comp] -> [Frame] -> Comp
 apply (VF g _ pes) cs ls = tryRules g pes cs ls
+apply (VB x g) cs ls = case M.lookup x builtins of
+  Just f -> consume (f g cs) ls
+  Nothing -> error $ concat ["apply: ", x, " not a builtin"]
 apply (VA a) cs ls = command a (map (\ (Ret v) -> v) cs) [] ls
 apply (VC (Ret v)) [] ls = consume v ls
 apply (VK ks) [Ret v] ls = consume v (revapp ks ls)
@@ -147,6 +169,7 @@ vmatches _ _ _ = Nothing
 
 vmatch :: Env -> VPat -> Val -> Maybe Env
 vmatch g (VPV x) v = return (g :/ [x := v])
+vmatch g (VPI n) (VI m) | n == m = return g
 vmatch g (VPA a) (VA b) | a == b = return g
 vmatch g (q :&: q') (v :&& v') = do
   g <- vmatch g q v
@@ -197,10 +220,12 @@ txt (VA a)     = a
 txt (VX a)     = a
 txt (u :&& v)  = txt u ++ txt v
 
-builtins :: Env
-builtins = Empty :/ [DF "strcat" []
-                     [([PV (VPV "x"), PV (VPV "y")],
-                       EX [Right (EV "x"), Right (EV "y")])]]
+envBuiltins :: Env
+envBuiltins = Empty :/ [DF "strcat" []
+                        [([PV (VPV "x"), PV (VPV "y")],
+                          EX [Right (EV "x"), Right (EV "y")])]
+                       ,DF "plus" [] []
+                       ,DF "minus" [] []]
 
 prog :: Env -> [Def Exp] -> Env
 prog g ds = g' where
@@ -213,7 +238,7 @@ load :: String -> IO Env
 load x = do
   s <- readFile (x ++ ".uf")
   let Just (d, "") = parse pProg s
-  return (prog builtins d)
+  return (prog envBuiltins d)
 
 try :: Env -> String -> Comp
 try g s = compute g e [] where
