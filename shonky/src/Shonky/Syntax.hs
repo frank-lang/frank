@@ -5,6 +5,7 @@ import Control.Applicative
 import Data.Char
 
 import Data.List
+import qualified Data.Map as M
 
 data Exp
   = EV String
@@ -207,11 +208,16 @@ ppClause (ps, e) = rhs ++ " -> " ++ lhs
   where rhs = "(" ++ (ppCSep ppPat ps) ++ ")"
         lhs = ppExp e
 
-isBuiltinOp :: String -> Bool
-isBuiltinOp x = x `elem` ["+","-","*","/"]
+builtins :: M.Map String String
+builtins = M.fromList [("+", "plus")
+                      ,("-", "minus")
+                      ,("*", "mult")
+                      ,("/", "div")]
 
 ppExp :: Exp -> String
-ppExp (EV x) = if isBuiltinOp x then "(" ++ x ++ ")" else x
+ppExp (EV x) = case M.lookup x builtins of
+  Just v -> v
+  Nothing -> x
 ppExp (EI n) = show n
 ppExp (EA x) = "'" ++ x
 ppExp (EX xs) = "[|" ++ ppText ppExp xs
