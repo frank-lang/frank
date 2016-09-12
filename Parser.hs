@@ -1,5 +1,7 @@
 {-# LANGUAGE PackageImports, ConstraintKinds #-}
 {-# LANGUAGE DataKinds #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving,FlexibleInstances #-}
+{-# LANGUAGE StandaloneDeriving #-}
 -- A simple parser for the Frank language
 module Parser where
 
@@ -12,6 +14,7 @@ import "indentation-trifecta" Text.Trifecta.Indentation
 
 import Data.Char
 import Text.Parser.Token as Tok
+import Text.Parser.Token.Style
 import qualified Text.Parser.Token.Highlight as Hi
 import qualified Data.HashSet as HashSet
 
@@ -20,6 +23,28 @@ import Test.Tasty.HUnit (testCase, assertEqual, assertFailure, Assertion)
 
 import Syntax
 import qualified ExpectedTestOutput as ETO
+
+newtype FrankParser t m a =
+  FrankParser { runFrankParser :: IndentationParserT t m a }
+  deriving (Functor, Alternative, Applicative, Monad, Parsing
+           , IndentationParsing)
+
+deriving instance (DeltaParsing m) => (CharParsing (FrankParser Char m))
+deriving instance (DeltaParsing m) => (CharParsing (FrankParser Token m))
+
+instance DeltaParsing m => TokenParsing (FrankParser Char m) where
+  someSpace = FrankParser $ buildSomeSpaceParser someSpace haskellCommentStyle
+  nesting = FrankParser . nesting . runFrankParser
+  semi = FrankParser $ runFrankParser semi
+  highlight h = FrankParser . highlight h . runFrankParser
+  token p = p <* whiteSpace
+
+instance DeltaParsing m => TokenParsing (FrankParser Token m) where
+  someSpace = FrankParser $ buildSomeSpaceParser someSpace haskellCommentStyle
+  nesting = FrankParser . nesting . runFrankParser
+  semi = FrankParser $ runFrankParser semi
+  highlight h = FrankParser . highlight h . runFrankParser
+  token p = p <* whiteSpace
 
 type MonadicParsing m = (TokenParsing m, IndentationParsing m, Monad m)
 
@@ -39,7 +64,7 @@ reserved :: MonadicParsing m => String -> m ()
 reserved = Tok.reserve frankStyle
 
 prog :: (Applicative m, MonadicParsing m) => m (Prog Raw)
-prog = MkProg <$ spaces <*> many tterm
+prog = MkProg <$ whiteSpace <*> many tterm
 
 tterm :: MonadicParsing m => m (TopTm Raw)
 tterm = MkDataTm <$> parseDataT <|>
@@ -260,13 +285,13 @@ parseRawSComp = localIndentation Gt $ absoluteIndentation $
                 do cs <- braces $ sepBy1 parseRawClause (symbol "|")
                    return $ MkSComp cs
 
-evalCharIndentationParserT :: Monad m => IndentationParserT Char m a ->
+evalCharIndentationParserT :: Monad m => FrankParser Char m a ->
                               IndentationState -> m a
-evalCharIndentationParserT = evalIndentationParserT
+evalCharIndentationParserT = evalIndentationParserT . runFrankParser
 
-evalTokenIndentationParserT :: Monad m => IndentationParserT Token m a ->
+evalTokenIndentationParserT :: Monad m => FrankParser Token m a ->
                                IndentationState -> m a
-evalTokenIndentationParserT = evalIndentationParserT
+evalTokenIndentationParserT = evalIndentationParserT . runFrankParser
 
 runParse ev input
  = let indA = ev prog $ mkIndentationState 0 infIndentation True Ge
