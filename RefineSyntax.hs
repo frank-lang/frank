@@ -272,8 +272,7 @@ refineMH xs (MkSig id ty) = do cs <- mapM refineMHCls ys
   where ys = filter (\(MkMHCls id' _) -> id' == id) xs
 
 refineMHCls :: MHCls -> Refine (Clause Refined)
-refineMHCls (MkMHCls _ (MkCls ps tm)) = do tm' <- refineTm tm
-                                           return $ MkCls ps tm'
+refineMHCls (MkMHCls _ cls) = refineClause cls
 
 refineTm :: Tm Raw -> Refine (Tm Refined)
 refineTm (MkRawId id) =
@@ -306,8 +305,22 @@ refineSComp (MkSComp xs) = do xs' <- mapM refineClause xs
                               return $ MkSComp xs'
 
 refineClause :: Clause Raw -> Refine (Clause Refined)
-refineClause (MkCls ps tm) = do tm' <- refineTm tm
-                                return $ MkCls ps tm'
+refineClause (MkCls ps tm) = do ps' <- mapM refinePattern ps
+                                tm' <- refineTm tm
+                                return $ MkCls ps' tm'
+
+refinePattern :: Pattern -> Refine Pattern
+refinePattern (MkVPat p) = MkVPat <$> refineVPat p
+refinePattern (MkCmdPat cmd ps k) = do ps' <- mapM refineVPat ps
+                                       return $ MkCmdPat cmd ps' k
+refinePattern p = return p
+
+refineVPat :: ValuePat -> Refine ValuePat
+refineVPat p@(MkVarPat x) =
+  do ctrs <- getRCtrs
+     if x `elem` ctrs then return $ MkDataPat x []
+     else return p
+refineVPat p = return p
 
 initialiseRState :: [TopTm Raw] -> Refine ()
 initialiseRState xs =
@@ -341,7 +354,7 @@ builtinDataTs :: [Id]
 builtinDataTs = ["Unit"]
 
 builtinCtrs :: [Id]
-builtinCtrs = ["Unit"]
+builtinCtrs = ["unit"]
 
 initRefine :: RState
 initRefine = MkRState builtinItfs builtinDataTs builtinMHs builtinCtrs

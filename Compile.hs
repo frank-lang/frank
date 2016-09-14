@@ -84,6 +84,7 @@ nonNullary ((MkCtr id []) : xs) = do addAtom id
                                      nonNullary xs
 nonNullary (x : xs) = do xs' <- nonNullary xs
                          return $ x : xs'
+nonNullary [] = return []
 
 compileCtr :: Ctr Refined -> Compile (S.Def S.Exp)
 compileCtr (MkCtr id ts) = do let xs = take (length ts) $ repeat "x"
@@ -129,7 +130,10 @@ compilePattern (MkThkPat id) = return $ S.PT id
 
 compileVPat :: ValuePat -> Compile S.VPat
 compileVPat (MkVarPat id) = return $ S.VPV id
-compileVPat (MkDataPat id xs) = return $ S.VPA id
+compileVPat (MkDataPat id []) = return $ S.VPA id
+compileVPat (MkDataPat id (x:[])) = compileVPat x
+compileVPat (MkDataPat id xs) = do xs' <- mapM compileVPat xs
+                                   return $ foldl1 (S.:&:) xs'
 compileVPat (MkIntPat n) = return $ S.VPI n
 compileVPat (MkStrPat s) = return $ S.VPX $ map Left s
 

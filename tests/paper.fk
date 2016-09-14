@@ -1,0 +1,34 @@
+-- Examples from the paper
+
+-- Section 2.1
+
+data Zero =
+
+data Bool = tt | ff
+
+data Nat = zero | suc Nat
+
+data List X = nil | cons X (List X)
+
+data Pair X Y = pair X Y
+
+append : List X -> List X -> List X
+append nil ys = ys
+append (cons x xs) ys = cons x (append xs ys)
+
+map : {X -> Y} -> List X -> List Y
+map f nil = nil
+map f (cons x xs) = cons (f x) (map f xs)
+
+fst : X -> Y -> X
+fst x y = x
+
+snd : X -> Y -> Y
+snd x y = y
+
+if : Bool -> {X} -> {X} -> X
+if tt t f = t!
+if ff t f = f!
+
+main : Unit
+main = unit

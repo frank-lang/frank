@@ -219,7 +219,7 @@ ppExp (EV x) = case M.lookup x ppBuiltins of
 ppExp (EI n) = show n
 ppExp (EA x) = "'" ++ x
 ppExp (EX xs) = "[|" ++ ppText ppExp xs
-ppExp (e :& e') = "" -- cons cell
+ppExp (e :& e') = "[" ++ ppExp e ++ "," ++ ppExp e' ++ "]"
 ppExp (f :$ xs) = ppExp f ++ "(" ++ ppCSep ppExp xs ++ ")"
 ppExp (e :! e') = ppExp e ++ ";" ++ ppExp e'
 ppExp (e :// e') = ppExp e ++ "/" ++ ppExp e'
@@ -235,6 +235,7 @@ ppVPat (VPV x) = x
 ppVPat (VPI n) = show n
 ppVPat (VPA x) = "'" ++ x
 ppVPat (VPX xs) = "[|" ++ ppText ppVPat xs
+ppVPat (p1 :&: p2) = "[" ++ ppVPat p1 ++ "," ++ ppVPat p2 ++ "]"
 
 --newtype PP x = PP {print :: x -> String}
 
