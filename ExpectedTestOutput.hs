@@ -147,4 +147,5 @@ expected = [
                     ,MkClsTm (MkMHCls "main"
                               (MkCls [] (MkRawComb "fib" [MkInt 5])))
                     ]
+  , return $ MkProg []
   ]

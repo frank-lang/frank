@@ -6,4 +6,4 @@ map f Nil = Nil
 map f (Cons x xs) = Cons (f x) (map f xs)
 
 main : List Int
-main = map {xs -> xs} (Cons 1 (Cons 2 (Cons 3 Nil)))
+main! = map {xs -> xs} (Cons 1 (Cons 2 (Cons 3 Nil)))

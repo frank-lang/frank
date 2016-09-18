@@ -7,4 +7,4 @@ evalState   x    <get    -> k>  = evalState x (k x)
 evalState   x         y         = y
 
 main : String
-main = evalState "Hello" (put (strcat get! " World!\n"); get!)
+main! = evalState "Hello" (put (strcat get! " World!\n"); get!)

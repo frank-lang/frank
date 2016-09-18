@@ -1,4 +1,5 @@
 
+--- haell
 
 fib : Int -> Int
 fib 0 = 0
@@ -11,4 +12,4 @@ minusTwoOnZero 0 = -2
 minusTwoOnZero n = 0
 
 main : Int
-main = fib 5
+main! = fib 5

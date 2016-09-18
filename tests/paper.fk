@@ -16,9 +16,13 @@ append : List X -> List X -> List X
 append nil ys = ys
 append (cons x xs) ys = cons x (append xs ys)
 
-map : {X -> Y} -> List X -> List Y
+-- Section 2.2
+
+map : {X -> []Y} -> List X -> []List Y
 map f nil = nil
 map f (cons x xs) = cons (f x) (map f xs)
+
+-- Section 2.3
 
 fst : X -> Y -> X
 fst x y = x
@@ -30,5 +34,25 @@ if : Bool -> {X} -> {X} -> X
 if tt t f = t!
 if ff t f = f!
 
+on : X -> {X -> Y} -> Y
+on x f = f x
+
+shortAnd : Bool -> {Bool} -> Bool
+shortAnd x c = on x {tt -> c! | ff -> ff}
+
+-- Section 2.4
+
+interface Send X = send : X -> Unit
+
+interface Receive X = receive : X
+
+interface State S = get : S
+ | put : S -> Unit
+
+interface Abort = aborting : Zero
+
+abort : [Abort]X
+abort! = on aborting! {}
+
 main : Unit
-main = unit
+main! = unit
