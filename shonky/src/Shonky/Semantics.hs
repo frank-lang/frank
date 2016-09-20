@@ -84,7 +84,7 @@ compute g (EX ces)     ls = combine g [] ces ls
 
 consume :: Val -> [Frame] -> Comp
 consume v (Car g d             : ls) = compute g d (Cdr v : ls)
-consume v (Cdr u               : ls) = consume (u :&& v) ls
+consume v (Cdr u               : ls) = consume (simplStr u v) ls
 consume v (Fun g as            : ls) = args v [] g (handles v) as ls
 consume v (Arg _ f cs g hss es : ls) = args f (Ret v : cs) g hss es ls
 consume _ (Seq g e             : ls) = compute g e ls
@@ -93,6 +93,14 @@ consume _ (Qed v               : ls) = consume v ls
 consume v (Def g dvs x des e   : ls) = define g ((x := v) : dvs) des e ls
 consume v (Txt g cs ces        : ls) = combine g (revapp (txt v) cs) ces ls
 consume v []                         = Ret v
+
+-- A helper to simplify strings (list of characters)
+-- this allows regular list append [x|xs] to function like [|`x``xs`|] but
+-- only for string arguments.
+simplStr :: Val -> Val -> Val
+simplStr (VX x) (VA "") = VX x -- appending the empty string
+simplStr (VX x) (VX y) = VX (x ++ y)
+simplStr u v  = u :&& v -- no simplification possible
 
 revapp :: [x] -> [x] -> [x]
 revapp xz ys = foldl (flip (:)) ys xz
@@ -225,7 +233,9 @@ envBuiltins = Empty :/ [DF "strcat" []
                         [([PV (VPV "x"), PV (VPV "y")],
                           EX [Right (EV "x"), Right (EV "y")])]
                        ,DF "plus" [] []
-                       ,DF "minus" [] []]
+                       ,DF "minus" [] []
+                       ,DF "cons" [] [([PV (VPV "x1"), PV (VPV "x2")],
+                                       EV "x1" :& EV "x2" :& EA "")]]
 
 prog :: Env -> [Def Exp] -> Env
 prog g ds = g' where

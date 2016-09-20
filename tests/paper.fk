@@ -8,7 +8,7 @@ data Bool = tt | ff
 
 data Nat = zero | suc Nat
 
-data List X = nil | cons X (List X)
+data List' X = nil' | cons' X (List' X)
 
 data Pair X Y = pair X Y
 
@@ -53,6 +53,46 @@ interface Abort = aborting : Zero
 
 abort : [Abort]X
 abort! = on aborting! {}
+
+sends : List X -> [Send X]Unit
+sends xs = map send xs; unit
+
+bad : List X -> Unit
+bad xs = map send xs; unit
+
+catter : [Receive (List a)]List a
+catter! = on receive! { nil -> nil
+                      | xs -> append xs catter!}
+
+next : [State Nat]Nat
+next! = fst get! (put (suc get!))
+
+state : S -> <State S>X  -> X
+state   _        x        = x
+state   s    <get   -> k> = state s (k s)
+state   _    <put s -> k> = state s (k unit)
+
+index : List X -> List (Pair Nat X)
+index xs = state zero (map {x -> pair next! x} xs)
+
+pipe : <Send X>Unit  -> <Receive X>Y  -> [Abort]Y
+pipe   <send x -> s>    <receive -> r> = pipe (s unit) (r x)
+pipe        <_>                y       = y
+pipe        unit              <_>      = abort!
+
+eg1 : List Char
+eg1! = pipe (sends (cons "do" (cons "be" (cons "" nil)))) catter!
+
+spacer : [Send (List Char), Receive (List Char)]Unit
+spacer! = send receive!; send " "; spacer!
+
+eg2 : List Char
+eg2! = pipe (sends (cons "do" (cons "be" (cons "" nil))))
+            (pipe spacer! catter!)
+
+catch : <Abort>X       -> {X} -> X
+catch       x              _  =  x
+catch  <aborting -> _>     h  =  h!
 
 main : Unit
 main! = unit

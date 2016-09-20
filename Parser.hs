@@ -46,8 +46,9 @@ frankStyle :: MonadicParsing m => IdentifierStyle m
 frankStyle = IdentifierStyle {
     _styleName = "Frank"
   , _styleStart = satisfy (\c -> isAlpha c || c == '_')
-  , _styleLetter = satisfy (\c -> isAlpha c || c == '_' || c == '\'')
-  , _styleReserved = HashSet.fromList ["data", "interface", "String", "Int"]
+  , _styleLetter = satisfy (\c -> isAlphaNum c || c == '_' || c == '\'')
+  , _styleReserved = HashSet.fromList [ "data", "interface", "String", "Int"
+                                      , "Char"]
   , _styleHighlight = Hi.Identifier
   , _styleReservedHighlight = Hi.ReservedIdentifier }
 
@@ -179,6 +180,7 @@ parseVType' = parens parseVType <|>
               MkSCTy <$> try (braces parseCType) <|>
               MkStringTy <$ reserved "String" <|>
               MkIntTy <$ reserved "Int" <|>
+              MkCharTy <$ reserved "Char" <|>
               MkTVar <$> identifier
 
 -- Parse a potential datatype. Note it may actually be a type variable.
@@ -189,11 +191,12 @@ parseDTType = do x <- identifier
                  return $ MkDTTy x ab ps
 
 parseRawTmSeq :: MonadicParsing m => m (Tm Raw)
-parseRawTmSeq = try (do tm1 <- parseRawTm
-                        symbol ";"
-                        tm2 <- parseRawTm
-                        return $ MkTmSeq tm1 tm2) <|>
-                parseRawTm
+parseRawTmSeq = do tm1 <- parseRawTm
+                   m <- optional $ symbol ";"
+                   case m of
+                     Just _ -> do tm2 <- parseRawTmSeq
+                                  return $ MkTmSeq tm1 tm2
+                     Nothing -> return tm1
 
 parseRawTm :: MonadicParsing m => m (Tm Raw)
 parseRawTm = try parseRawOpTm <|>
@@ -231,7 +234,8 @@ parseRawTm' = parens parseRawTmSeq <|>
               parseId <|>
               MkSC <$> parseRawSComp <|>
               MkStr <$> stringLiteral <|>
-              MkInt <$> natural
+              MkInt <$> natural <|>
+              MkChar <$> charLiteral
 
 parseComb :: MonadicParsing m => m (Tm Raw)
 parseComb = do x <- identifier

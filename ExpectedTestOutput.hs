@@ -47,12 +47,7 @@ expected = [
   -- tests/listMap.fk
   ,return $
    MkProg
-   [MkDataTm (MkDT "List" ["X"]
-              [MkCtr "Nil" [MkTVar "X"]
-              ,MkCtr "Cons" [MkTVar "X"
-                            ,MkDTTy "List" MkEmpAb [MkTVar "X"]
-                            ,MkDTTy "List" MkEmpAb [MkTVar "X"]]])
-   ,MkSigTm (MkSig "map"
+   [MkSigTm (MkSig "map"
              (MkCType
               [MkPort MkIdAdj
                (MkSCTy (MkCType [MkPort MkIdAdj
@@ -61,11 +56,11 @@ expected = [
               ,MkPort MkIdAdj (MkDTTy "List" MkEmpAb [MkTVar "a"])]
               (MkPeg MkOpenAb (MkDTTy "List" MkEmpAb [MkTVar "b"]))))
   ,MkClsTm (MkMHCls "map" (MkCls [MkVPat (MkVarPat "f")
-                                 ,MkVPat (MkVarPat "Nil")] (MkRawId "Nil")))
+                                 ,MkVPat (MkVarPat "nil")] (MkRawId "nil")))
   ,MkClsTm (MkMHCls "map" (MkCls [MkVPat (MkVarPat "f")
-                                 ,MkVPat (MkDataPat "Cons" [MkVarPat "x"
+                                 ,MkVPat (MkDataPat "cons" [MkVarPat "x"
                                                            ,MkVarPat "xs"])]
-                           (MkRawComb "Cons"
+                           (MkRawComb "cons"
                             [MkRawComb "f" [MkRawId "x"]
                             ,MkRawComb "map" [MkRawId "f",MkRawId "xs"]])))
   ,MkSigTm (MkSig "main" (MkCType [] (MkPeg MkOpenAb
@@ -74,12 +69,12 @@ expected = [
             (MkCls [] (MkRawComb "map"
                        [MkSC (MkSComp [MkCls [MkVPat (MkVarPat "xs")]
                                        (MkRawId "xs")])
-                       ,MkRawComb "Cons"
+                       ,MkRawComb "cons"
                         [MkInt 1
-                        ,MkRawComb "Cons"
+                        ,MkRawComb "cons"
                          [MkInt 2
-                         ,MkRawComb "Cons" [MkInt 3
-                                           ,MkRawId "Nil"]]]])))]
+                         ,MkRawComb "cons" [MkInt 3
+                                           ,MkRawId "nil"]]]])))]
    -- tests/suspended_computations.fk
   ,return $
    MkProg [MkDataTm (MkDT "Three" [] [MkCtr "Once" []

@@ -146,24 +146,24 @@ splitTopTm xs = (getHdrSigs xs, getHdrDefs xs [], dts, itfs)
 
 -- Add the name if not already present
 addName :: [Id] -> Id -> String -> Refine [Id]
-addName xs x prefix = if x `elem` xs then throwError (prefix ++ show x ++
+addName xs x prefix = if x `elem` xs then throwError (prefix ++ x ++
                                                       " already defined.")
                       else return $ x : xs
 
 addItf :: [Id] -> Id -> Refine [Id]
-addItf xs x = addName xs x "duplicate interface:"
+addItf xs x = addName xs x "duplicate interface: "
 
 addDataT :: [Id] -> Id -> Refine [Id]
-addDataT xs x = addName xs x "duplicate datatype:"
+addDataT xs x = addName xs x "duplicate datatype: "
 
 addCtr :: [Id] -> Id -> Refine [Id]
-addCtr xs x = addName xs x "duplicate constructor:"
+addCtr xs x = addName xs x "duplicate constructor: "
 
 addCmd :: [Id] -> Id -> Refine [Id]
-addCmd xs x = addName xs x "duplicate command:"
+addCmd xs x = addName xs x "duplicate command: "
 
 addMH :: [Id] -> Id -> Refine [Id]
-addMH xs x = addName xs x "duplicate multihandler:"
+addMH xs x = addName xs x "duplicate multihandler: "
 
 uniqueIds :: [Id] -> Bool
 uniqueIds xs = length xs == length (nub xs)
@@ -264,6 +264,7 @@ refineVType (MkSCTy ty) = refineCType ty >>= return . MkSCTy
 refineVType (MkTVar id) = return $ MkTVar id
 refineVType MkStringTy = return MkStringTy
 refineVType MkIntTy = return MkIntTy
+refineVType MkCharTy = return MkCharTy
 
 refineMH :: [MHCls] -> MHSig -> Refine (TopTm Refined)
 refineMH xs (MkSig id ty) = do cs <- mapM refineMHCls ys
@@ -296,6 +297,7 @@ refineTm (MkSC x) = do x' <- refineSComp x
                        return $ MkSC x'
 refineTm (MkStr x) = return $ MkStr x
 refineTm (MkInt x) = return $ MkInt x
+refineTm (MkChar x) = return $ MkChar x
 refineTm (MkTmSeq t1 t2) = do t1' <- refineTm t1
                               t2' <- refineTm t2
                               return $ MkTmSeq t1' t2'
@@ -351,10 +353,10 @@ builtinItfs :: [Id]
 builtinItfs = ["Console"]
 
 builtinDataTs :: [Id]
-builtinDataTs = ["Unit"]
+builtinDataTs = ["Unit", "List"]
 
 builtinCtrs :: [Id]
-builtinCtrs = ["unit"]
+builtinCtrs = ["unit", "cons", "nil"]
 
 initRefine :: RState
 initRefine = MkRState builtinItfs builtinDataTs builtinMHs builtinCtrs

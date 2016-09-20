@@ -26,11 +26,14 @@ type Compile = State CState
 
 type ItfCmdMap = M.Map Id [Id]
 
+type BltMap = M.Map Id ([S.Exp] -> S.Exp, [S.VPat] -> S.VPat)
+
 data CState = MkCState { imap :: ItfCmdMap
-                       , atoms :: S.Set String}
+                       , atoms :: S.Set String
+                       , builtins :: BltMap}
 
 initCState :: CState
-initCState = MkCState M.empty S.empty
+initCState = MkCState M.empty S.empty builtinsMap
 
 getCState :: Compile CState
 getCState = get
@@ -50,10 +53,30 @@ isAtom :: Id -> Compile Bool
 isAtom id = do s <- getCState
                return $ S.member id (atoms s)
 
+isBuiltin :: Id -> Compile Bool
+isBuiltin id = do s <- getCState
+                  return $ M.member id (builtins s)
+
+getBuiltin :: Id -> Compile ([S.Exp] -> S.Exp)
+getBuiltin id =
+  do s <- getCState
+     let def = (\_ -> S.EA "bad-builtin", \[x] -> x)
+     return $ fst $ M.findWithDefault def id (builtins s)
+
+getBuiltinPat :: Id -> Compile ([S.VPat] -> S.VPat)
+getBuiltinPat id =
+  do s <- getCState
+     let def = (\[x] -> x, \_ -> S.VPA "bad-builtin")
+     return $ snd $ M.findWithDefault def id (builtins s)
+
+builtinsMap :: BltMap
+builtinsMap = M.fromList [("nil", (\[] -> S.EA "",\[] -> S.VPA ""))
+                         ,("cons",(\[x,y] -> x S.:& y,\[x,y] -> x S.:&: y))]
+
 compile :: Prog Refined -> String -> IO ()
 compile (MkProg xs) dst = do print res
                              writeFile (dst ++ ".uf") (S.ppProg res)
-  where res = evalState (compile' xs) st
+  where res = reverse $ evalState (compile' xs) st
         st = initialiseItfMap initCState (getItfs xs)
 
 compile' :: [TopTm Refined] -> Compile [S.Def S.Exp]
@@ -130,17 +153,23 @@ compilePattern (MkThkPat id) = return $ S.PT id
 
 compileVPat :: ValuePat -> Compile S.VPat
 compileVPat (MkVarPat id) = return $ S.VPV id
-compileVPat (MkDataPat id []) = return $ S.VPA id
-compileVPat (MkDataPat id (x:[])) = compileVPat x
-compileVPat (MkDataPat id xs) = do xs' <- mapM compileVPat xs
-                                   return $ foldl1 (S.:&:) xs'
+compileVPat (MkDataPat id xs) =
+  do b <- isBuiltin id
+     if b then getBuiltinPat id <*> mapM compileVPat xs
+     else case xs of
+            []  -> return $ S.VPA id
+            [x] -> compileVPat x
+            _   -> do xs' <- mapM compileVPat xs
+                      return $ foldl1 (S.:&:) xs'
 compileVPat (MkIntPat n) = return $ S.VPI n
 compileVPat (MkStrPat s) = return $ S.VPX $ map Left s
 
 compileTm :: Tm Refined -> Compile S.Exp
-compileTm (MkSC sc) = return $ S.EV "sc"
+compileTm (MkSC sc) = compileSComp sc
 compileTm MkLet = return $ S.EV "let"
-compileTm (MkStr s) = return $ S.EX $ map Left s
+compileTm (MkStr s) -- list of characters
+  | s == "" = return $ S.EA "" -- empty list
+  | otherwise = return $ S.EX $ map Left s
 compileTm (MkInt n) = return $ S.EI n
 compileTm (MkTmSeq t1 t2) = (S.:!) <$> compileTm t1 <*> compileTm t2
 compileTm (MkUse u) = compileUse u
@@ -151,9 +180,18 @@ compileUse (MkOp op) = compileOp op
 compileUse (MkApp op xs) = (S.:$) <$> compileOp op <*> mapM compileTm xs
 
 compileDataCon :: DataCon Refined -> Compile S.Exp
-compileDataCon (MkDataCon id []) = return $ S.EA id
-compileDataCon (MkDataCon id xs) = do xs' <- mapM compileTm xs
-                                      return $ (S.EV id) S.:$ xs'
+compileDataCon d@(MkDataCon id xs) =
+  do b <- isBuiltin id
+     if b then getBuiltin id <*> mapM compileTm xs
+     else compileDataCon' d
+
+compileDataCon' :: DataCon Refined -> Compile S.Exp
+compileDataCon' (MkDataCon id []) = return $ S.EA id
+compileDataCon' (MkDataCon id xs) = do xs' <- mapM compileTm xs
+                                       return $ (S.EV id) S.:$ xs'
+
+compileSComp :: SComp Refined -> Compile S.Exp
+compileSComp (MkSComp xs) = S.EF <$> pure [[]] <*> mapM compileClause xs
 
 compileOp :: Operator -> Compile S.Exp
 compileOp (MkMono id) = do b <- isAtom id

@@ -87,6 +87,7 @@ data Tm a where
   MkLet :: Tm a
   MkStr :: String -> Tm a
   MkInt :: Integer -> Tm a
+  MkChar :: Char -> Tm a
   MkTmSeq :: Tm a -> Tm a -> Tm a
   MkUse :: NotRaw a => Use a -> Tm a
   MkDCon :: NotRaw a => DataCon a -> Tm a
@@ -140,6 +141,7 @@ data VType a where
   MkFTVar :: Id -> VType Desugared
   MkStringTy :: VType a
   MkIntTy :: VType a
+  MkCharTy :: VType a
 
 deriving instance (Show) (VType a)
 deriving instance (Eq) (VType a)

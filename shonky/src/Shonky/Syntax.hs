@@ -18,7 +18,7 @@ data Exp
   | EF [[String]] [([Pat], Exp)]
   | [Def Exp] :- Exp
   | EX [Either Char Exp]
-  deriving Show
+  deriving (Show, Eq)
 infixr 6 :&
 infixl 5 :$
 infixr 4 :!
@@ -26,13 +26,13 @@ infixr 4 :!
 data Def v
   = String := v
   | DF String [[String]] [([Pat], Exp)]
-  deriving Show
+  deriving (Show, Eq)
 
 data Pat
   = PV VPat
   | PT String
   | PC String [VPat] String
-  deriving Show
+  deriving (Show, Eq)
 
 data VPat
   = VPV String
@@ -41,7 +41,7 @@ data VPat
   | VPat :&: VPat
   | VPX [Either Char VPat]
   | VPQ String
-  deriving Show
+  deriving (Show, Eq)
 
 pProg :: P [Def Exp]
 pProg = pGap *> many (pDef <* pGap)
@@ -50,7 +50,7 @@ pGap :: P ()
 pGap = () <$ many (pLike pChar isSpace)
 
 pId :: P String
-pId = do c <- pLike pChar isAlpha
+pId = do c <- pLike pChar (\c -> isAlpha c || c == '_')
          cs <- many (pLike pChar (\c -> isAlphaNum c || c == '\''))
          return (c : cs)
 
@@ -217,12 +217,29 @@ ppExp (EV x) = case M.lookup x ppBuiltins of
   Just v -> v
   Nothing -> x
 ppExp (EI n) = show n
-ppExp (EA x) = "'" ++ x
+ppExp (EA x)
+  | x == "" = "[]"
+  | otherwise = "'" ++ x
 ppExp (EX xs) = "[|" ++ ppText ppExp xs
-ppExp (e :& e') = "[" ++ ppExp e ++ "," ++ ppExp e' ++ "]"
+ppExp (x :& e) =
+  let xs = collectExp e (EA "") in
+  ppLisp (x:xs) ppExp
 ppExp (f :$ xs) = ppExp f ++ "(" ++ ppCSep ppExp xs ++ ")"
 ppExp (e :! e') = ppExp e ++ ";" ++ ppExp e'
 ppExp (e :// e') = ppExp e ++ "/" ++ ppExp e'
+ppExp (EF xs ys) =
+  let clauses = ppCSep (\x -> ppClause x) ys in
+  "{" ++ clauses ++ "}"
+
+collectExp :: Exp -> Exp -> [Exp]
+collectExp e d | e == d = []
+collectExp (e :& e') d = e : (collectExp e' d)
+collectExp e d = [e]
+
+ppLisp :: [x] -> (x -> String) -> String
+ppLisp xs f = "[" ++ g xs ++ "]"
+  where g [x,y] = f x ++ "|" ++ f y
+        g xs = ppCSep f xs
 
 ppPat :: Pat -> String
 ppPat (PV x) = ppVPat x
@@ -233,9 +250,18 @@ ppPat (PC cmd ps k) = "{'" ++ cmd ++ "(" ++ args ++ ") -> " ++ k ++ "}"
 ppVPat :: VPat -> String
 ppVPat (VPV x) = x
 ppVPat (VPI n) = show n
-ppVPat (VPA x) = "'" ++ x
+ppVPat (VPA x)
+  | x == "" = "[]"
+  | otherwise = "'" ++ x
 ppVPat (VPX xs) = "[|" ++ ppText ppVPat xs
-ppVPat (p1 :&: p2) = "[" ++ ppVPat p1 ++ "," ++ ppVPat p2 ++ "]"
+ppVPat (p :&: p') =
+  let ps = collectVPat p' (VPA "") in
+  ppLisp (p:ps) ppVPat
+
+collectVPat :: VPat -> VPat -> [VPat]
+collectVPat p d | p == d = []
+collectVPat (p :&: p') d = p : (collectVPat p' d)
+collectVPat p d = [p]
 
 --newtype PP x = PP {print :: x -> String}
 
