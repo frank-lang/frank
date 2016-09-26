@@ -118,7 +118,7 @@ data Pattern = MkVPat ValuePat | MkCmdPat Id [ValuePat] Id | MkThkPat Id
              deriving (Show, Eq)
 
 data ValuePat = MkVarPat Id | MkDataPat Id [ValuePat] | MkIntPat Integer
-              | MkStrPat String
+              | MkCharPat Char | MkStrPat String
               deriving (Show, Eq)
 
 type Id = String

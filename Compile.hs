@@ -163,6 +163,7 @@ compileVPat (MkDataPat id xs) =
                       return $ foldl1 (S.:&:) xs'
 compileVPat (MkIntPat n) = return $ S.VPI n
 compileVPat (MkStrPat s) = return $ S.VPX $ map Left s
+compileVPat (MkCharPat c) = return $ S.VPX [Left c]
 
 compileTm :: Tm Refined -> Compile S.Exp
 compileTm (MkSC sc) = compileSComp sc
@@ -171,6 +172,7 @@ compileTm (MkStr s) -- list of characters
   | s == "" = return $ S.EA "" -- empty list
   | otherwise = return $ S.EX $ map Left s
 compileTm (MkInt n) = return $ S.EI n
+compileTm (MkChar c) = return $ S.EX [Left c]
 compileTm (MkTmSeq t1 t2) = (S.:!) <$> compileTm t1 <*> compileTm t2
 compileTm (MkUse u) = compileUse u
 compileTm (MkDCon d) = compileDataCon d

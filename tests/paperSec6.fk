@@ -1,0 +1,49 @@
+-- Computation as Data
+
+interface LookAhead = peek : Char | accept : Unit
+
+interface CharConsole = inch : Char | ouch : Char -> Unit
+
+data Log [] X = start {[]X}
+              | inched (Log [] X) {Char -> []X}
+	      | ouched (Log [] X)
+
+data Buffer = empty | hold Char
+
+input :  Log [LookAhead, Abort, CharConsole] X ->
+         Buffer ->
+         <LookAhead, Abort>X ->
+         [CharConsole]X
+input _ _        x               = x
+input l (hold c) <peek -> k>     =
+  input l (hold c) (k c)
+input l (hold c) <accept -> k>   =
+  ouch c; input (ouched l) empty (k unit)
+input l empty    <accept -> k>   =
+  input l empty (k unit)
+input l empty    <peek -> k>     = on inch!
+  {'\b' -> rollback l
+  | c   -> input (inched l k) (hold c) (k c) }
+input l _        <aborting -> k> = rollback l
+
+rollback : Log [LookAhead, Abort, CharConsole] X ->
+           [CharConsole]X
+rollback (start p)    = parse p
+rollback (ouched l)   = map ouch "\b \b"; rollback l
+rollback (inched l k) = input l empty (k peek!)
+
+parse : {[LookAhead, Abort, CharConsole]X} -> [CharConsole]X
+parse p = input (start p) empty p!
+
+-- Not in paper but applies above code to an example
+map : {a -> b} -> List a -> List b
+map f nil = nil
+map f (cons x xs) = cons (f x) (map f xs)
+
+handleCC : <CharConsole>X -> [Console]X
+handleCC           x       = x
+handleCC   <inch   -> k>   = handleCC (k getChar!)
+handleCC   <ouch c -> k>   = putChar c; handleCC (k unit)
+
+main : Int
+main! = 0

@@ -70,6 +70,7 @@ tterm = MkDataTm <$> parseDataT <|>
 parseDataT :: MonadicParsing m => m (DataT Raw)
 parseDataT = do reserved "data"
                 name <- identifier
+                _ <- optional $ symbol "[" >> symbol "]" -- anything inside?
                 ps <- many identifier
                 symbol "="
                 xs <- localIndentation Gt ctrlist
@@ -271,6 +272,7 @@ parseVPat = parseDataTPat <|>
             (do x <- identifier
                 return $ MkVarPat x) <|>
             MkIntPat <$> try integer <|> -- try block for unary minus
+            MkCharPat <$> charLiteral <|>
             MkStrPat <$> stringLiteral
 
 parseDataTPat :: MonadicParsing m => m ValuePat
