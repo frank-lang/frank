@@ -36,6 +36,15 @@ parse : {[LookAhead, Abort, CharConsole]X} -> [CharConsole]X
 parse p = input (start p) empty p!
 
 -- Not in paper but applies above code to an example
+data Zero =
+
+interface Abort = aborting : Zero
+
+data Nat = zero | suc Nat
+
+on : X -> {X -> Y} -> Y
+on x f = f x
+
 map : {a -> b} -> List a -> List b
 map f nil = nil
 map f (cons x xs) = cons (f x) (map f xs)
@@ -45,5 +54,11 @@ handleCC           x       = x
 handleCC   <inch   -> k>   = handleCC (k getChar!)
 handleCC   <ouch c -> k>   = putChar c; handleCC (k unit)
 
-main : Int
-main! = 0
+main : [Console]String
+main! = handleCC (parse {blah zero})
+
+blah : Nat -> [LookAhead, Abort, CharConsole]String
+blah  zero   = on peek! { '(' -> accept!; blah (suc zero)
+                        | c -> aborting! }
+blah (suc n) = on peek! { '(' -> accept!; blah (suc (suc n))
+                        | ')' -> accept!; blah n }

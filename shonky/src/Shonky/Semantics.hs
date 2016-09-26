@@ -2,6 +2,7 @@ module Shonky.Semantics where
 
 import Control.Monad
 import Debug.Trace
+import System.IO.Unsafe
 
 import qualified Data.Map.Strict as M
 
@@ -54,8 +55,18 @@ minus g [a1,a2] = VI (f a1 - f a2)
           _ -> error "minus: argument not an integer"
 minus g _ = error "minus: incorrect number of arguments, expected 2."
 
+getChar' :: Env -> [Comp] -> Val
+getChar' g [] = VX [c]
+  where c = unsafePerformIO getChar
+getChar' g _ = error "getChar: incorrect number of arguments, expected 0."
+
+putChar' :: Env -> [Comp] -> Val
+putChar' g [Ret (VX [c])] = unsafePerformIO (do Prelude.putChar c
+                                                return $ VA "unit")
+
 builtins :: M.Map String (Env -> [Comp] -> Val)
-builtins = M.fromList [("plus", plus), ("minus", minus)]
+builtins = M.fromList [("plus", plus), ("minus", minus)
+                      ,("getChar", getChar'), ("putChar", putChar')]
 
 fetch :: Env -> String -> Val
 fetch g y = go g where
@@ -234,6 +245,8 @@ envBuiltins = Empty :/ [DF "strcat" []
                           EX [Right (EV "x"), Right (EV "y")])]
                        ,DF "plus" [] []
                        ,DF "minus" [] []
+                       ,DF "getChar" [] []
+                       ,DF "putChar" [] []
                        ,DF "cons" [] [([PV (VPV "x1"), PV (VPV "x2")],
                                        EV "x1" :& EV "x2" :& EA "")]]
 

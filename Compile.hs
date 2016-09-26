@@ -158,7 +158,7 @@ compileVPat (MkDataPat id xs) =
      if b then getBuiltinPat id <*> mapM compileVPat xs
      else case xs of
             []  -> return $ S.VPA id
-            [x] -> compileVPat x
+            [x] -> (S.:&:) <$> compileVPat x <*> pure (S.VPA "")
             _   -> do xs' <- mapM compileVPat xs
                       return $ foldl1 (S.:&:) xs'
 compileVPat (MkIntPat n) = return $ S.VPI n
