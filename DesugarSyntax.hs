@@ -15,7 +15,7 @@ type Desugar = StateT DState Identity
 
 type IdTVMap = M.Map Id (VType Desugared)
 
-data DState = MkDState { counter :: Int
+data DState = MkDState { counter :: Integer
                        , env :: IdTVMap }
 
 getDState :: Desugar DState
@@ -24,10 +24,10 @@ getDState = get
 putDState :: DState -> Desugar ()
 putDState = put
 
-fresh :: Desugar Int
+fresh :: Desugar Integer
 fresh = do s <- getDState
            let n = counter s
-           putDState $ s { counter = n + 1 }
+           putDState $ s { counter = succ n }
            return n
 
 freshRTVar :: Id -> Desugar (VType Desugared)
