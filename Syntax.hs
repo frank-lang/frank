@@ -153,16 +153,3 @@ data Adj a = MkIdAdj | MkAdjPlus (Adj a) Id [VType a]
 -- Abilities
 data Ab a = MkEmpAb | MkAbPlus (Ab a) Id [VType a] | MkOpenAb
           deriving (Show, Eq)
-
--- Fresh type variable mechanism
-data VarCounter = MkVC Id (Id -> VarCounter)
-
--- Generate a fresh var counter seeded by the provided identifier
-fresh :: Id -> VarCounter
-fresh = f 0
-  where f :: Int -> Id -> VarCounter
-        f n id = MkVC (id ++ show n) (f (n+1))
-
--- freshRigid :: Id -> VType Refined
--- freshRigid id = f ("r-"++id)
---   where f :: Id ->   MkVC id f -> (MkRTVar id, f)
