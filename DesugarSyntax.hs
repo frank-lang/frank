@@ -1,6 +1,6 @@
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE GADTs #-}
-{-# LANGUAGE StandaloneDeriving #-}
+{-# LANGUAGE StandaloneDeriving,TypeSynonymInstances,FlexibleInstances #-}
 -- Transform all type variables to unique rigid type variables.
 module DesugarSyntax where
 
@@ -10,25 +10,22 @@ import Control.Monad.Identity
 import qualified Data.Map.Strict as M
 
 import Syntax
+import FreshNames
 
-type Desugar = StateT DState Identity
+type Desugar = StateT DState (FreshMT Identity)
+
+instance GenFresh Desugar where
+  fresh = lift fresh
 
 type IdTVMap = M.Map Id (VType Desugared)
 
-data DState = MkDState { counter :: Integer
-                       , env :: IdTVMap }
+data DState = MkDState { env :: IdTVMap }
 
 getDState :: Desugar DState
 getDState = get
 
 putDState :: DState -> Desugar ()
 putDState = put
-
-fresh :: Desugar Integer
-fresh = do s <- getDState
-           let n = counter s
-           putDState $ s { counter = succ n }
-           return n
 
 freshRTVar :: Id -> Desugar (VType Desugared)
 freshRTVar x = do n <- fresh
@@ -47,11 +44,12 @@ getEnv = do s <- getDState
             return $ env s
 
 initDState :: DState 
-initDState = MkDState 0 M.empty
+initDState = MkDState M.empty
 
 desugar :: Prog Refined -> Prog Desugared
-desugar (MkProg xs) = MkProg $ evalState (mapM desugarTopTm' xs) initDState
-  where desugarTopTm' tm =
+desugar (MkProg xs) = MkProg $ evalFresh m 0
+  where m = evalStateT (mapM desugarTopTm' xs) initDState
+        desugarTopTm' tm =
           do putEnv $ M.empty -- purge mappings from previous context.
              desugarTopTm tm
 
