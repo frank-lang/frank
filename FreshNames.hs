@@ -1,27 +1,36 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving,StandaloneDeriving #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE FlexibleInstances,UndecidableInstances #-}
 module FreshNames where
 
 import Control.Monad.State
 import Control.Monad.Identity
+import Control.Monad.Except
 
 newtype FreshMT m a = Fresh { unFresh :: StateT Integer m a }
+                      deriving (Functor, Applicative, Monad,
+                                MonadState Integer)
 
-deriving instance Functor m => Functor (FreshMT m)
-deriving instance (Functor m, Monad m) => Applicative (FreshMT m)
-deriving instance Monad m => Monad (FreshMT m)
-deriving instance Monad m => MonadState Integer (FreshMT m)
-
-class GenFresh m where
+class Monad m => GenFresh m where
   fresh :: m Integer
+
+evalFreshMT :: Monad m => FreshMT m a -> m a
+evalFreshMT m = evalStateT (unFresh m) 0
+
+evalFresh :: FreshMT Identity a -> a
+evalFresh m = evalState (unFresh m) 0
 
 instance Monad m => GenFresh (FreshMT m) where
   fresh = do n <- get
              put $ n + 1
              return n
 
-evalFreshMT :: Monad m => FreshMT m a -> Integer -> m a
-evalFreshMT = evalStateT . unFresh
+instance GenFresh m => GenFresh (StateT s m) where
+  fresh = lift fresh
 
-evalFresh :: FreshMT Identity a -> Integer -> a
-evalFresh = evalState . unFresh
+instance MonadTrans FreshMT where
+  lift = Fresh . lift
+
+instance MonadError e m => MonadError e (FreshMT m) where
+  throwError = lift . throwError
+  catchError m h = Fresh $ catchError (unFresh m) (unFresh . h)

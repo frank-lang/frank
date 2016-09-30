@@ -47,7 +47,7 @@ initDState :: DState
 initDState = MkDState M.empty
 
 desugar :: Prog Refined -> Prog Desugared
-desugar (MkProg xs) = MkProg $ evalFresh m 0
+desugar (MkProg xs) = MkProg $ evalFresh m
   where m = evalStateT (mapM desugarTopTm' xs) initDState
         desugarTopTm' tm =
           do putEnv $ M.empty -- purge mappings from previous context.
