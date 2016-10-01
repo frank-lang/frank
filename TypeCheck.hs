@@ -95,5 +95,3 @@ inScope x ty m = do modify (:< TermVar x ty)
         dropVar BEmp = error "Invariant violation"
         dropVar (es :< TermVar y _) | x == y = es
         dropVar (es :< e) = dropVar es :< e
-                    
-

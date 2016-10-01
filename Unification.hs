@@ -31,8 +31,7 @@ onTop f = popEntry >>= focus
 unify :: VType Desugared -> VType Desugared -> Contextual ()
 unify (MkDTTy dt0 ab0 xs) (MkDTTy dt1 ab1 ys)
   | dt0 == dt1 = unifyAb ab0 ab1 >>
-                 mapM (uncurry unify) (zip xs ys) >>
-                 return ()
+                 mapM_ (uncurry unify) (zip xs ys)
 unify (MkSCTy cty0) (MkSCTy cty1) = unifyCType cty0 cty1
 unify (MkRTVar a)  (MkRTVar b) | a == b = return ()
 unify MkStringTy   MkStringTy        = return ()
@@ -49,13 +48,17 @@ unify _            _                 = throwError "Rigid-rigid mismatch"
 unifyAb :: Ab Desugared -> Ab Desugared -> Contextual ()
 unifyAb MkEmpAb  MkEmpAb  = return ()
 unifyAb MkOpenAb MkOpenAb = return ()
-unifyAb (MkAbPlus ab0 id0 xs) (MkAbPlus ab1 id1 ys) = _
-unifyAb _ _ = _
+unifyAb (MkAbPlus ab0 id0 xs) (MkAbPlus ab1 id1 ys) | id0 == id1 =
+  unifyAb ab0 ab1 >>
+  mapM_ (uncurry unify) (zip xs ys)
+unifyAb _ _ = throwError "unifying abilities failed"
 
 unifyAdj :: Adj Desugared -> Adj Desugared -> Contextual ()
 unifyAdj MkIdAdj  MkIdAdj  = return ()
-unifyAdj (MkAdjPlus adj0 id0 xs) (MkAdjPlus adj1 id1 ys) = _
-unifyAdj _ _ = _
+unifyAdj (MkAdjPlus adj0 id0 xs) (MkAdjPlus adj1 id1 ys) | id0 == id1 =
+  unifyAdj adj0 adj1 >>
+  mapM_ (uncurry unify) (zip xs ys)
+unifyAdj _ _ = throwError "unifying adjustments failed"
 
 unifyCType :: CType Desugared -> CType Desugared -> Contextual ()
 unifyCType (MkCType xs p0) (MkCType ys p1) =
