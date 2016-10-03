@@ -8,7 +8,7 @@ import Control.Monad.Except
 
 import BwdFwd
 import Syntax
-import TypeCheck
+import TypeCheckCommon
 
 data Extension = Restore | Replace Suffix
 
@@ -112,18 +112,3 @@ substPeg ty x (MkPeg ab pty) = MkPeg (substAb ty x ab) (subst ty x pty)
 
 substPort :: VType Desugared -> Id -> Port Desugared -> Port Desugared
 substPort ty x (MkPort adj pty) = MkPort (substAdj ty x adj) (subst ty x pty)
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
