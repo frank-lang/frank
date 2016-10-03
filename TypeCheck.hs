@@ -72,10 +72,12 @@ checkSComp (MkSComp xs) (MkCType ps q) = mapM_ (\cls -> checkCls cls ps q) xs
 checkCls :: Clause Desugared -> [Port Desugared] -> Peg Desugared ->
             Contextual ()
 checkCls (MkCls pats tm) ports (MkPeg ab ty)
-  | length pats == length ports = do putAmbient ab
-                                     -- return a list of bindings?
-                                     mapM_ (uncurry checkPat) (zip pats ports)
-                                     checkTm tm ty
+  | length pats == length ports =
+    do putAmbient ab
+       bs <- fmap concat $ mapM (uncurry checkPat) (zip pats ports)
+       case null bs of
+         True -> checkTm tm ty
+         False -> foldl1 (.) (map (uncurry inScope) bs) $ checkTm tm ty
   | otherwise = throwError "number of patterns not equal to number of ports"
 
 checkPat :: Pattern -> Port Desugared -> Contextual [TermBinding]
@@ -85,18 +87,18 @@ checkPat (MkCmdPat cmd ps g) (MkPort adj ty) =
     False -> throwError $
              "command " ++ cmd ++ " not found in adjustment " ++ (show adj)
     True -> do (xs, y) <- getCmd cmd
-               bs <- concatMap (uncurry checkVPat) (zip ps xs)
+               bs <- fmap concat $ mapM (uncurry checkVPat) (zip ps xs)
                kty <- contType y adj ty
                return ((MkMono g,kty) : bs)
 checkPat (MkThkPat x) (MkPort adj ty) =
   do amb <- getAmbient
-     return $ [(MkMono x, MkSC $ MkCType [] (MkPeg (plus amb adj) ty))]
+     return $ [(MkMono x, MkSCTy $ MkCType [] (MkPeg (plus amb adj) ty))]
 
 contType :: VType Desugared -> Adj Desugared -> VType Desugared ->
             Contextual (VType Desugared)
 contType x adj y =
   do amb <- getAmbient
-     MkSC <$> MkCType [MkPort MkIdAdj x] (MkPeg (plus amb adj) y)
+     return $ MkSCTy $ MkCType [MkPort MkIdAdj x] (MkPeg (plus amb adj) y)
 
 checkVPat :: ValuePat -> VType Desugared -> Contextual [TermBinding]
 checkVPat (MkVarPat x) ty = return [(MkMono x, ty)]
