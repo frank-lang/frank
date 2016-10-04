@@ -82,8 +82,9 @@ desugarMHDef (MkDef hdr ty xs) =
      return $ MkDef hdr ty' xs'
 
 desugarCmd :: Cmd Refined -> Desugar (Cmd Desugared)
-desugarCmd (MkCmd cmd ty) = do ty' <- desugarCType ty
-                               return $ MkCmd cmd ty'
+desugarCmd (MkCmd cmd xs y) = do xs' <- mapM desugarVType xs
+                                 y' <- desugarVType y
+                                 return $ MkCmd cmd xs' y'
 
 desugarCtr :: Ctr Refined -> Desugar (Ctr Desugared)
 desugarCtr (MkCtr ctr xs) = do xs' <- mapM desugarVType xs

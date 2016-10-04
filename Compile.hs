@@ -85,7 +85,7 @@ compile' xs = do liftM concat $ mapM compileTopTm xs
 initialiseItfMap :: CState -> [Itf Refined] -> CState
 initialiseItfMap st xs = st { imap = foldl f (imap st) xs }
   where f m (MkItf id _ xs) = foldl (ins id) m xs
-        ins itf m (MkCmd cmd _) =
+        ins itf m (MkCmd cmd _ _) =
           let xs = M.findWithDefault [] itf m in
           M.insert itf (cmd : xs) m
 

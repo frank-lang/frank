@@ -9,12 +9,9 @@ expected = [
   return $
   MkProg
   [MkItfTm (MkItf "State" ["X"]
-            [MkCmd "get" (MkCType [] (MkPeg MkOpenAb
-                                      (MkDTTy "X" MkEmpAb [])))
-            ,MkCmd "put" (MkCType [MkPort MkIdAdj
-                                   (MkDTTy "X" MkEmpAb [])]
-                          (MkPeg MkOpenAb
-                           (MkDTTy "Unit" MkEmpAb [])))])
+            [MkCmd "get" [] (MkDTTy "X" MkEmpAb [])
+            ,MkCmd "put" [MkDTTy "X" MkEmpAb []]
+                          (MkDTTy "Unit" MkEmpAb [])])
   ,MkSigTm (MkSig "evalState"
             (MkCType [ MkPort MkIdAdj (MkDTTy "X" MkEmpAb [])
                      , MkPort (MkAdjPlus MkIdAdj "State"

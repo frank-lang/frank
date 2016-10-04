@@ -108,8 +108,14 @@ parseItf = do reserved "interface"
 parseCmd :: MonadicParsing m => m (Cmd Raw)
 parseCmd = do cmd <- identifier
               symbol ":"
-              sig <- parseCType
-              return (MkCmd cmd sig)
+              (xs,y) <- parseCmdType
+              return (MkCmd cmd xs y)
+
+-- only value arguments and result type
+parseCmdType :: MonadicParsing m => m ([VType Raw], VType Raw)
+parseCmdType = do vs <- sepBy1 parseVType (symbol "->")
+                  if length vs == 1 then return ([],head vs)
+                  else return (init vs, last vs)
 
 parseCType :: MonadicParsing m => m (CType Raw)
 parseCType = do (ports, peg) <- parsePortsAndPeg

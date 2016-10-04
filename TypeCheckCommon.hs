@@ -3,6 +3,7 @@
              FlexibleContexts,GADTs #-}
 module TypeCheckCommon where
 
+import qualified Data.Map.Strict as M
 import qualified Data.Set as S
 
 import Control.Monad
@@ -17,8 +18,11 @@ import Syntax
 newtype Contextual a = Contextual
                        (StateT TCState (FreshMT (ExceptT String Identity)) a)
 
+type IdCmdInfoMap = M.Map Id (Id,[VType Desugared],VType Desugared)
+
 data TCState = MkTCState { ctx :: Context
-                         , amb :: Ab Desugared }
+                         , amb :: Ab Desugared
+                         , cmdMap :: IdCmdInfoMap }
 
 deriving instance Functor Contextual
 deriving instance Applicative Contextual
@@ -80,8 +84,10 @@ putAmbient :: Ab Desugared -> Contextual ()
 putAmbient ab = do s <- get
                    put $ s { amb = ab }
 
-getCmd :: Id -> Contextual ([VType Desugared],VType Desugared)
-getCmd cmd = return ([],MkIntTy)
+getCmd :: Id -> Contextual (Id,[VType Desugared],VType Desugared)
+getCmd cmd = get >>= \s -> case M.lookup cmd (cmdMap s) of
+  Nothing -> error $ "invariant broken: " ++ show cmd ++ " not a command"
+  Just (itf, xs, y) -> return (itf, xs, y)
 
 popEntry :: Contextual Entry
 popEntry = do es :< e <- getContext
@@ -92,3 +98,16 @@ popEntry = do es :< e <- getContext
 modify :: (Context -> Context) -> Contextual ()
 modify f = do ctx <- getContext
               putContext $ f ctx
+
+initContextual :: Prog Desugared -> Contextual (Prog Desugared)
+initContextual (MkProg xs) =
+  do let itfs = getItfs xs
+     mapM_ (uncurry g) $ zip (collectINames itfs) (map getCmds itfs)
+     return (MkProg xs)
+  where g :: Id -> [Cmd Desugared] -> Contextual ()
+        g itf = mapM_ (\(MkCmd x xs y) -> addCmd itf x xs y)
+
+-- Only to be used for initialising the contextual monad
+addCmd :: Id -> Id -> [VType Desugared] -> VType Desugared -> Contextual ()
+addCmd cmd itf ps q = get >>= \s ->
+  put $ s { cmdMap = M.insert cmd (itf, ps, q) (cmdMap s) }

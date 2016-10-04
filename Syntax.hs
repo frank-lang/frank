@@ -111,7 +111,7 @@ data Itf a = MkItf Id [Id] [Cmd a]
 data Ctr a = MkCtr Id [VType a]
            deriving (Show, Eq)
 
-data Cmd a = MkCmd Id (CType a)
+data Cmd a = MkCmd Id [VType a] (VType a)
            deriving (Show, Eq)
 
 data Pattern = MkVPat ValuePat | MkCmdPat Id [ValuePat] Id | MkThkPat Id
@@ -153,3 +153,31 @@ data Adj a = MkIdAdj | MkAdjPlus (Adj a) Id [VType a]
 -- Abilities
 data Ab a = MkEmpAb | MkAbPlus (Ab a) Id [VType a] | MkOpenAb
           deriving (Show, Eq)
+
+getItfs :: [TopTm a] -> [Itf a]
+getItfs xs = getItfs' xs []
+  where getItfs' :: [TopTm a] -> [Itf a] -> [Itf a]
+        getItfs' ((MkItfTm itf) : xs) ys = getItfs' xs (itf : ys)
+        getItfs' (_ : xs) ys = getItfs' xs ys
+        getItfs' [] ys = ys
+
+getCmds :: Itf a -> [Cmd a]
+getCmds (MkItf _ _ xs) = xs
+
+collectINames :: [Itf a] -> [Id]
+collectINames ((MkItf itf _ _) : xs) = itf : (collectINames xs)
+collectINames [] = []
+
+getDataTs :: [TopTm a] -> [DataT a]
+getDataTs xs = getDataTs' xs []
+  where getDataTs' :: [TopTm a] -> [DataT a] -> [DataT a]
+        getDataTs' ((MkDataTm dt) : xs) ys = getDataTs' xs (dt : ys)
+        getDataTs' (_ : xs) ys = getDataTs' xs ys
+        getDataTs' [] ys = ys
+
+getCtrs :: DataT a -> [Ctr a]
+getCtrs (MkDT _ _ xs) = xs
+
+collectDTNames :: [DataT a] -> [Id]
+collectDTNames ((MkDT dt _ _) : xs) = dt : (collectDTNames xs)
+collectDTNames [] = []

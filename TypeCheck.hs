@@ -26,6 +26,15 @@ freshFTVar x = do n <- fresh
                   return s
 
 find :: Operator -> Contextual (VType Desugared)
+find (MkCmdId x) =
+  do amb <- getAmbient
+     (itf, xs, y) <- getCmd x
+     if containsItf itf amb then
+        return $ MkSCTy $
+        MkCType (map (\x -> MkPort MkIdAdj x) xs) (MkPeg amb y)
+     else throwError $ "command " ++ (show x) ++
+                       " belonging to interface " ++ (show itf) ++
+                       " not permitted by ambient ability"
 find x = getContext >>= find'
   where find' BEmp = throwError $ show x ++ " not in scope"
         find' (es :< TermVar y ty) | x == y = return ty
@@ -42,14 +51,45 @@ inScope x ty m = do modify (:< TermVar x ty)
         dropVar (es :< TermVar y _) | x == y = es
         dropVar (es :< e) = dropVar es :< e
 
-findCmd :: Id -> Adj Desugared -> Bool
-findCmd cmd MkIdAdj = False
-findCmd cmd (MkAdjPlus adj id _)
-  | cmd == id = True
-  | otherwise = findCmd cmd adj
+-- Run a contextual computation in a modified ambient environment
+inAmbient :: Adj Desugared -> Contextual a -> Contextual a
+inAmbient adj m = do amb <- getAmbient
+                     putAmbient (plus amb adj)
+                     a <- m
+                     putAmbient amb
+                     return a
+
+containsItf :: Id -> Ab Desugared -> Bool
+containsItf itf MkEmpAb = False
+containsItf itf MkOpenAb = False
+containsItf itf (MkAbPlus ab id _)
+  | itf == id = True
+  | otherwise = containsItf itf ab
+
+-- Only instantiate polytypic operators
+instantiate :: Operator -> VType Desugared -> Contextual (VType Desugared)
+instantiate (MkPoly _) ty = do ty' <- makeFlexible ty
+                               ty'' <- substOpenAb ty'
+                               return ty''
+instantiate _ ty = return ty
 
 inferUse :: Use Desugared -> Contextual (VType Desugared)
-inferUse (MkOp x) = find x
+inferUse (MkOp x) = find x >>= (instantiate x)
+inferUse (MkApp f xs) = do ty <- find f >>= (instantiate f)
+                           case ty of
+                             MkSCTy (MkCType ps q) -> do checkArgs ps xs
+                                                         returnResult q
+  where checkArgs :: [Port Desugared] -> [Tm Desugared] -> Contextual ()
+        checkArgs ps xs = mapM_ (uncurry checkArg) (zip ps xs)
+
+        checkArg :: Port Desugared -> Tm Desugared -> Contextual ()
+        checkArg (MkPort adj ty) tm = inAmbient adj (checkTm tm ty)
+
+        returnResult :: Peg Desugared -> Contextual (VType Desugared)
+        returnResult (MkPeg ab ty) =
+          do amb <- getAmbient
+             if ab == amb then return ty
+             else throwError $ "peg does not match ambient ability"
 
 checkTm :: Tm Desugared -> VType Desugared -> Contextual ()
 checkTm (MkSC sc) (MkSCTy cty) = checkSComp sc cty
@@ -83,13 +123,13 @@ checkCls (MkCls pats tm) ports (MkPeg ab ty)
 checkPat :: Pattern -> Port Desugared -> Contextual [TermBinding]
 checkPat (MkVPat vp) (MkPort _ ty) = checkVPat vp ty
 checkPat (MkCmdPat cmd ps g) (MkPort adj ty) =
-  case findCmd cmd adj of
-    False -> throwError $
-             "command " ++ cmd ++ " not found in adjustment " ++ (show adj)
-    True -> do (xs, y) <- getCmd cmd
-               bs <- fmap concat $ mapM (uncurry checkVPat) (zip ps xs)
-               kty <- contType y adj ty
-               return ((MkMono g,kty) : bs)
+  do (itf, xs, y) <- getCmd cmd
+     case containsItf itf (plus MkEmpAb adj) of
+       False -> throwError $
+                "command " ++ cmd ++ " not found in adjustment " ++ (show adj)
+       True -> do bs <- fmap concat $ mapM (uncurry checkVPat) (zip ps xs)
+                  kty <- contType y adj ty
+                  return ((MkMono g,kty) : bs)
 checkPat (MkThkPat x) (MkPort adj ty) =
   do amb <- getAmbient
      return $ [(MkMono x, MkSCTy $ MkCType [] (MkPeg (plus amb adj) ty))]
@@ -108,12 +148,49 @@ checkVPat (MkStrPat _) MkStringTy = return []
 checkVPat (MkIntPat _) MkIntTy = return []
 checkVPat _ _ = throwError "failed to match value pattern and type"
 
--- Replace the effect variable with the ambient
-replaceAb :: Ab Desugared -> Contextual (Ab Desugared)
-replaceAb MkEmpAb = return MkEmpAb
-replaceAb MkOpenAb = getAmbient
-replaceAb (MkAbPlus ab itf xs) = do ab' <- replaceAb ab
-                                    return $ MkAbPlus ab' itf xs
+-- Replace rigid type variables with flexible ones
+makeFlexible :: VType Desugared -> Contextual (VType Desugared)
+makeFlexible (MkDTTy id ab xs) = MkDTTy <$> pure id <*>
+                                 makeFlexibleAb ab <*> mapM makeFlexible xs
+
+makeFlexibleAb :: Ab Desugared -> Contextual (Ab Desugared)
+makeFlexibleAb (MkAbPlus ab itf xs) = MkAbPlus <$>
+                                      makeFlexibleAb ab <*>
+                                      pure itf <*>
+                                      mapM makeFlexible xs
+makeFlexibleAb ab = return ab
+
+makeFlexibleAdj :: Adj Desugared -> Contextual (Adj Desugared)
+makeFlexibleAdj (MkAdjPlus adj itf xs) = MkAdjPlus <$>
+                                         makeFlexibleAdj adj <*>
+                                         pure itf <*>
+                                         mapM makeFlexible xs
+
+makeFlexibleCType :: CType Desugared -> Contextual (CType Desugared)
+makeFlexibleCType (MkCType ps q) = MkCType <$>
+                                   mapM makeFlexiblePort ps <*>
+                                   makeFlexiblePeg q
+
+makeFlexiblePeg :: Peg Desugared -> Contextual (Peg Desugared)
+makeFlexiblePeg (MkPeg ab ty) = MkPeg <$>
+                                makeFlexibleAb ab <*>
+                                makeFlexible ty
+
+makeFlexiblePort :: Port Desugared -> Contextual (Port Desugared)
+makeFlexiblePort (MkPort adj ty) = MkPort <$>
+                                   makeFlexibleAdj adj <*>
+                                   makeFlexible ty
+
+-- Substitute the ambient for the effect variable
+substOpenAb :: VType Desugared -> Contextual (VType Desugared)
+substOpenAb (MkDTTy id ab xs) = MkDTTy <$> pure id <*> substOpenAbAb ab <*>
+                                mapM substOpenAb xs
+
+substOpenAbAb :: Ab Desugared -> Contextual (Ab Desugared)
+substOpenAbAb MkEmpAb = return MkEmpAb
+substOpenAbAb MkOpenAb = getAmbient
+substOpenAbAb (MkAbPlus ab itf xs) = do ab' <- substOpenAbAb ab
+                                        return $ MkAbPlus ab' itf xs
 
 plus :: Ab Desugared -> Adj Desugared -> Ab Desugared
 plus ab MkIdAdj = ab

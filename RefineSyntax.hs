@@ -87,37 +87,9 @@ putTopLevelCtxt :: TopLevelCtxt -> Refine ()
 putTopLevelCtxt ctxt = do s <- getRState
                           putRState $ s { tlctxt = Just ctxt }
 
-getItfs :: [TopTm a] -> [Itf a]
-getItfs xs = getItfs' xs []
-  where getItfs' :: [TopTm a] -> [Itf a] -> [Itf a]
-        getItfs' ((MkItfTm itf) : xs) ys = getItfs' xs (itf : ys)
-        getItfs' (_ : xs) ys = getItfs' xs ys
-        getItfs' [] ys = ys
-
-collectINames :: [Itf Raw] -> [Id]
-collectINames ((MkItf itf _ _) : xs) = itf : (collectINames xs)
-collectINames [] = []
-
-getCmds :: Itf Raw -> [Cmd Raw]
-getCmds (MkItf _ _ xs) = xs
-
-collectCmds :: [Cmd Raw] -> [Id]
-collectCmds ((MkCmd cmd _) : xs) = cmd : (collectCmds xs)
+collectCmds :: [Cmd a] -> [Id]
+collectCmds ((MkCmd cmd _ _) : xs) = cmd : (collectCmds xs)
 collectCmds [] = []
-
-getDataTs :: [TopTm a] -> [DataT a]
-getDataTs xs = getDataTs' xs []
-  where getDataTs' :: [TopTm a] -> [DataT a] -> [DataT a]
-        getDataTs' ((MkDataTm dt) : xs) ys = getDataTs' xs (dt : ys)
-        getDataTs' (_ : xs) ys = getDataTs' xs ys
-        getDataTs' [] ys = ys
-
-collectDTNames :: [DataT a] -> [Id]
-collectDTNames ((MkDT dt _ _) : xs) = dt : (collectDTNames xs)
-collectDTNames [] = []
-
-getCtrs :: DataT a -> [Ctr a]
-getCtrs (MkDT _ _ xs) = xs
 
 collectCtrs :: [Ctr a] -> [Id]
 collectCtrs ((MkCtr ctr _) : xs) = ctr : (collectCtrs xs)
@@ -210,8 +182,9 @@ refineItf (MkItf itf ps cmds) =
   else throwError $ "duplicate parameter in interface " ++ itf
 
 refineCmd :: Cmd Raw -> Refine (Cmd Refined)
-refineCmd (MkCmd id ty) = do ty' <- refineCType ty
-                             return $ MkCmd id ty'
+refineCmd (MkCmd id xs y) = do xs' <- mapM refineVType xs
+                               y' <- refineVType y
+                               return $ MkCmd id xs' y'
 
 refineCtr :: Ctr Raw -> Refine (Ctr Refined)
 refineCtr (MkCtr id xs) = do xs' <- mapM refineVType xs
