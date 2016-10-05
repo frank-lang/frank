@@ -152,6 +152,9 @@ checkVPat _ _ = throwError "failed to match value pattern and type"
 makeFlexible :: VType Desugared -> Contextual (VType Desugared)
 makeFlexible (MkDTTy id ab xs) = MkDTTy <$> pure id <*>
                                  makeFlexibleAb ab <*> mapM makeFlexible xs
+makeFlexible (MkSCTy cty) = MkSCTy <$> makeFlexibleCType cty
+makeFlexible (MkRTVar x) = MkFTVar <$> freshFTVar x
+makeFlexible ty = return ty
 
 makeFlexibleAb :: Ab Desugared -> Contextual (Ab Desugared)
 makeFlexibleAb (MkAbPlus ab itf xs) = MkAbPlus <$>
@@ -185,12 +188,33 @@ makeFlexiblePort (MkPort adj ty) = MkPort <$>
 substOpenAb :: VType Desugared -> Contextual (VType Desugared)
 substOpenAb (MkDTTy id ab xs) = MkDTTy <$> pure id <*> substOpenAbAb ab <*>
                                 mapM substOpenAb xs
+substOpenAb (MkSCTy cty) = MkSCTy <$> substOpenAbCType cty
+substOpenAb ty = return ty
 
 substOpenAbAb :: Ab Desugared -> Contextual (Ab Desugared)
 substOpenAbAb MkEmpAb = return MkEmpAb
 substOpenAbAb MkOpenAb = getAmbient
 substOpenAbAb (MkAbPlus ab itf xs) = do ab' <- substOpenAbAb ab
-                                        return $ MkAbPlus ab' itf xs
+                                        xs' <- mapM substOpenAb xs
+                                        return $ MkAbPlus ab' itf xs'
+
+substOpenAbAdj :: Adj Desugared -> Contextual (Adj Desugared)
+substOpenAbAdj MkIdAdj = return MkIdAdj
+substOpenAbAdj (MkAdjPlus adj itf xs) = do adj' <- substOpenAbAdj adj
+                                           xs' <- mapM substOpenAb xs
+                                           return $ MkAdjPlus adj' itf xs'
+
+substOpenAbCType :: CType Desugared -> Contextual (CType Desugared)
+substOpenAbCType (MkCType ps q) =
+  MkCType <$> mapM substOpenAbPort ps <*> substOpenAbPeg q
+
+substOpenAbPeg :: Peg Desugared -> Contextual (Peg Desugared)
+substOpenAbPeg (MkPeg ab ty) = MkPeg <$> substOpenAbAb ab <*>
+                               substOpenAb ty
+
+substOpenAbPort :: Port Desugared -> Contextual (Port Desugared)
+substOpenAbPort (MkPort adj ty) = MkPort <$> substOpenAbAdj adj <*>
+                                  substOpenAb ty
 
 plus :: Ab Desugared -> Adj Desugared -> Ab Desugared
 plus ab MkIdAdj = ab
