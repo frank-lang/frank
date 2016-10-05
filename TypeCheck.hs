@@ -19,9 +19,14 @@ import FreshNames
 import TypeCheckCommon
 import Unification
 
+-- Only to be applied to identifiers representing rigid or flexible type
+-- variables.
+trimTVar :: Id -> Id
+trimTVar = takeWhile (\= '$')
+
 freshFTVar :: Id -> Contextual Id
 freshFTVar x = do n <- fresh
-                  let s = x ++ "$f" ++ (show n)
+                  let s = trimTVar x ++ "$f" ++ (show n)
                   modify (:< FlexTVar s Hole)
                   return s
 
@@ -153,7 +158,11 @@ makeFlexible :: VType Desugared -> Contextual (VType Desugared)
 makeFlexible (MkDTTy id ab xs) = MkDTTy <$> pure id <*>
                                  makeFlexibleAb ab <*> mapM makeFlexible xs
 makeFlexible (MkSCTy cty) = MkSCTy <$> makeFlexibleCType cty
-makeFlexible (MkRTVar x) = MkFTVar <$> freshFTVar x
+makeFlexible (MkRTVar x) = MkFTVar <$> find' x
+  where find' BEmp = freshFTVar x
+        find' (es :< FlexTVar y _) | trimTVar x == trimTVar y = y
+        find' (es :< _) = find' es
+
 makeFlexible ty = return ty
 
 makeFlexibleAb :: Ab Desugared -> Contextual (Ab Desugared)
