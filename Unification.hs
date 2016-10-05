@@ -40,7 +40,12 @@ unify MkCharTy     MkCharTy          = return ()
 unify (MkFTVar a)  (MkFTVar b)       = onTop $ \c d ->
   cmp (a == c) (b == c) d
   where cmp :: Bool -> Bool -> Decl -> Contextual Extension
-        cmp True True _ = restore
+        cmp True  True  _         = restore
+        cmp True  False Hole      = replace [(a, Defn (MkFTVar b))]
+        cmp False True  Hole      = replace [(b, Defn (MkFTVar a))]
+        cmp True  False (Defn ty) = unify ty (MkFTVar b) >> restore
+        cmp False True  (Defn ty) = unify (MkFTVar a) ty >> restore
+        cmp False False _         = unify (MkFTVar a) (MkFTVar b) >> restore
 unify (MkFTVar a)  ty                = solve a [] ty
 unify ty           (MkFTVar a)       = solve a [] ty
 unify _            _                 = throwError "Rigid-rigid mismatch"
