@@ -18,11 +18,18 @@ import Syntax
 newtype Contextual a = Contextual
                        (StateT TCState (FreshMT (ExceptT String Identity)) a)
 
-type IdCmdInfoMap = M.Map Id (Id,[VType Desugared],VType Desugared)
+type IdCmdInfoMap = M.Map Id (Id,[VType Desugared],[VType Desugared],
+                              VType Desugared)
+type CtrInfoMap = M.Map (Id,Id) ([VType Desugared],[VType Desugared])
 
-data TCState = MkTCState { ctx :: Context
-                         , amb :: Ab Desugared
-                         , cmdMap :: IdCmdInfoMap }
+data TCState = MkTCState
+  { ctx :: Context
+  , amb :: Ab Desugared
+  , cmdMap :: IdCmdInfoMap
+  , ctrMap :: CtrInfoMap
+  , markCount :: Integer -- the number of markers separating localities in the
+                         -- current scope
+  }
 
 deriving instance Functor Contextual
 deriving instance Applicative Contextual
@@ -84,10 +91,30 @@ putAmbient :: Ab Desugared -> Contextual ()
 putAmbient ab = do s <- get
                    put $ s { amb = ab }
 
-getCmd :: Id -> Contextual (Id,[VType Desugared],VType Desugared)
+addMark :: Contextual ()
+addMark = do modify (:< Mark)
+             s <- get
+             put $ s { markCount = succ (markCount s) }
+
+purgeMarks :: Contextual ()
+purgeMarks = do s <- get
+                let n = markCount s
+                put $ s { ctx = skim n (ctx s), markCount = 0 }
+  where skim :: Integer -> Context -> Context
+        skim 0 es = es
+        skim n (es :< Mark) = skim (n-1) es
+        skim n (es :< _) = skim n es
+
+getCmd :: Id -> Contextual (Id,[VType Desugared],[VType Desugared],
+                            VType Desugared)
 getCmd cmd = get >>= \s -> case M.lookup cmd (cmdMap s) of
   Nothing -> error $ "invariant broken: " ++ show cmd ++ " not a command"
-  Just (itf, xs, y) -> return (itf, xs, y)
+  Just (itf, qs, xs, y) -> return (itf, qs, xs, y)
+
+getCtr :: Id -> Id -> Contextual ([VType Desugared], [VType Desugared])
+getCtr k dt = get >>= \s -> case M.lookup (k,dt) (ctrMap s) of
+  Nothing -> throwError $ (show k) ++ " is not a constructor of " ++ (show dt)
+  Just (ps, xs) -> return (ps, xs)
 
 popEntry :: Contextual Entry
 popEntry = do es :< e <- getContext
@@ -101,13 +128,23 @@ modify f = do ctx <- getContext
 
 initContextual :: Prog Desugared -> Contextual (Prog Desugared)
 initContextual (MkProg xs) =
-  do let itfs = getItfs xs
-     mapM_ (uncurry g) $ zip (collectINames itfs) (map getCmds itfs)
+  do mapM_ f (getDataTs xs)
+     mapM_ g (getItfs xs)
      return (MkProg xs)
-  where g :: Id -> [Cmd Desugared] -> Contextual ()
-        g itf = mapM_ (\(MkCmd x xs y) -> addCmd itf x xs y)
+  where f :: DataT Desugared -> Contextual ()
+        f (MkDT dt ps cs) = let ps' = map MkRTVar ps in
+          mapM_ (\(MkCtr ctr xs) -> addCtr dt ctr ps' xs) cs
+
+        g :: Itf Desugared -> Contextual ()
+        g (MkItf itf ps cs) = let ps' = map MkRTVar ps in
+          mapM_ (\(MkCmd x xs y) -> addCmd itf x ps' xs y) cs
 
 -- Only to be used for initialising the contextual monad
-addCmd :: Id -> Id -> [VType Desugared] -> VType Desugared -> Contextual ()
-addCmd cmd itf ps q = get >>= \s ->
-  put $ s { cmdMap = M.insert cmd (itf, ps, q) (cmdMap s) }
+addCmd :: Id -> Id -> [VType Desugared] -> [VType Desugared] ->
+          VType Desugared -> Contextual ()
+addCmd cmd itf ps xs q = get >>= \s ->
+  put $ s { cmdMap = M.insert cmd (itf, ps, xs, q) (cmdMap s) }
+
+addCtr :: Id -> Id -> [VType Desugared] -> [VType Desugared] -> Contextual ()
+addCtr dt ctr ps xs = get >>= \s ->
+  put $ s { ctrMap = M.insert (dt,ctr) (ps,xs) (ctrMap s) }

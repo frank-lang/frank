@@ -22,7 +22,7 @@ import Unification
 -- Only to be applied to identifiers representing rigid or flexible type
 -- variables.
 trimTVar :: Id -> Id
-trimTVar = takeWhile (\= '$')
+trimTVar = takeWhile (/= '$')
 
 freshFTVar :: Id -> Contextual Id
 freshFTVar x = do n <- fresh
@@ -33,13 +33,19 @@ freshFTVar x = do n <- fresh
 find :: Operator -> Contextual (VType Desugared)
 find (MkCmdId x) =
   do amb <- getAmbient
-     (itf, xs, y) <- getCmd x
-     if containsItf itf amb then
-        return $ MkSCTy $
-        MkCType (map (\x -> MkPort MkIdAdj x) xs) (MkPeg amb y)
-     else throwError $ "command " ++ (show x) ++
-                       " belonging to interface " ++ (show itf) ++
-                       " not permitted by ambient ability"
+     (itf, qs, ts, y) <- getCmd x
+     case lkpItf itf amb of
+       Nothing -> throwError $ "command " ++ (show x) ++
+                  " belonging to interface " ++ (show itf) ++
+                  " not permitted by ambient ability"
+       Just ps ->
+         do addMark
+            qs' <- mapM makeFlexible qs
+            ts' <- mapM makeFlexible ts
+            y' <- makeFlexible y
+            mapM (uncurry unify) (zip ps qs')
+            return $ MkSCTy $
+              MkCType (map (\x -> MkPort MkIdAdj x) ts') (MkPeg amb y')
 find x = getContext >>= find'
   where find' BEmp = throwError $ show x ++ " not in scope"
         find' (es :< TermVar y ty) | x == y = return ty
@@ -64,20 +70,37 @@ inAmbient adj m = do amb <- getAmbient
                      putAmbient amb
                      return a
 
-containsItf :: Id -> Ab Desugared -> Bool
-containsItf itf MkEmpAb = False
-containsItf itf MkOpenAb = False
-containsItf itf (MkAbPlus ab id _)
-  | itf == id = True
-  | otherwise = containsItf itf ab
+lkpItf :: Id -> Ab Desugared -> Maybe [VType Desugared]
+lkpItf itf MkEmpAb = Nothing
+lkpItf itf MkOpenAb = Nothing
+lkpItf itf (MkAbPlus ab id xs)
+  | itf == id = Just xs
+  | otherwise = lkpItf itf ab
 
 -- Only instantiate polytypic operators
 instantiate :: Operator -> VType Desugared -> Contextual (VType Desugared)
-instantiate (MkPoly _) ty = do ty' <- makeFlexible ty
+instantiate (MkPoly _) ty = do addMark
+                               ty' <- makeFlexible ty
                                ty'' <- substOpenAb ty'
                                return ty''
 instantiate _ ty = return ty
 
+-- Main typechecking function
+checkProg :: Prog Desugared -> Contextual ()
+checkProg p = do MkProg xs <- initContextual p
+                 return ()
+
+checkTopTm :: TopTm Desugared -> Contextual ()
+checkTopTm (MkDefTm def) = checkMHDef def
+checkTopTm _ = return ()
+
+checkMHDef :: MHDef Desugared -> Contextual ()
+checkMHDef (MkDef id ty@(MkCType ps q) cs) =
+  do modify (:< TermVar (MkPoly id) (MkSCTy ty))
+     mapM_ (\cls -> checkCls cls ps q) cs
+
+
+-- Functions below implement the typing rules described in the paper.
 inferUse :: Use Desugared -> Contextual (VType Desugared)
 inferUse (MkOp x) = find x >>= (instantiate x)
 inferUse (MkApp f xs) = do ty <- find f >>= (instantiate f)
@@ -107,7 +130,13 @@ checkTm (MkTmSeq tm1 tm2) ty = do ftvar <- freshFTVar "seq"
                                   checkTm tm2 ty
 checkTm (MkUse u) t = do s <- inferUse u
                          unify t s
-checkTm (MkDCon (MkDataCon k xs)) (MkDTTy d ab ys) = return ()
+checkTm (MkDCon (MkDataCon k xs)) (MkDTTy dt ab ps) =
+  do (qs, ts) <- getCtr k dt
+     addMark
+     qs' <- mapM makeFlexible qs
+     ts' <- mapM makeFlexible ts
+     mapM_ (uncurry unify) (zip ps qs')
+     mapM_ (uncurry checkTm) (zip xs ts')
 checkTm tm ty = throwError $
                 "failed to term " ++ show tm ++ " against type " ++ show ty
 
@@ -120,21 +149,31 @@ checkCls (MkCls pats tm) ports (MkPeg ab ty)
   | length pats == length ports =
     do putAmbient ab
        bs <- fmap concat $ mapM (uncurry checkPat) (zip pats ports)
+       -- Bring any bindings in to scope for checking the term then purge the
+       -- marks (and suffixes) in the context created for this clause.
        case null bs of
-         True -> checkTm tm ty
-         False -> foldl1 (.) (map (uncurry inScope) bs) $ checkTm tm ty
+         True -> do checkTm tm ty
+                    purgeMarks
+         False -> do foldl1 (.) (map (uncurry inScope) bs) $ checkTm tm ty
+                     purgeMarks
   | otherwise = throwError "number of patterns not equal to number of ports"
 
 checkPat :: Pattern -> Port Desugared -> Contextual [TermBinding]
 checkPat (MkVPat vp) (MkPort _ ty) = checkVPat vp ty
-checkPat (MkCmdPat cmd ps g) (MkPort adj ty) =
-  do (itf, xs, y) <- getCmd cmd
-     case containsItf itf (plus MkEmpAb adj) of
-       False -> throwError $
-                "command " ++ cmd ++ " not found in adjustment " ++ (show adj)
-       True -> do bs <- fmap concat $ mapM (uncurry checkVPat) (zip ps xs)
-                  kty <- contType y adj ty
-                  return ((MkMono g,kty) : bs)
+checkPat (MkCmdPat cmd xs g) (MkPort adj ty) =
+  do (itf, qs, ts, y) <- getCmd cmd
+     case lkpItf itf (plus MkEmpAb adj) of
+       Nothing -> throwError $
+                  "command " ++ cmd ++ " not found in adjustment " ++
+                  (show adj)
+       Just ps -> do addMark -- localise the following type variables
+                     qs' <- mapM makeFlexible qs
+                     ts' <- mapM makeFlexible ts
+                     y' <- makeFlexible y
+                     mapM (uncurry unify) (zip ps qs')
+                     bs <- fmap concat $ mapM (uncurry checkVPat) (zip xs ts')
+                     kty <- contType y' adj ty
+                     return ((MkMono g,kty) : bs)
 checkPat (MkThkPat x) (MkPort adj ty) =
   do amb <- getAmbient
      return $ [(MkMono x, MkSCTy $ MkCType [] (MkPeg (plus amb adj) ty))]
@@ -147,7 +186,14 @@ contType x adj y =
 
 checkVPat :: ValuePat -> VType Desugared -> Contextual [TermBinding]
 checkVPat (MkVarPat x) ty = return [(MkMono x, ty)]
-checkVPat (MkDataPat dt0 xs0) (MkDTTy dt1 ab xs1) = return []
+checkVPat (MkDataPat k xs) (MkDTTy dt ab ps) =
+  do (qs, ts) <- getCtr k dt
+     addMark
+     qs' <- mapM makeFlexible qs
+     ts' <- mapM makeFlexible ts
+     mapM_ (uncurry unify) (zip ps qs')
+     bs <- fmap concat $ mapM (uncurry checkVPat) (zip xs ts')
+     return bs
 checkVPat (MkCharPat _) MkCharTy = return []
 checkVPat (MkStrPat _) MkStringTy = return []
 checkVPat (MkIntPat _) MkIntTy = return []
@@ -158,9 +204,10 @@ makeFlexible :: VType Desugared -> Contextual (VType Desugared)
 makeFlexible (MkDTTy id ab xs) = MkDTTy <$> pure id <*>
                                  makeFlexibleAb ab <*> mapM makeFlexible xs
 makeFlexible (MkSCTy cty) = MkSCTy <$> makeFlexibleCType cty
-makeFlexible (MkRTVar x) = MkFTVar <$> find' x
+makeFlexible (MkRTVar x) = MkFTVar <$> (getContext >>= find')
   where find' BEmp = freshFTVar x
-        find' (es :< FlexTVar y _) | trimTVar x == trimTVar y = y
+        find' (es :< FlexTVar y _) | trimTVar x == trimTVar y = return x
+        find' (es :< Mark) = freshFTVar x
         find' (es :< _) = find' es
 
 makeFlexible ty = return ty
