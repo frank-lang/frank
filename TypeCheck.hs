@@ -107,6 +107,8 @@ inferUse (MkApp f xs) = do ty <- find f >>= (instantiate f)
                            case ty of
                              MkSCTy (MkCType ps q) -> do checkArgs ps xs
                                                          returnResult q
+                             _ -> throwError $
+                                  "application:expected suspended computation"
   where checkArgs :: [Port Desugared] -> [Tm Desugared] -> Contextual ()
         checkArgs ps xs = mapM_ (uncurry checkArg) (zip ps xs)
 
@@ -116,7 +118,9 @@ inferUse (MkApp f xs) = do ty <- find f >>= (instantiate f)
         returnResult :: Peg Desugared -> Contextual (VType Desugared)
         returnResult (MkPeg ab ty) =
           do amb <- getAmbient
-             if ab == amb then return ty
+             let xs = sortUniq $ abToList ab
+                 ys = sortUniq $ abToList amb
+             if xs == ys then return ty
              else throwError $ "peg does not match ambient ability"
 
 checkTm :: Tm Desugared -> VType Desugared -> Contextual ()

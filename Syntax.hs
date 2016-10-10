@@ -181,3 +181,9 @@ getCtrs (MkDT _ _ xs) = xs
 collectDTNames :: [DataT a] -> [Id]
 collectDTNames ((MkDT dt _ _) : xs) = dt : (collectDTNames xs)
 collectDTNames [] = []
+
+-- Convert ability to a list of interface names and effect variables
+abToList :: Ab Desugared -> [Id]
+abToList MkEmpAb = []
+abToList MkOpenAb = []
+abToList (MkAbPlus ab id _) = id : abToList ab
