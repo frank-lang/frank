@@ -74,9 +74,9 @@ expected = [
                                            ,MkRawId "nil"]]]])))]
    -- tests/suspended_computations.fk
   ,return $
-   MkProg [MkDataTm (MkDT "Three" [] [MkCtr "Once" []
-                                     ,MkCtr "Twice" []
-                                     ,MkCtr "Thrice" []])
+   MkProg [MkDataTm (MkDT "Three" [] [] [MkCtr "Once" []
+                                        ,MkCtr "Twice" []
+                                        ,MkCtr "Thrice" []])
           ,MkSigTm (MkSig "id"
                     (MkCType [MkPort MkIdAdj (MkDTTy "a" MkEmpAb [])]
                      (MkPeg MkOpenAb (MkDTTy "a" MkEmpAb []))))

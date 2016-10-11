@@ -7,12 +7,15 @@ import Control.Monad.Except
 import Control.Monad.State
 import Data.List
 import qualified Data.Map as M
+import qualified Data.Set as S
 
 import Syntax
 
 type Refine = ExceptT String (State RState)
 
 type TVarMap = M.Map Id (VType Raw)
+
+type EVarSet = S.Set Id
 
 data TopLevelCtxt = Interface | Datatype | Handler deriving (Show, Eq)
 
@@ -23,6 +26,7 @@ data RState = MkRState { interfaces :: [Id]
                        , cmds :: [Id]
                        , program :: Prog Refined
                        , tmap :: TVarMap
+                       , evmap :: EVarSet
                        , tlctxt :: Maybe TopLevelCtxt }
 
 getRState :: Refine RState
@@ -78,6 +82,14 @@ putTMap m = do s <- getRState
 getTMap :: Refine TVarMap
 getTMap = do s <- getRState
              return $ tmap s
+
+putEVSet :: EVarSet -> Refine ()
+putEVSet m = do s <- getRState
+                putRState $ s { evmap = m }
+
+getEVSet :: Refine EVarSet
+getEVSet = do s <- getRState
+              return $ evmap s
 
 getTopLevelCtxt :: Refine (Maybe TopLevelCtxt)
 getTopLevelCtxt = do s <- getRState
@@ -166,11 +178,14 @@ existsMain [] = False
 existsMain (_ : xs) = error "invalid top term: expected multihandler"
 
 refineDataT :: DataT Raw -> Refine (TopTm Refined)
-refineDataT (MkDT dt ps ctrs) =
-  if uniqueIds ps then do putTMap (M.fromList $ zip ps (map MkTVar ps))
-                          ctrs' <- mapM refineCtr ctrs
-                          putTMap M.empty
-                          return $ MkDataTm $ MkDT dt ps ctrs'
+refineDataT (MkDT dt es ps ctrs) =
+  if uniqueIds ps && uniqueIds es then
+     do putTMap (M.fromList $ zip ps (map MkTVar ps))
+        putEVSet (S.fromList es)
+        ctrs' <- mapM refineCtr ctrs
+        putTMap M.empty
+        putEVSet S.empty
+        return $ MkDataTm $ MkDT dt es ps ctrs'
   else throwError $ "duplicate parameter in datatype " ++ dt
 
 refineItf :: Itf Raw -> Refine (TopTm Refined)
@@ -206,11 +221,38 @@ refinePeg (MkPeg ab ty) = do ab' <- refineAb ab
                              return $ MkPeg ab' ty'
 
 refineAb :: Ab Raw -> Refine (Ab Refined)
-refineAb MkEmpAb = return MkEmpAb
-refineAb (MkAbPlus ab id xs) = do xs' <- mapM refineVType xs
-                                  ab' <- refineAb ab
-                                  return $ MkAbPlus ab' id xs'
-refineAb MkOpenAb = return MkOpenAb
+refineAb ab =
+  do es <- getEVars ab
+     if null es then refineAb' ab MkOpenAb
+     else if length es == 1 then refineAb' ab (MkAbVar (head es))
+     else throwError $ "ability has multiple effect variables " ++ (show es)
+
+getEVars :: Ab Raw -> Refine [Id]
+getEVars MkEmpAb = return []
+getEVars MkOpenAb = return [] -- raw, will be replaced by any explicit
+                              -- effect variable
+getEVars (MkAbPlus ab id _) =
+  do es <- getEVars ab
+     m <- getEVSet
+     if S.member id m then return $ id : es
+     else return es
+getEVars _ = error "ability parsing invariant broken"
+
+refineAb' :: Ab Raw -> Ab Refined -> Refine (Ab Refined)
+refineAb' MkEmpAb _ = return MkEmpAb
+refineAb' (MkAbVar x) _ = return $ MkAbVar x
+refineAb' (MkAbPlus ab' id xs) ab =
+  do m <- getEVSet
+     itfs <- getRItfs
+     if id `elem` itfs then do xs' <- mapM refineVType xs
+                               ab'' <- refineAb' ab' ab
+                               return $ MkAbPlus ab'' id xs'
+     else if S.member id m then
+       if length xs == 0 then refineAb' ab' ab
+       else throwError $
+            "effect variable " ++ id ++ " may not take parameters"
+     else throwError $ "no such effect variable or interface " ++ id
+refineAb' MkOpenAb ab = return ab
 
 
 refineAdj :: Adj Raw -> Refine (Adj Refined)
@@ -221,12 +263,12 @@ refineAdj MkIdAdj = return MkIdAdj
 
 refineVType :: VType Raw -> Refine (VType Refined)
 -- Check that dt is a datatype, otherwise it must have been a type variable.
-refineVType (MkDTTy x ab xs) =
+refineVType (MkDTTy x abs xs) =
   do dts <- getRDTs
      case x `elem` dts of
-       True -> do ab' <- refineAb ab
+       True -> do abs' <- mapM refineAb abs
                   xs' <- mapM refineVType xs
-                  return $ MkDTTy x ab' xs'
+                  return $ MkDTTy x abs' xs'
        False -> do -- interfaces or datatypes explicitly declare their type
                    -- variables.
                    m <- getTMap
@@ -333,4 +375,4 @@ builtinCtrs = ["unit", "cons", "nil"]
 
 initRefine :: RState
 initRefine = MkRState builtinItfs builtinDataTs builtinMHs builtinCtrs
-             builtinCmds (MkProg []) M.empty Nothing
+             builtinCmds (MkProg []) M.empty S.empty Nothing

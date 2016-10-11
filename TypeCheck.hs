@@ -6,7 +6,10 @@
              FlexibleContexts,GADTs #-}
 module TypeCheck where
 
+import Data.List.Unique
+
 import qualified Data.Set as S
+import qualified Data.Map.Strict as M
 
 import Control.Monad
 import Control.Monad.Except
@@ -18,6 +21,8 @@ import Syntax
 import FreshNames
 import TypeCheckCommon
 import Unification
+
+type EVMap a = M.Map Id (Ab a)
 
 -- Only to be applied to identifiers representing rigid or flexible type
 -- variables.
@@ -81,13 +86,14 @@ lkpItf itf (MkAbPlus ab id xs)
 instantiate :: Operator -> VType Desugared -> Contextual (VType Desugared)
 instantiate (MkPoly _) ty = do addMark
                                ty' <- makeFlexible ty
-                               ty'' <- substOpenAb ty'
-                               return ty''
+                               amb <- getAmbient
+                               return $ substOpenAb amb ty'
 instantiate _ ty = return ty
 
 -- Main typechecking function
 checkProg :: Prog Desugared -> Contextual ()
 checkProg p = do MkProg xs <- initContextual p
+                 mapM checkTopTm xs
                  return ()
 
 checkTopTm :: TopTm Desugared -> Contextual ()
@@ -98,7 +104,6 @@ checkMHDef :: MHDef Desugared -> Contextual ()
 checkMHDef (MkDef id ty@(MkCType ps q) cs) =
   do modify (:< TermVar (MkPoly id) (MkSCTy ty))
      mapM_ (\cls -> checkCls cls ps q) cs
-
 
 -- Functions below implement the typing rules described in the paper.
 inferUse :: Use Desugared -> Contextual (VType Desugared)
@@ -134,13 +139,14 @@ checkTm (MkTmSeq tm1 tm2) ty = do ftvar <- freshFTVar "seq"
                                   checkTm tm2 ty
 checkTm (MkUse u) t = do s <- inferUse u
                          unify t s
-checkTm (MkDCon (MkDataCon k xs)) (MkDTTy dt ab ps) =
-  do (qs, ts) <- getCtr k dt
+checkTm (MkDCon (MkDataCon k xs)) (MkDTTy dt abs ps) =
+  do (es, qs, ts) <- getCtr k dt
      addMark
      qs' <- mapM makeFlexible qs
      ts' <- mapM makeFlexible ts
+     let ts'' = map (replaceAbVar (M.fromList (zip es abs))) ts'
      mapM_ (uncurry unify) (zip ps qs')
-     mapM_ (uncurry checkTm) (zip xs ts')
+     mapM_ (uncurry checkTm) (zip xs ts'')
 checkTm tm ty = throwError $
                 "failed to term " ++ show tm ++ " against type " ++ show ty
 
@@ -190,13 +196,14 @@ contType x adj y =
 
 checkVPat :: ValuePat -> VType Desugared -> Contextual [TermBinding]
 checkVPat (MkVarPat x) ty = return [(MkMono x, ty)]
-checkVPat (MkDataPat k xs) (MkDTTy dt ab ps) =
-  do (qs, ts) <- getCtr k dt
+checkVPat (MkDataPat k xs) (MkDTTy dt abs ps) =
+  do (es, qs, ts) <- getCtr k dt
      addMark
      qs' <- mapM makeFlexible qs
      ts' <- mapM makeFlexible ts
+     let ts'' = map (replaceAbVar (M.fromList (zip es abs))) ts'
      mapM_ (uncurry unify) (zip ps qs')
-     bs <- fmap concat $ mapM (uncurry checkVPat) (zip xs ts')
+     bs <- fmap concat $ mapM (uncurry checkVPat) (zip xs ts'')
      return bs
 checkVPat (MkCharPat _) MkCharTy = return []
 checkVPat (MkStrPat _) MkStringTy = return []
@@ -205,8 +212,8 @@ checkVPat _ _ = throwError "failed to match value pattern and type"
 
 -- Replace rigid type variables with flexible ones
 makeFlexible :: VType Desugared -> Contextual (VType Desugared)
-makeFlexible (MkDTTy id ab xs) = MkDTTy <$> pure id <*>
-                                 makeFlexibleAb ab <*> mapM makeFlexible xs
+makeFlexible (MkDTTy id abs xs) =
+  MkDTTy <$> pure id <*> mapM makeFlexibleAb abs <*> mapM makeFlexible xs
 makeFlexible (MkSCTy cty) = MkSCTy <$> makeFlexibleCType cty
 makeFlexible (MkRTVar x) = MkFTVar <$> (getContext >>= find')
   where find' BEmp = freshFTVar x
@@ -244,38 +251,33 @@ makeFlexiblePort (MkPort adj ty) = MkPort <$>
                                    makeFlexibleAdj adj <*>
                                    makeFlexible ty
 
--- Substitute the ambient for the effect variable
-substOpenAb :: VType Desugared -> Contextual (VType Desugared)
-substOpenAb (MkDTTy id ab xs) = MkDTTy <$> pure id <*> substOpenAbAb ab <*>
-                                mapM substOpenAb xs
-substOpenAb (MkSCTy cty) = MkSCTy <$> substOpenAbCType cty
-substOpenAb ty = return ty
+replaceAbVar :: EVMap a -> VType a -> VType a
+replaceAbVar m (MkDTTy id abs xs) =
+  MkDTTy id (map (replaceAbVarAb m) abs) (map (replaceAbVar m) xs)
+replaceAbVar m (MkSCTy cty) = MkSCTy $ replaceAbVarCType m cty
+replaceAbVar _ ty = ty
 
-substOpenAbAb :: Ab Desugared -> Contextual (Ab Desugared)
-substOpenAbAb MkEmpAb = return MkEmpAb
-substOpenAbAb MkOpenAb = getAmbient
-substOpenAbAb (MkAbPlus ab itf xs) = do ab' <- substOpenAbAb ab
-                                        xs' <- mapM substOpenAb xs
-                                        return $ MkAbPlus ab' itf xs'
+replaceAbVarAb :: EVMap a -> Ab a -> Ab a
+replaceAbVarAb _ MkEmpAb = MkEmpAb
+replaceAbVarAb _ MkOpenAb = MkOpenAb
+replaceAbVarAb m (MkAbVar x) = case M.lookup x m of
+  Nothing -> error "effect variable invariant broken"
+  Just ab -> ab
+replaceAbVarAb m (MkAbPlus ab id xs) = MkAbPlus (replaceAbVarAb m ab) id xs
 
-substOpenAbAdj :: Adj Desugared -> Contextual (Adj Desugared)
-substOpenAbAdj MkIdAdj = return MkIdAdj
-substOpenAbAdj (MkAdjPlus adj itf xs) = do adj' <- substOpenAbAdj adj
-                                           xs' <- mapM substOpenAb xs
-                                           return $ MkAdjPlus adj' itf xs'
+replaceAbVarAdj :: EVMap a -> Adj a -> Adj a
+replaceAbVarAdj _ MkIdAdj = MkIdAdj
+replaceAbVarAdj m (MkAdjPlus adj id xs) =
+  MkAdjPlus (replaceAbVarAdj m adj) id xs
 
-substOpenAbCType :: CType Desugared -> Contextual (CType Desugared)
-substOpenAbCType (MkCType ps q) =
-  MkCType <$> mapM substOpenAbPort ps <*> substOpenAbPeg q
+replaceAbVarCType :: EVMap a -> CType a -> CType a
+replaceAbVarCType m (MkCType ps q) =
+    MkCType (map (replaceAbVarPort m) ps) (replaceAbVarPeg m q)
 
-substOpenAbPeg :: Peg Desugared -> Contextual (Peg Desugared)
-substOpenAbPeg (MkPeg ab ty) = MkPeg <$> substOpenAbAb ab <*>
-                               substOpenAb ty
+replaceAbVarPeg :: EVMap a -> Peg a -> Peg a
+replaceAbVarPeg m (MkPeg ab ty) =
+  MkPeg (replaceAbVarAb m ab) (replaceAbVar m ty)
 
-substOpenAbPort :: Port Desugared -> Contextual (Port Desugared)
-substOpenAbPort (MkPort adj ty) = MkPort <$> substOpenAbAdj adj <*>
-                                  substOpenAb ty
-
-plus :: Ab Desugared -> Adj Desugared -> Ab Desugared
-plus ab MkIdAdj = ab
-plus ab (MkAdjPlus adj itf xs) = MkAbPlus (plus ab adj) itf xs
+replaceAbVarPort :: EVMap a -> Port a -> Port a
+replaceAbVarPort m (MkPort adj ty) =
+  MkPort (replaceAbVarAdj m adj) (replaceAbVar m ty)

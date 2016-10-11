@@ -99,8 +99,8 @@ compileTopTm _ = return [] -- interfaces are ignored for now. add to a map?
 -- how to do pattern matching correctly? maybe they are just n-adic functions
 -- too? pure ones are just pure functions, etc.
 compileDatatype :: DataT Refined -> Compile [S.Def S.Exp]
-compileDatatype (MkDT _ _ xs) = do xs <- nonNullary xs
-                                   mapM compileCtr xs
+compileDatatype (MkDT _ _ _ xs) = do xs <- nonNullary xs
+                                     mapM compileCtr xs
 
 nonNullary :: [Ctr Refined] -> Compile [Ctr Refined]
 nonNullary ((MkCtr id []) : xs) = do addAtom id

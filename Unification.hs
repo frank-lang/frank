@@ -29,8 +29,8 @@ onTop f = popEntry >>= focus
         focus e = onTop f >> modify (:< e)
 
 unify :: VType Desugared -> VType Desugared -> Contextual ()
-unify (MkDTTy dt0 ab0 xs) (MkDTTy dt1 ab1 ys)
-  | dt0 == dt1 = unifyAb ab0 ab1 >>
+unify (MkDTTy dt0 abs0 xs) (MkDTTy dt1 abs1 ys)
+  | dt0 == dt1 = mapM (uncurry unifyAb) (zip abs0 abs1) >>
                  mapM_ (uncurry unify) (zip xs ys)
 unify (MkSCTy cty0) (MkSCTy cty1) = unifyCType cty0 cty1
 unify (MkRTVar a)  (MkRTVar b) | a == b = return ()
@@ -88,8 +88,8 @@ solve a ext ty = onTop $ \b d ->
     (False, False, Hole) -> solve a ext ty >> restore
 
 subst :: VType Desugared -> Id -> VType Desugared -> VType Desugared
-subst ty x (MkDTTy dt ab xs) =
-  MkDTTy dt (substAb ty x ab) (map (subst ty x) xs)
+subst ty x (MkDTTy dt abs xs) =
+  MkDTTy dt (map (substAb ty x) abs) (map (subst ty x) xs)
 subst ty x (MkSCTy cty) = MkSCTy $ substCType ty x cty
 subst ty x (MkFTVar y) | x == y = ty
 subst ty x (MkRTVar y) = MkRTVar y
@@ -98,10 +98,9 @@ subst ty x MkIntTy = MkIntTy
 subst ty x MkCharTy = MkCharTy
 
 substAb :: VType Desugared -> Id -> Ab Desugared -> Ab Desugared
-substAb ty x MkEmpAb = MkEmpAb
-substAb ty x MkOpenAb = MkOpenAb
 substAb ty x (MkAbPlus ab itf xs) =
   MkAbPlus (substAb ty x ab) itf (map (subst ty x) xs)
+substAb _ _ ab = ab
 
 substAdj :: VType Desugared -> Id -> Adj Desugared -> Adj Desugared
 substAdj ty x MkIdAdj = MkIdAdj

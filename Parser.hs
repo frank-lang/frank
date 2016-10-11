@@ -70,11 +70,11 @@ tterm = MkDataTm <$> parseDataT <|>
 parseDataT :: MonadicParsing m => m (DataT Raw)
 parseDataT = do reserved "data"
                 name <- identifier
-                _ <- optional $ symbol "[" >> symbol "]" -- anything inside?
+                es <- many $ brackets identifier
                 ps <- many identifier
                 symbol "="
                 xs <- localIndentation Gt ctrlist
-                return $ MkDT name ps xs
+                return $ MkDT name es ps xs
 
 ctrlist :: MonadicParsing m => m [Ctr Raw]
 ctrlist = sepBy parseCtr (symbol "|")
@@ -193,9 +193,9 @@ parseVType' = parens parseVType <|>
 -- Parse a potential datatype. Note it may actually be a type variable.
 parseDTType :: MonadicParsing m => m (VType Raw)
 parseDTType = do x <- identifier
-                 ab <- parseDTAb
+                 abs <- many parseDTAb
                  ps <- localIndentation Gt $ many parseVType'
-                 return $ MkDTTy x ab ps
+                 return $ MkDTTy x abs ps
 
 parseRawTmSeq :: MonadicParsing m => m (Tm Raw)
 parseRawTmSeq = do tm1 <- parseRawTm

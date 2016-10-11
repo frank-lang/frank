@@ -102,7 +102,7 @@ data Clause a = MkCls [Pattern] (Tm a)
 data SComp a = MkSComp [Clause a]
            deriving (Show, Eq)
 
-data DataT a = MkDT Id [Id] [Ctr a]
+data DataT a = MkDT Id [Id] [Id] [Ctr a]
              deriving (Show, Eq)
 
 data Itf a = MkItf Id [Id] [Cmd a]
@@ -134,7 +134,7 @@ data Peg a = MkPeg (Ab a) (VType a)
            deriving (Show, Eq)
 
 data VType a where
-  MkDTTy :: Id -> Ab a -> [VType a] -> VType a
+  MkDTTy :: Id -> [Ab a] -> [VType a] -> VType a
   MkSCTy :: CType a -> VType a
   MkTVar :: NotDesugared a => Id -> VType a
   MkRTVar :: Id -> VType Desugared
@@ -151,7 +151,7 @@ data Adj a = MkIdAdj | MkAdjPlus (Adj a) Id [VType a]
            deriving (Show, Eq)
 
 -- Abilities
-data Ab a = MkEmpAb | MkAbPlus (Ab a) Id [VType a] | MkOpenAb
+data Ab a = MkEmpAb | MkAbPlus (Ab a) Id [VType a] | MkOpenAb | MkAbVar Id
           deriving (Show, Eq)
 
 getItfs :: [TopTm a] -> [Itf a]
@@ -176,14 +176,50 @@ getDataTs xs = getDataTs' xs []
         getDataTs' [] ys = ys
 
 getCtrs :: DataT a -> [Ctr a]
-getCtrs (MkDT _ _ xs) = xs
+getCtrs (MkDT _ _ _ xs) = xs
 
 collectDTNames :: [DataT a] -> [Id]
-collectDTNames ((MkDT dt _ _) : xs) = dt : (collectDTNames xs)
+collectDTNames ((MkDT dt _ _ _) : xs) = dt : (collectDTNames xs)
 collectDTNames [] = []
 
 -- Convert ability to a list of interface names and effect variables
-abToList :: Ab Desugared -> [Id]
+abToList :: Ab a -> [Id]
 abToList MkEmpAb = []
+abToList (MkAbVar id) = [id]
 abToList MkOpenAb = []
 abToList (MkAbPlus ab id _) = id : abToList ab
+
+-- Substitute the ability for the distinguished effect variable in the type.
+substOpenAb :: Ab a -> VType a -> VType a
+substOpenAb ab (MkDTTy id abs xs) =
+  MkDTTy id (map (substOpenAbAb ab) abs) (map (substOpenAb ab) xs)
+substOpenAb ab (MkSCTy cty) = MkSCTy $ substOpenAbCType ab cty
+substOpenAb _ ty = ty
+
+substOpenAbAb :: Ab a -> Ab a -> Ab a
+substOpenAbAb ab MkEmpAb = MkEmpAb
+substOpenAbAb ab MkOpenAb = ab
+substOpenAbAb ab (MkAbVar x) = MkAbVar x
+substOpenAbAb ab (MkAbPlus ab' x ts) =
+  MkAbPlus (substOpenAbAb ab' ab) x (map (substOpenAb ab) ts)
+
+substOpenAbAdj :: Ab a -> Adj a -> Adj a
+substOpenAbAdj ab MkIdAdj = MkIdAdj
+substOpenAbAdj ab (MkAdjPlus adj itf xs) =
+  MkAdjPlus (substOpenAbAdj ab adj) itf (map (substOpenAb ab) xs)
+
+substOpenAbCType :: Ab a -> CType a -> CType a
+substOpenAbCType ab (MkCType ps q) =
+  MkCType (map (substOpenAbPort ab) ps) (substOpenAbPeg ab q)
+
+substOpenAbPeg :: Ab a -> Peg a -> Peg a
+substOpenAbPeg ab (MkPeg ab' ty) =
+  MkPeg (substOpenAbAb ab ab') (substOpenAb ab ty)
+
+substOpenAbPort :: Ab a -> Port a -> Port a
+substOpenAbPort ab (MkPort adj ty) =
+  MkPort (substOpenAbAdj ab adj) (substOpenAb ab ty)
+
+plus :: Ab a -> Adj a -> Ab a
+plus ab MkIdAdj = ab
+plus ab (MkAdjPlus adj itf xs) = MkAbPlus (plus ab adj) itf xs

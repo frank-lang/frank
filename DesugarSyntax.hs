@@ -14,9 +14,6 @@ import FreshNames
 
 type Desugar = StateT DState (FreshMT Identity)
 
-instance GenFresh Desugar where
-  fresh = lift fresh
-
 type IdTVMap = M.Map Id (VType Desugared)
 
 data DState = MkDState { env :: IdTVMap }
@@ -59,14 +56,14 @@ desugarTopTm (MkItfTm itf) = MkItfTm <$> desugarItf itf
 desugarTopTm (MkDefTm def) = MkDefTm <$> desugarMHDef def
 
 desugarDataT :: DataT Refined -> Desugar (DataT Desugared)
-desugarDataT (MkDT dt xs ctrs) =
+desugarDataT (MkDT dt es xs ctrs) =
   do ts <- mapM freshRTVar xs
      putEnv $ M.fromList (zip xs ts)
      -- Shouldn't be adding to the env in the
      -- constructors, but this code does not
      -- enforce that invariant unfortunately.
      ys <- mapM desugarCtr ctrs
-     return $ MkDT dt (map pullId ts) ys
+     return $ MkDT dt es (map pullId ts) ys
 
 desugarItf :: Itf Refined -> Desugar (Itf Desugared)
 desugarItf (MkItf itf xs cmds) =
@@ -98,9 +95,9 @@ desugarVType (MkTVar x) =
                      putEnv $ M.insert x ty env
                      return ty
        Just ty -> return ty
-desugarVType (MkDTTy dt ab xs) = do ab' <- desugarAb ab
-                                    xs' <- mapM desugarVType xs
-                                    return $ MkDTTy dt ab' xs'
+desugarVType (MkDTTy dt abs xs) = do abs' <- mapM desugarAb abs
+                                     xs' <- mapM desugarVType xs
+                                     return $ MkDTTy dt abs' xs'
 desugarVType (MkSCTy ty) = MkSCTy <$> desugarCType ty
 desugarVType MkStringTy = return $ MkStringTy
 desugarVType MkIntTy = return $ MkIntTy
@@ -157,10 +154,10 @@ desugarDCon (MkDataCon id xs) = MkDataCon id <$> mapM desugarTm xs
 -- Test program
 testProg :: Prog Refined
 testProg = MkProg $
-           [MkDataTm $ MkDT "TypeA" ["X", "Y"] [MkCtr "one" [MkTVar "X"]
-                                               ,MkCtr "two" [MkTVar "X"
-                                                            ,MkTVar "Y"]]
-           ,MkDataTm $ MkDT "TypeB" ["X"] [MkCtr "Just" [MkTVar "X"]]
+           [MkDataTm $ MkDT "TypeA" [] ["X", "Y"] [MkCtr "one" [MkTVar "X"]
+                                                  ,MkCtr "two" [MkTVar "X"
+                                                               ,MkTVar "Y"]]
+           ,MkDataTm $ MkDT "TypeB" [] ["X"] [MkCtr "Just" [MkTVar "X"]]
            ,MkDefTm $ MkDef "k" (MkCType [MkPort MkIdAdj (MkTVar "X")
                                          ,MkPort MkIdAdj (MkTVar "Y")]
                                  (MkPeg MkOpenAb (MkTVar "X"))) []]

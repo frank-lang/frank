@@ -20,7 +20,7 @@ newtype Contextual a = Contextual
 
 type IdCmdInfoMap = M.Map Id (Id,[VType Desugared],[VType Desugared],
                               VType Desugared)
-type CtrInfoMap = M.Map (Id,Id) ([VType Desugared],[VType Desugared])
+type CtrInfoMap = M.Map (Id,Id) ([Id], [VType Desugared],[VType Desugared])
 
 data TCState = MkTCState
   { ctx :: Context
@@ -46,7 +46,7 @@ type TermBinding = (Operator, VType Desugared)
 type Suffix = [(Id, Decl)]
 
 fmv :: VType Desugared -> S.Set Id
-fmv (MkDTTy _ ab xs) = S.union (fmvAb ab) (foldMap fmv xs)
+fmv (MkDTTy _ abs xs) = S.union (foldMap fmvAb abs) (foldMap fmv xs)
 fmv (MkSCTy cty) = fmvCType cty
 fmv (MkFTVar x) = S.singleton x
 fmv (MkRTVar x) = S.empty
@@ -111,10 +111,10 @@ getCmd cmd = get >>= \s -> case M.lookup cmd (cmdMap s) of
   Nothing -> error $ "invariant broken: " ++ show cmd ++ " not a command"
   Just (itf, qs, xs, y) -> return (itf, qs, xs, y)
 
-getCtr :: Id -> Id -> Contextual ([VType Desugared], [VType Desugared])
+getCtr :: Id -> Id -> Contextual ([Id], [VType Desugared], [VType Desugared])
 getCtr k dt = get >>= \s -> case M.lookup (k,dt) (ctrMap s) of
   Nothing -> throwError $ (show k) ++ " is not a constructor of " ++ (show dt)
-  Just (ps, xs) -> return (ps, xs)
+  Just (es, ps, xs) -> return (es, ps, xs)
 
 popEntry :: Contextual Entry
 popEntry = do es :< e <- getContext
@@ -132,8 +132,8 @@ initContextual (MkProg xs) =
      mapM_ g (getItfs xs)
      return (MkProg xs)
   where f :: DataT Desugared -> Contextual ()
-        f (MkDT dt ps cs) = let ps' = map MkRTVar ps in
-          mapM_ (\(MkCtr ctr xs) -> addCtr dt ctr ps' xs) cs
+        f (MkDT dt es ps cs) = let ps' = map MkRTVar ps in
+          mapM_ (\(MkCtr ctr xs) -> addCtr dt ctr es ps' xs) cs
 
         g :: Itf Desugared -> Contextual ()
         g (MkItf itf ps cs) = let ps' = map MkRTVar ps in
@@ -145,6 +145,7 @@ addCmd :: Id -> Id -> [VType Desugared] -> [VType Desugared] ->
 addCmd cmd itf ps xs q = get >>= \s ->
   put $ s { cmdMap = M.insert cmd (itf, ps, xs, q) (cmdMap s) }
 
-addCtr :: Id -> Id -> [VType Desugared] -> [VType Desugared] -> Contextual ()
-addCtr dt ctr ps xs = get >>= \s ->
-  put $ s { ctrMap = M.insert (dt,ctr) (ps,xs) (ctrMap s) }
+addCtr :: Id -> Id -> [Id] -> [VType Desugared] -> [VType Desugared] ->
+          Contextual ()
+addCtr dt ctr es ps xs = get >>= \s ->
+  put $ s { ctrMap = M.insert (dt,ctr) (es,ps,xs) (ctrMap s) }
