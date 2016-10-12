@@ -182,6 +182,13 @@ collectDTNames :: [DataT a] -> [Id]
 collectDTNames ((MkDT dt _ _ _) : xs) = dt : (collectDTNames xs)
 collectDTNames [] = []
 
+getDefs :: NotRaw a => [TopTm a] -> [MHDef a]
+getDefs xs = getDefs' xs []
+  where getDefs' :: NotRaw a => [TopTm a] -> [MHDef a] -> [MHDef a]
+        getDefs' ((MkDefTm def) : xs) ys = getDefs' xs (def : ys)
+        getDefs' (_ : xs) ys = getDefs' xs ys
+        getDefs' [] ys = ys
+
 -- Convert ability to a list of interface names and effect variables
 abToList :: Ab a -> [Id]
 abToList MkEmpAb = []
@@ -223,3 +230,8 @@ substOpenAbPort ab (MkPort adj ty) =
 plus :: Ab a -> Adj a -> Ab a
 plus ab MkIdAdj = ab
 plus ab (MkAdjPlus adj itf xs) = MkAbPlus (plus ab adj) itf xs
+
+getOpName :: Operator -> Id
+getOpName (MkMono x) = x
+getOpName (MkPoly x) = x
+getOpName (MkCmdId x) = x

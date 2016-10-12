@@ -169,7 +169,8 @@ refine' (MkProg xs) = do initialiseRState xs
                          putTopLevelCtxt Handler
                          hdrs <- mapM (refineMH defs) sigs
                          if existsMain hdrs then
-                            return $ MkProg (dtTms ++ itfTms ++ hdrs)
+                            return $ MkProg (map MkDataTm builtinDataTs ++
+                                             dtTms ++ itfTms ++ hdrs)
                          else throwError $ "no main function defined."
 
 existsMain :: [TopTm Refined] -> Bool
@@ -358,6 +359,13 @@ initialiseRState xs =
 
 {-- The initial state for the refinement pass. -}
 
+builtinDataTs :: [DataT Refined]
+builtinDataTs = [MkDT "List" [] ["X"] [MkCtr "cons" [MkTVar "X"
+                                                    ,MkDTTy "List" []
+                                                     [MkTVar "X"]]
+                                      ,MkCtr "nil" []]
+                ,MkDT "Unit" [] [] [MkCtr "unit" []]]
+
 builtinCmds :: [Id]
 builtinCmds = ["putStrLn"]
 
@@ -367,12 +375,12 @@ builtinMHs = ["strcat"]
 builtinItfs :: [Id]
 builtinItfs = ["Console"]
 
-builtinDataTs :: [Id]
-builtinDataTs = ["Unit", "List"]
+builtinDTs :: [Id]
+builtinDTs = collectDTNames builtinDataTs
 
 builtinCtrs :: [Id]
-builtinCtrs = ["unit", "cons", "nil"]
+builtinCtrs = map (\(MkCtr id _) -> id) $ concatMap getCtrs builtinDataTs
 
 initRefine :: RState
-initRefine = MkRState builtinItfs builtinDataTs builtinMHs builtinCtrs
+initRefine = MkRState builtinItfs builtinDTs builtinMHs builtinCtrs
              builtinCmds (MkProg []) M.empty S.empty Nothing

@@ -16,7 +16,7 @@ import FreshNames
 import Syntax
 
 newtype Contextual a = Contextual
-                       (StateT TCState (FreshMT (ExceptT String Identity)) a)
+                       { unCtx :: StateT TCState (FreshMT (Except String)) a}
 
 type IdCmdInfoMap = M.Map Id (Id,[VType Desugared],[VType Desugared],
                               VType Desugared)
@@ -27,8 +27,8 @@ data TCState = MkTCState
   , amb :: Ab Desugared
   , cmdMap :: IdCmdInfoMap
   , ctrMap :: CtrInfoMap
-  , markCount :: Integer -- the number of markers separating localities in the
-                         -- current scope
+  , ms :: [Integer] -- the number of markers separating localities in the
+                    -- current scope
   }
 
 deriving instance Functor Contextual
@@ -40,7 +40,9 @@ deriving instance GenFresh Contextual
 
 data Entry = FlexTVar Id Decl
            | TermVar Operator (VType Desugared) | Mark
+           deriving (Show)
 data Decl = Hole | Defn (VType Desugared)
+          deriving (Show)
 type Context = Bwd Entry
 type TermBinding = (Operator, VType Desugared)
 type Suffix = [(Id, Decl)]
@@ -91,15 +93,21 @@ putAmbient :: Ab Desugared -> Contextual ()
 putAmbient ab = do s <- get
                    put $ s { amb = ab }
 
+pushMarkCtx :: Contextual ()
+pushMarkCtx = do s <- get
+                 put $ s { ms = 0 : (ms s) }
+
 addMark :: Contextual ()
 addMark = do modify (:< Mark)
              s <- get
-             put $ s { markCount = succ (markCount s) }
+             let h = head (ms s)
+                 ts = tail (ms s)
+             put $ s { ms = succ h : ts }
 
 purgeMarks :: Contextual ()
 purgeMarks = do s <- get
-                let n = markCount s
-                put $ s { ctx = skim n (ctx s), markCount = 0 }
+                let n = head (ms s)
+                put $ s { ctx = skim n (ctx s), ms = tail (ms s) }
   where skim :: Integer -> Context -> Context
         skim 0 es = es
         skim n (es :< Mark) = skim (n-1) es
@@ -112,8 +120,9 @@ getCmd cmd = get >>= \s -> case M.lookup cmd (cmdMap s) of
   Just (itf, qs, xs, y) -> return (itf, qs, xs, y)
 
 getCtr :: Id -> Id -> Contextual ([Id], [VType Desugared], [VType Desugared])
-getCtr k dt = get >>= \s -> case M.lookup (k,dt) (ctrMap s) of
-  Nothing -> throwError $ (show k) ++ " is not a constructor of " ++ (show dt)
+getCtr k dt = get >>= \s -> case M.lookup (dt,k) (ctrMap s) of
+  Nothing -> throwError $
+             "'" ++ k ++ "' is not a constructor of '" ++ dt ++ "'"
   Just (es, ps, xs) -> return (es, ps, xs)
 
 popEntry :: Contextual Entry
@@ -130,6 +139,7 @@ initContextual :: Prog Desugared -> Contextual (Prog Desugared)
 initContextual (MkProg xs) =
   do mapM_ f (getDataTs xs)
      mapM_ g (getItfs xs)
+     mapM h (getDefs xs)
      return (MkProg xs)
   where f :: DataT Desugared -> Contextual ()
         f (MkDT dt es ps cs) = let ps' = map MkRTVar ps in
@@ -138,6 +148,12 @@ initContextual (MkProg xs) =
         g :: Itf Desugared -> Contextual ()
         g (MkItf itf ps cs) = let ps' = map MkRTVar ps in
           mapM_ (\(MkCmd x xs y) -> addCmd itf x ps' xs y) cs
+
+        h :: MHDef Desugared -> Contextual ()
+        h (MkDef id ty _) = modify (:< TermVar (MkPoly id) (MkSCTy ty))
+
+initTCState :: TCState
+initTCState = MkTCState BEmp MkEmpAb M.empty M.empty []
 
 -- Only to be used for initialising the contextual monad
 addCmd :: Id -> Id -> [VType Desugared] -> [VType Desugared] ->

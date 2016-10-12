@@ -193,9 +193,9 @@ parseVType' = parens parseVType <|>
 -- Parse a potential datatype. Note it may actually be a type variable.
 parseDTType :: MonadicParsing m => m (VType Raw)
 parseDTType = do x <- identifier
-                 abs <- many parseDTAb
+                 abs <- parseDTAb
                  ps <- localIndentation Gt $ many parseVType'
-                 return $ MkDTTy x abs ps
+                 return $ MkDTTy x [abs] ps
 
 parseRawTmSeq :: MonadicParsing m => m (Tm Raw)
 parseRawTmSeq = do tm1 <- parseRawTm

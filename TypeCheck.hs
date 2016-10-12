@@ -6,15 +6,15 @@
              FlexibleContexts,GADTs #-}
 module TypeCheck where
 
-import Data.List.Unique
-
-import qualified Data.Set as S
-import qualified Data.Map.Strict as M
-
 import Control.Monad
 import Control.Monad.Except
 import Control.Monad.Identity
 import Control.Monad.State hiding (modify)
+
+import Data.List.Unique
+
+import qualified Data.Set as S
+import qualified Data.Map.Strict as M
 
 import BwdFwd
 import Syntax
@@ -52,7 +52,7 @@ find (MkCmdId x) =
             return $ MkSCTy $
               MkCType (map (\x -> MkPort MkIdAdj x) ts') (MkPeg amb y')
 find x = getContext >>= find'
-  where find' BEmp = throwError $ show x ++ " not in scope"
+  where find' BEmp = throwError $ "'" ++ getOpName x ++ "' not in scope"
         find' (es :< TermVar y ty) | x == y = return ty
         find' (es :< _) = find' es
 
@@ -91,10 +91,12 @@ instantiate (MkPoly _) ty = do addMark
 instantiate _ ty = return ty
 
 -- Main typechecking function
-checkProg :: Prog Desugared -> Contextual ()
-checkProg p = do MkProg xs <- initContextual p
-                 mapM checkTopTm xs
-                 return ()
+check :: Prog Desugared -> Either String (Prog Desugared)
+check p = runExcept $ evalFreshMT $ evalStateT (checkProg p) initTCState
+  where
+    checkProg p = unCtx $ do MkProg xs <- initContextual p
+                             mapM checkTopTm xs
+                             return $ MkProg xs
 
 checkTopTm :: TopTm Desugared -> Contextual ()
 checkTopTm (MkDefTm def) = checkMHDef def
@@ -102,15 +104,15 @@ checkTopTm _ = return ()
 
 checkMHDef :: MHDef Desugared -> Contextual ()
 checkMHDef (MkDef id ty@(MkCType ps q) cs) =
-  do modify (:< TermVar (MkPoly id) (MkSCTy ty))
-     mapM_ (\cls -> checkCls cls ps q) cs
+  do mapM_ (\cls -> checkCls cls ps q) cs
 
 -- Functions below implement the typing rules described in the paper.
 inferUse :: Use Desugared -> Contextual (VType Desugared)
 inferUse (MkOp x) = find x >>= (instantiate x)
 inferUse (MkApp f xs) = do ty <- find f >>= (instantiate f)
                            case ty of
-                             MkSCTy (MkCType ps q) -> do checkArgs ps xs
+                             MkSCTy (MkCType ps q) -> do ctx <- getContext
+                                                         checkArgs ps xs
                                                          returnResult q
                              _ -> throwError $
                                   "application:expected suspended computation"
@@ -131,9 +133,10 @@ inferUse (MkApp f xs) = do ty <- find f >>= (instantiate f)
 checkTm :: Tm Desugared -> VType Desugared -> Contextual ()
 checkTm (MkSC sc) (MkSCTy cty) = checkSComp sc cty
 checkTm MkLet _ = return ()
-checkTm (MkStr _) MkStringTy = return ()
-checkTm (MkInt _) MkIntTy = return ()
-checkTm (MkChar _) MkCharTy = return ()
+checkTm (MkStr _) ty = unify MkStringTy ty
+checkTm (MkInt n) ty = do ctx <- getContext
+                          unify MkIntTy ty
+checkTm (MkChar _) ty = unify MkCharTy ty
 checkTm (MkTmSeq tm1 tm2) ty = do ftvar <- freshFTVar "seq"
                                   checkTm tm1 (MkFTVar ftvar)
                                   checkTm tm2 ty
@@ -148,7 +151,8 @@ checkTm (MkDCon (MkDataCon k xs)) (MkDTTy dt abs ps) =
      mapM_ (uncurry unify) (zip ps qs')
      mapM_ (uncurry checkTm) (zip xs ts'')
 checkTm tm ty = throwError $
-                "failed to term " ++ show tm ++ " against type " ++ show ty
+                "failed to typecheck term " ++ show tm ++
+                " against type " ++ show ty
 
 checkSComp :: SComp Desugared -> CType Desugared -> Contextual ()
 checkSComp (MkSComp xs) (MkCType ps q) = mapM_ (\cls -> checkCls cls ps q) xs
@@ -157,7 +161,8 @@ checkCls :: Clause Desugared -> [Port Desugared] -> Peg Desugared ->
             Contextual ()
 checkCls (MkCls pats tm) ports (MkPeg ab ty)
   | length pats == length ports =
-    do putAmbient ab
+    do pushMarkCtx
+       putAmbient ab
        bs <- fmap concat $ mapM (uncurry checkPat) (zip pats ports)
        -- Bring any bindings in to scope for checking the term then purge the
        -- marks (and suffixes) in the context created for this clause.
@@ -217,7 +222,7 @@ makeFlexible (MkDTTy id abs xs) =
 makeFlexible (MkSCTy cty) = MkSCTy <$> makeFlexibleCType cty
 makeFlexible (MkRTVar x) = MkFTVar <$> (getContext >>= find')
   where find' BEmp = freshFTVar x
-        find' (es :< FlexTVar y _) | trimTVar x == trimTVar y = return x
+        find' (es :< FlexTVar y _) | trimTVar x == trimTVar y = return y
         find' (es :< Mark) = freshFTVar x
         find' (es :< _) = find' es
 
@@ -235,6 +240,7 @@ makeFlexibleAdj (MkAdjPlus adj itf xs) = MkAdjPlus <$>
                                          makeFlexibleAdj adj <*>
                                          pure itf <*>
                                          mapM makeFlexible xs
+makeFlexibleAdj adj = return adj
 
 makeFlexibleCType :: CType Desugared -> Contextual (CType Desugared)
 makeFlexibleCType (MkCType ps q) = MkCType <$>

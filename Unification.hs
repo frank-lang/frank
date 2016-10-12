@@ -92,6 +92,7 @@ subst ty x (MkDTTy dt abs xs) =
   MkDTTy dt (map (substAb ty x) abs) (map (subst ty x) xs)
 subst ty x (MkSCTy cty) = MkSCTy $ substCType ty x cty
 subst ty x (MkFTVar y) | x == y = ty
+subst ty x (MkFTVar y) = MkFTVar y
 subst ty x (MkRTVar y) = MkRTVar y
 subst ty x MkStringTy = MkStringTy
 subst ty x MkIntTy = MkIntTy

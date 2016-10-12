@@ -9,15 +9,15 @@ expected = [
   return $
   MkProg
   [MkItfTm (MkItf "State" ["X"]
-            [MkCmd "get" [] (MkDTTy "X" MkEmpAb [])
-            ,MkCmd "put" [MkDTTy "X" MkEmpAb []]
-                          (MkDTTy "Unit" MkEmpAb [])])
+            [MkCmd "get" [] (MkDTTy "X" [MkEmpAb] [])
+            ,MkCmd "put" [MkDTTy "X" [MkEmpAb] []]
+                          (MkDTTy "Unit" [MkEmpAb] [])])
   ,MkSigTm (MkSig "evalState"
-            (MkCType [ MkPort MkIdAdj (MkDTTy "X" MkEmpAb [])
+            (MkCType [ MkPort MkIdAdj (MkDTTy "X" [MkEmpAb] [])
                      , MkPort (MkAdjPlus MkIdAdj "State"
-                               [MkDTTy "X" MkEmpAb []])
-                       (MkDTTy "Y" MkEmpAb [])]
-             (MkPeg MkOpenAb (MkDTTy "Y" MkEmpAb []))))
+                               [MkDTTy "X" [MkEmpAb] []])
+                       (MkDTTy "Y" [MkEmpAb] [])]
+             (MkPeg MkOpenAb (MkDTTy "Y" [MkEmpAb] []))))
   ,MkClsTm (MkMHCls "evalState"
             (MkCls [MkVPat (MkVarPat "x")
                    ,MkCmdPat "put" [MkVarPat "x'"] "k"]
@@ -48,10 +48,10 @@ expected = [
              (MkCType
               [MkPort MkIdAdj
                (MkSCTy (MkCType [MkPort MkIdAdj
-                                 (MkDTTy "a" MkEmpAb [])]
-                        (MkPeg MkOpenAb (MkDTTy "b" MkEmpAb []))))
-              ,MkPort MkIdAdj (MkDTTy "List" MkEmpAb [MkTVar "a"])]
-              (MkPeg MkOpenAb (MkDTTy "List" MkEmpAb [MkTVar "b"]))))
+                                 (MkDTTy "a" [MkEmpAb] [])]
+                        (MkPeg MkOpenAb (MkDTTy "b" [MkEmpAb] []))))
+              ,MkPort MkIdAdj (MkDTTy "List" [MkEmpAb] [MkTVar "a"])]
+              (MkPeg MkOpenAb (MkDTTy "List" [MkEmpAb] [MkTVar "b"]))))
   ,MkClsTm (MkMHCls "map" (MkCls [MkVPat (MkVarPat "f")
                                  ,MkVPat (MkVarPat "nil")] (MkRawId "nil")))
   ,MkClsTm (MkMHCls "map" (MkCls [MkVPat (MkVarPat "f")
@@ -61,7 +61,7 @@ expected = [
                             [MkRawComb "f" [MkRawId "x"]
                             ,MkRawComb "map" [MkRawId "f",MkRawId "xs"]])))
   ,MkSigTm (MkSig "main" (MkCType [] (MkPeg MkOpenAb
-                                      (MkDTTy "List" MkEmpAb [MkIntTy]))))
+                                      (MkDTTy "List" [MkEmpAb] [MkIntTy]))))
   ,MkClsTm (MkMHCls "main"
             (MkCls [] (MkRawComb "map"
                        [MkSC (MkSComp [MkCls [MkVPat (MkVarPat "xs")]
@@ -78,15 +78,15 @@ expected = [
                                         ,MkCtr "Twice" []
                                         ,MkCtr "Thrice" []])
           ,MkSigTm (MkSig "id"
-                    (MkCType [MkPort MkIdAdj (MkDTTy "a" MkEmpAb [])]
-                     (MkPeg MkOpenAb (MkDTTy "a" MkEmpAb []))))
+                    (MkCType [MkPort MkIdAdj (MkDTTy "a" [MkEmpAb] [])]
+                     (MkPeg MkOpenAb (MkDTTy "a" [MkEmpAb] []))))
           ,MkClsTm (MkMHCls "id"
                     (MkCls [MkVPat (MkVarPat "x")] (MkRawId "x")))
           ,MkSigTm (MkSig "foo"
-                    (MkCType [MkPort MkIdAdj (MkDTTy "Three" MkEmpAb [])]
+                    (MkCType [MkPort MkIdAdj (MkDTTy "Three" [MkEmpAb] [])]
                      (MkPeg MkOpenAb
                       (MkSCTy (MkCType
-                               [MkPort MkIdAdj (MkDTTy "Three" MkEmpAb [])]
+                               [MkPort MkIdAdj (MkDTTy "Three" [MkEmpAb] [])]
                                (MkPeg MkOpenAb MkIntTy))))))
           ,MkClsTm (MkMHCls "foo"
                     (MkCls [MkVPat (MkVarPat "Once")]
