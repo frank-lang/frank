@@ -170,7 +170,9 @@ refine' (MkProg xs) = do initialiseRState xs
                          hdrs <- mapM (refineMH defs) sigs
                          if existsMain hdrs then
                             return $ MkProg (map MkDataTm builtinDataTs ++
-                                             dtTms ++ itfTms ++ hdrs)
+                                             dtTms ++ itfTms ++
+                                             map MkDefTm builtinMHDefs ++
+                                             hdrs)
                          else throwError $ "no main function defined."
 
 existsMain :: [TopTm Refined] -> Bool
@@ -369,8 +371,19 @@ builtinDataTs = [MkDT "List" [] ["X"] [MkCtr "cons" [MkTVar "X"
 builtinCmds :: [Id]
 builtinCmds = ["putStrLn"]
 
+makeIntBinOp :: Char -> MHDef Refined
+makeIntBinOp c = MkDef [c] (MkCType [MkPort MkIdAdj MkIntTy
+                                    ,MkPort MkIdAdj MkIntTy]
+                            (MkPeg MkOpenAb MkIntTy)) []
+
+builtinMHDefs :: [MHDef Refined]
+builtinMHDefs = [MkDef "strcat" (MkCType [MkPort MkIdAdj MkStringTy
+                                         ,MkPort MkIdAdj MkStringTy]
+                                 (MkPeg MkOpenAb MkStringTy)) []] ++
+                (map makeIntBinOp "+-")
+
 builtinMHs :: [Id]
-builtinMHs = ["strcat"]
+builtinMHs = map (\(MkDef id _ _) -> id) builtinMHDefs
 
 builtinItfs :: [Id]
 builtinItfs = ["Console"]

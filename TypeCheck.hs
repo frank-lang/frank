@@ -128,14 +128,15 @@ inferUse (MkApp f xs) = do ty <- find f >>= (instantiate f)
              let xs = sortUniq $ abToList ab
                  ys = sortUniq $ abToList amb
              if xs == ys then return ty
-             else throwError $ "peg does not match ambient ability"
+             else throwError $
+                  "peg " ++ (show ab) ++ " does not match ambient ability " ++
+                  (show amb)
 
 checkTm :: Tm Desugared -> VType Desugared -> Contextual ()
 checkTm (MkSC sc) (MkSCTy cty) = checkSComp sc cty
 checkTm MkLet _ = return ()
 checkTm (MkStr _) ty = unify MkStringTy ty
-checkTm (MkInt n) ty = do ctx <- getContext
-                          unify MkIntTy ty
+checkTm (MkInt _) ty = unify MkIntTy ty
 checkTm (MkChar _) ty = unify MkCharTy ty
 checkTm (MkTmSeq tm1 tm2) ty = do ftvar <- freshFTVar "seq"
                                   checkTm tm1 (MkFTVar ftvar)

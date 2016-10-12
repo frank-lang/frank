@@ -147,7 +147,7 @@ initContextual (MkProg xs) =
 
         g :: Itf Desugared -> Contextual ()
         g (MkItf itf ps cs) = let ps' = map MkRTVar ps in
-          mapM_ (\(MkCmd x xs y) -> addCmd itf x ps' xs y) cs
+          mapM_ (\(MkCmd x xs y) -> addCmd x itf ps' xs y) cs
 
         h :: MHDef Desugared -> Contextual ()
         h (MkDef id ty _) = modify (:< TermVar (MkPoly id) (MkSCTy ty))
