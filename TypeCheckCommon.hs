@@ -11,6 +11,8 @@ import Control.Monad.Except
 import Control.Monad.Identity
 import Control.Monad.State hiding (modify)
 
+import Debug.Trace
+
 import BwdFwd
 import FreshNames
 import Syntax
@@ -18,9 +20,10 @@ import Syntax
 newtype Contextual a = Contextual
                        { unCtx :: StateT TCState (FreshMT (Except String)) a}
 
-type IdCmdInfoMap = M.Map Id (Id,[VType Desugared],[VType Desugared],
-                              VType Desugared)
-type CtrInfoMap = M.Map (Id,Id) ([Id], [VType Desugared],[VType Desugared])
+type IdCmdInfoMap = M.Map Id (Id,[VType Desugared],
+                              [VType Desugared],VType Desugared)
+type CtrInfoMap = M.Map (Id,Id) ([AbMod Desugared], [VType Desugared],
+                                 [VType Desugared])
 
 data TCState = MkTCState
   { ctx :: Context
@@ -38,14 +41,28 @@ deriving instance MonadState TCState Contextual
 deriving instance MonadError String Contextual
 deriving instance GenFresh Contextual
 
-data Entry = FlexTVar Id Decl
+data Entry = FlexTVar Id Decl | FlexEVar Id AbDecl
            | TermVar Operator (VType Desugared) | Mark
            deriving (Show)
 data Decl = Hole | Defn (VType Desugared)
           deriving (Show)
+data AbDecl = AbHole | AbDefn (Ab Desugared)
+            deriving (Show)
 type Context = Bwd Entry
 type TermBinding = (Operator, VType Desugared)
 type Suffix = [(Id, Decl)]
+type AbSuffix = [(Id, AbDecl)]
+
+-- Only to be applied to identifiers representing rigid or flexible
+-- metavariables (type or effect).
+trimTVar :: Id -> Id
+trimTVar = takeWhile (/= '$')
+
+freshEVar :: Id -> Contextual Id
+freshEVar x = do n <- fresh
+                 let s = trimTVar x ++ "$f" ++ (show n)
+                 modify (:< FlexEVar s AbHole)
+                 return s
 
 fmv :: VType Desugared -> S.Set Id
 fmv (MkDTTy _ abs xs) = S.union (foldMap fmvAb abs) (foldMap fmv xs)
@@ -57,13 +74,15 @@ fmv MkIntTy = S.empty
 fmv MkCharTy = S.empty
 
 fmvAb :: Ab Desugared -> S.Set Id
-fmvAb MkEmpAb = S.empty
-fmvAb MkOpenAb = S.empty -- possibly return some constant ftvar here?
-fmvAb (MkAbPlus ab _ xs) = S.union (fmvAb ab) (foldMap fmv xs)
+fmvAb (MkAb v m) = S.union (fmvAbMod v) (foldMap (foldMap fmv) (M.elems m))
+
+fmvAbMod :: AbMod Desugared -> S.Set Id
+fmvAbMod MkEmpAb = S.empty
+fmvAbMod (MkAbRVar _) = S.empty
+fmvAbMod (MkAbFVar x) = S.singleton x
 
 fmvAdj :: Adj Desugared -> S.Set Id
-fmvAdj MkIdAdj = S.empty
-fmvAdj (MkAdjPlus adj _ xs) = S.union (fmvAdj adj) (foldMap fmv xs)
+fmvAdj (MkAdj m) = foldMap (foldMap fmv) (M.elems m)
 
 fmvCType :: CType Desugared -> S.Set Id
 fmvCType (MkCType ps q) = S.union (foldMap fmvPort ps) (fmvPeg q)
@@ -76,6 +95,12 @@ fmvPort (MkPort adj ty) = S.union (fmvAdj adj) (fmv ty)
 
 entrify :: Suffix -> [Entry]
 entrify = map $ uncurry FlexTVar
+
+entrifyAbs :: AbSuffix -> [Entry]
+entrifyAbs = map $ uncurry FlexEVar
+
+liftAbMod :: AbMod a -> Ab a
+liftAbMod v = MkAb v M.empty
 
 getContext :: Contextual Context
 getContext = do s <- get
@@ -112,14 +137,15 @@ purgeMarks = do s <- get
         skim 0 es = es
         skim n (es :< Mark) = skim (n-1) es
         skim n (es :< _) = skim n es
-
-getCmd :: Id -> Contextual (Id,[VType Desugared],[VType Desugared],
-                            VType Desugared)
+        
+getCmd :: Id -> Contextual (Id,[VType Desugared],
+                            [VType Desugared],VType Desugared)
 getCmd cmd = get >>= \s -> case M.lookup cmd (cmdMap s) of
   Nothing -> error $ "invariant broken: " ++ show cmd ++ " not a command"
   Just (itf, qs, xs, y) -> return (itf, qs, xs, y)
 
-getCtr :: Id -> Id -> Contextual ([Id], [VType Desugared], [VType Desugared])
+getCtr :: Id -> Id -> Contextual ([AbMod Desugared],[VType Desugared],
+                                  [VType Desugared])
 getCtr k dt = get >>= \s -> case M.lookup (dt,k) (ctrMap s) of
   Nothing -> throwError $
              "'" ++ k ++ "' is not a constructor of '" ++ dt ++ "'"
@@ -143,7 +169,8 @@ initContextual (MkProg xs) =
      return (MkProg xs)
   where f :: DataT Desugared -> Contextual ()
         f (MkDT dt es ps cs) = let ps' = map MkRTVar ps in
-          mapM_ (\(MkCtr ctr xs) -> addCtr dt ctr es ps' xs) cs
+          let es' = map MkAbRVar es in
+          mapM_ (\(MkCtr ctr xs) -> addCtr dt ctr es' ps' xs) cs
 
         g :: Itf Desugared -> Contextual ()
         g (MkItf itf ps cs) = let ps' = map MkRTVar ps in
@@ -153,7 +180,7 @@ initContextual (MkProg xs) =
         h (MkDef id ty _) = modify (:< TermVar (MkPoly id) (MkSCTy ty))
 
 initTCState :: TCState
-initTCState = MkTCState BEmp MkEmpAb M.empty M.empty []
+initTCState = MkTCState BEmp (MkAb MkEmpAb M.empty) M.empty M.empty []
 
 -- Only to be used for initialising the contextual monad
 addCmd :: Id -> Id -> [VType Desugared] -> [VType Desugared] ->
@@ -161,7 +188,7 @@ addCmd :: Id -> Id -> [VType Desugared] -> [VType Desugared] ->
 addCmd cmd itf ps xs q = get >>= \s ->
   put $ s { cmdMap = M.insert cmd (itf, ps, xs, q) (cmdMap s) }
 
-addCtr :: Id -> Id -> [Id] -> [VType Desugared] -> [VType Desugared] ->
-          Contextual ()
+addCtr :: Id -> Id -> [AbMod Desugared] -> [VType Desugared] ->
+          [VType Desugared] -> Contextual ()
 addCtr dt ctr es ps xs = get >>= \s ->
   put $ s { ctrMap = M.insert (dt,ctr) (es,ps,xs) (ctrMap s) }

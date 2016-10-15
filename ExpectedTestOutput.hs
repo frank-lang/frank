@@ -1,6 +1,8 @@
 {-# LANGUAGE DataKinds #-}
 module ExpectedTestOutput where
 
+import qualified Data.Map.Strict as M
+
 import Syntax
 
 expected :: [IO (Prog Raw)]
@@ -9,20 +11,19 @@ expected = [
   return $
   MkProg
   [MkItfTm (MkItf "State" ["X"]
-            [MkCmd "get" [] (MkDTTy "X" [MkEmpAb] [])
-            ,MkCmd "put" [MkDTTy "X" [MkEmpAb] []]
-                          (MkDTTy "Unit" [MkEmpAb] [])])
+            [MkCmd "get" [] (MkDTTy "X" [MkAb MkEmpAb M.empty] [])
+            ,MkCmd "put" [MkDTTy "X" [MkAb MkEmpAb M.empty] []]
+                          (MkDTTy "Unit" [MkAb MkEmpAb M.empty] [])])
   ,MkSigTm (MkSig "evalState"
-            (MkCType [ MkPort MkIdAdj (MkDTTy "X" [MkEmpAb] [])
-                     , MkPort (MkAdjPlus MkIdAdj "State"
-                               [MkDTTy "X" [MkEmpAb] []])
-                       (MkDTTy "Y" [MkEmpAb] [])]
-             (MkPeg MkOpenAb (MkDTTy "Y" [MkEmpAb] []))))
+            (MkCType [ MkPort (MkAdj M.empty) (MkDTTy "X" [MkAb MkEmpAb M.empty] [])
+                     , MkPort (MkAdj (M.fromList [("State",[MkDTTy "X"[MkAb MkEmpAb M.empty] []])]))
+                       (MkDTTy "Y" [MkAb MkEmpAb M.empty] [])]
+             (MkPeg (MkAb (MkAbVar "£") M.empty) (MkDTTy "Y" [MkAb MkEmpAb M.empty] []))))
   ,MkClsTm (MkMHCls "evalState"
             (MkCls [MkVPat (MkVarPat "x")
                    ,MkCmdPat "put" [MkVarPat "x'"] "k"]
              (MkRawComb "evalState" [MkRawId "x'"
-                                    ,MkRawComb "k" [MkRawId "Unit"]])))
+                                    ,MkRawComb "k" [MkRawId "unit"]])))
   ,MkClsTm (MkMHCls "evalState"
             (MkCls [MkVPat (MkVarPat "x")
                    ,MkCmdPat "get" [] "k"]
@@ -31,7 +32,7 @@ expected = [
   ,MkClsTm (MkMHCls "evalState" (MkCls [MkVPat (MkVarPat "x")
                                        ,MkVPat (MkVarPat "y")]
                                  (MkRawId "y")))
-  ,MkSigTm (MkSig "main" (MkCType [] (MkPeg MkOpenAb MkStringTy)))
+  ,MkSigTm (MkSig "main" (MkCType [] (MkPeg (MkAb (MkAbVar "£") M.empty) MkStringTy)))
   ,MkClsTm (MkMHCls "main"
             (MkCls []
              (MkRawComb "evalState"
@@ -46,12 +47,12 @@ expected = [
    MkProg
    [MkSigTm (MkSig "map"
              (MkCType
-              [MkPort MkIdAdj
-               (MkSCTy (MkCType [MkPort MkIdAdj
-                                 (MkDTTy "a" [MkEmpAb] [])]
-                        (MkPeg MkOpenAb (MkDTTy "b" [MkEmpAb] []))))
-              ,MkPort MkIdAdj (MkDTTy "List" [MkEmpAb] [MkTVar "a"])]
-              (MkPeg MkOpenAb (MkDTTy "List" [MkEmpAb] [MkTVar "b"]))))
+              [MkPort (MkAdj M.empty)
+               (MkSCTy (MkCType [MkPort (MkAdj M.empty)
+                                 (MkDTTy "a" [MkAb MkEmpAb M.empty] [])]
+                        (MkPeg (MkAb (MkAbVar "£") M.empty) (MkDTTy "b" [MkAb MkEmpAb M.empty] []))))
+              ,MkPort (MkAdj M.empty) (MkDTTy "List" [MkAb MkEmpAb M.empty] [MkTVar "a"])]
+              (MkPeg (MkAb (MkAbVar "£") M.empty) (MkDTTy "List" [MkAb MkEmpAb M.empty] [MkTVar "b"]))))
   ,MkClsTm (MkMHCls "map" (MkCls [MkVPat (MkVarPat "f")
                                  ,MkVPat (MkVarPat "nil")] (MkRawId "nil")))
   ,MkClsTm (MkMHCls "map" (MkCls [MkVPat (MkVarPat "f")
@@ -60,8 +61,8 @@ expected = [
                            (MkRawComb "cons"
                             [MkRawComb "f" [MkRawId "x"]
                             ,MkRawComb "map" [MkRawId "f",MkRawId "xs"]])))
-  ,MkSigTm (MkSig "main" (MkCType [] (MkPeg MkOpenAb
-                                      (MkDTTy "List" [MkEmpAb] [MkIntTy]))))
+  ,MkSigTm (MkSig "main" (MkCType [] (MkPeg (MkAb (MkAbVar "£") M.empty)
+                                      (MkDTTy "List" [MkAb MkEmpAb M.empty] [MkIntTy]))))
   ,MkClsTm (MkMHCls "main"
             (MkCls [] (MkRawComb "map"
                        [MkSC (MkSComp [MkCls [MkVPat (MkVarPat "xs")]
@@ -78,16 +79,16 @@ expected = [
                                         ,MkCtr "Twice" []
                                         ,MkCtr "Thrice" []])
           ,MkSigTm (MkSig "id"
-                    (MkCType [MkPort MkIdAdj (MkDTTy "a" [MkEmpAb] [])]
-                     (MkPeg MkOpenAb (MkDTTy "a" [MkEmpAb] []))))
+                    (MkCType [MkPort (MkAdj M.empty) (MkDTTy "a" [MkAb MkEmpAb M.empty] [])]
+                     (MkPeg (MkAb (MkAbVar "£") M.empty) (MkDTTy "a" [MkAb MkEmpAb M.empty] []))))
           ,MkClsTm (MkMHCls "id"
                     (MkCls [MkVPat (MkVarPat "x")] (MkRawId "x")))
           ,MkSigTm (MkSig "foo"
-                    (MkCType [MkPort MkIdAdj (MkDTTy "Three" [MkEmpAb] [])]
-                     (MkPeg MkOpenAb
+                    (MkCType [MkPort (MkAdj M.empty) (MkDTTy "Three" [MkAb MkEmpAb M.empty] [])]
+                     (MkPeg (MkAb (MkAbVar "£") M.empty)
                       (MkSCTy (MkCType
-                               [MkPort MkIdAdj (MkDTTy "Three" [MkEmpAb] [])]
-                               (MkPeg MkOpenAb MkIntTy))))))
+                               [MkPort (MkAdj M.empty) (MkDTTy "Three" [MkAb MkEmpAb M.empty] [])]
+                               (MkPeg (MkAb (MkAbVar "£") M.empty) MkIntTy))))))
           ,MkClsTm (MkMHCls "foo"
                     (MkCls [MkVPat (MkVarPat "Once")]
                      (MkRawComb "id"
@@ -108,8 +109,8 @@ expected = [
                              ,MkCls [MkVPat (MkVarPat "x")] (MkInt 2)])])))]
    -- tests/fib.fk
   , return $ MkProg [MkSigTm (MkSig "fib"
-                              (MkCType [MkPort MkIdAdj MkIntTy]
-                               (MkPeg MkOpenAb MkIntTy)))
+                              (MkCType [MkPort (MkAdj M.empty) MkIntTy]
+                               (MkPeg (MkAb (MkAbVar "£") M.empty) MkIntTy)))
                     ,MkClsTm (MkMHCls "fib"
                               (MkCls [MkVPat (MkIntPat 0)] (MkInt 0)))
                     ,MkClsTm (MkMHCls "fib"
@@ -125,8 +126,8 @@ expected = [
                         , MkRawComb "fib" [MkRawComb "-" [MkRawId "n"
                                                          ,MkInt 2]]])))
                     ,MkSigTm (MkSig "minusTwoOnZero"
-                              (MkCType [MkPort MkIdAdj MkIntTy]
-                               (MkPeg MkOpenAb MkIntTy)))
+                              (MkCType [MkPort (MkAdj M.empty) MkIntTy]
+                               (MkPeg (MkAb (MkAbVar "£") M.empty) MkIntTy)))
                     ,MkClsTm
                      (MkMHCls "minusTwoOnZero"
                       (MkCls [MkVPat (MkIntPat 0)]
@@ -135,7 +136,7 @@ expected = [
                      (MkMHCls "minusTwoOnZero"
                       (MkCls [MkVPat (MkVarPat "n")] (MkInt 0)))
                     ,MkSigTm (MkSig "main"
-                              (MkCType [] (MkPeg MkOpenAb MkIntTy)))
+                              (MkCType [] (MkPeg (MkAb (MkAbVar "£") M.empty) MkIntTy)))
                     ,MkClsTm (MkMHCls "main"
                               (MkCls [] (MkRawComb "fib" [MkInt 5])))
                     ]

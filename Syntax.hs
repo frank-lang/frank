@@ -5,6 +5,8 @@
 -- The raw abstract syntax and (refined) abstract syntax for Frank
 module Syntax where
 
+import qualified Data.Map.Strict as M
+
 {-------------------}
 {-- Syntax description: raw syntax comes from the parser and preprocessed into
     refined syntax. --}
@@ -146,13 +148,27 @@ data VType a where
 deriving instance (Show) (VType a)
 deriving instance (Eq) (VType a)
 
+type ItfMap a = M.Map Id [VType a]
+
 -- Adjustments
-data Adj a = MkIdAdj | MkAdjPlus (Adj a) Id [VType a]
+data Adj a = MkAdj (ItfMap a)
            deriving (Show, Eq)
 
 -- Abilities
-data Ab a = MkEmpAb | MkAbPlus (Ab a) Id [VType a] | MkOpenAb | MkAbVar Id
+data Ab a = MkAb (AbMod a) (ItfMap a)
           deriving (Show, Eq)
+  
+data AbMod a where
+  MkEmpAb :: AbMod a
+  MkAbVar :: NotDesugared a => Id -> AbMod a
+  MkAbRVar :: Id -> AbMod Desugared
+  MkAbFVar :: Id -> AbMod Desugared
+
+deriving instance Show (AbMod a)
+deriving instance Eq (AbMod a)
+
+idAdj :: Adj a
+idAdj = MkAdj M.empty
 
 getItfs :: [TopTm a] -> [Itf a]
 getItfs xs = getItfs' xs []
@@ -190,6 +206,7 @@ getDefs xs = getDefs' xs []
         getDefs' [] ys = ys
 
 -- Convert ability to a list of interface names and effect variables
+{-
 abToList :: Ab a -> [Id]
 abToList MkEmpAb = []
 abToList (MkAbVar id) = [id]
@@ -226,10 +243,10 @@ substOpenAbPeg ab (MkPeg ab' ty) =
 substOpenAbPort :: Ab a -> Port a -> Port a
 substOpenAbPort ab (MkPort adj ty) =
   MkPort (substOpenAbAdj ab adj) (substOpenAb ab ty)
+-}
 
 plus :: Ab a -> Adj a -> Ab a
-plus ab MkIdAdj = ab
-plus ab (MkAdjPlus adj itf xs) = MkAbPlus (plus ab adj) itf xs
+plus (MkAb v m) (MkAdj m') = MkAb v (M.union m' m)
 
 getOpName :: Operator -> Id
 getOpName (MkMono x) = x

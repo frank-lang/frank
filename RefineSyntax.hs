@@ -6,7 +6,7 @@ import Control.Monad
 import Control.Monad.Except
 import Control.Monad.State
 import Data.List
-import qualified Data.Map as M
+import qualified Data.Map.Strict as M
 import qualified Data.Set as S
 
 import Syntax
@@ -224,45 +224,43 @@ refinePeg (MkPeg ab ty) = do ab' <- refineAb ab
                              return $ MkPeg ab' ty'
 
 refineAb :: Ab Raw -> Refine (Ab Refined)
-refineAb ab =
-  do es <- getEVars ab
-     if null es then refineAb' ab MkOpenAb
-     else if length es == 1 then refineAb' ab (MkAbVar (head es))
+refineAb ab@(MkAb v m) =
+  do es <- getEVars $ M.toList m
+     if null es then do m' <- refineItfMap m
+                        return $ MkAb (refineAbMod v) m'
+     else if length es == 1 then do let u = head es
+                                    m' <- refineItfMap (M.delete u m)
+                                    return $ MkAb (MkAbVar u) m'
      else throwError $ "ability has multiple effect variables " ++ (show es)
 
-getEVars :: Ab Raw -> Refine [Id]
-getEVars MkEmpAb = return []
-getEVars MkOpenAb = return [] -- raw, will be replaced by any explicit
-                              -- effect variable
-getEVars (MkAbPlus ab id _) =
-  do es <- getEVars ab
-     m <- getEVSet
-     if S.member id m then return $ id : es
-     else return es
-getEVars _ = error "ability parsing invariant broken"
-
-refineAb' :: Ab Raw -> Ab Refined -> Refine (Ab Refined)
-refineAb' MkEmpAb _ = return MkEmpAb
-refineAb' (MkAbVar x) _ = return $ MkAbVar x
-refineAb' (MkAbPlus ab' id xs) ab =
-  do m <- getEVSet
-     itfs <- getRItfs
-     if id `elem` itfs then do xs' <- mapM refineVType xs
-                               ab'' <- refineAb' ab' ab
-                               return $ MkAbPlus ab'' id xs'
-     else if S.member id m then
-       if length xs == 0 then refineAb' ab' ab
+getEVars :: [(Id,[VType Raw])] -> Refine [Id]
+getEVars ((x,ts) : ys) =
+  do p <- getEVSet
+     es <- getEVars ys
+     if S.member x p then
+       if length ts == 0 then return $ x : es
        else throwError $
-            "effect variable " ++ id ++ " may not take parameters"
-     else throwError $ "no such effect variable or interface " ++ id
-refineAb' MkOpenAb ab = return ab
+            "effect variable " ++ x ++ " may not take parameters"
+     else return es
+getEVars [] = return []
 
+refineItfMap :: ItfMap Raw -> Refine (ItfMap Refined)
+refineItfMap m = do xs <- mapM (uncurry refineEntry) (M.toList m)
+                    return $ M.fromList xs
+  where refineEntry :: Id -> [VType Raw] -> Refine (Id, [VType Refined])
+        refineEntry id xs =
+          do itfs <- getRItfs
+             if id `elem` itfs then do xs' <- mapM refineVType xs
+                                       return (id, xs')
+             else throwError $ "no such effect variable or interface " ++ id
+
+refineAbMod :: AbMod Raw -> AbMod Refined
+refineAbMod MkEmpAb = MkEmpAb
+refineAbMod (MkAbVar x) = MkAbVar x
 
 refineAdj :: Adj Raw -> Refine (Adj Refined)
-refineAdj (MkAdjPlus adj id xs) = do xs' <- mapM refineVType xs
-                                     adj' <- refineAdj adj
-                                     return $ MkAdjPlus adj' id xs'
-refineAdj MkIdAdj = return MkIdAdj
+refineAdj (MkAdj m) = do m' <- mapM (mapM refineVType) m
+                         return $ MkAdj m'
 
 refineVType :: VType Raw -> Refine (VType Refined)
 -- Check that dt is a datatype, otherwise it must have been a type variable.
@@ -372,14 +370,15 @@ builtinCmds :: [Id]
 builtinCmds = ["putStrLn"]
 
 makeIntBinOp :: Char -> MHDef Refined
-makeIntBinOp c = MkDef [c] (MkCType [MkPort MkIdAdj MkIntTy
-                                    ,MkPort MkIdAdj MkIntTy]
-                            (MkPeg MkOpenAb MkIntTy)) []
+makeIntBinOp c = MkDef [c] (MkCType [MkPort (MkAdj M.empty) MkIntTy
+                                    ,MkPort (MkAdj M.empty) MkIntTy]
+                            (MkPeg (MkAb (MkAbVar "£") M.empty) MkIntTy)) []
 
 builtinMHDefs :: [MHDef Refined]
-builtinMHDefs = [MkDef "strcat" (MkCType [MkPort MkIdAdj MkStringTy
-                                         ,MkPort MkIdAdj MkStringTy]
-                                 (MkPeg MkOpenAb MkStringTy)) []] ++
+builtinMHDefs = [MkDef "strcat"
+                 (MkCType [MkPort (MkAdj M.empty) MkStringTy
+                          ,MkPort (MkAdj M.empty) MkStringTy]
+                  (MkPeg (MkAb (MkAbVar "£") M.empty) MkStringTy)) []] ++
                 (map makeIntBinOp "+-")
 
 builtinMHs :: [Id]

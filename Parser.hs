@@ -13,6 +13,7 @@ import Text.Trifecta
 import "indentation-trifecta" Text.Trifecta.Indentation
 
 import Data.Char
+import qualified Data.Map.Strict as M
 import Text.Parser.Token as Tok
 import Text.Parser.Token.Style
 import qualified Text.Parser.Token.Highlight as Hi
@@ -140,43 +141,32 @@ parsePeg = do ab <- parseAb
               return $ MkPeg ab ty
 
 parseAdj :: MonadicParsing m => m (Adj Raw)
-parseAdj = do adj <- optional $ angles (sepBy parseAdj' (symbol ","))
-              case adj of
-                Nothing -> return MkIdAdj
-                Just es -> return $ makeAdj es MkIdAdj
+parseAdj = do mxs <- optional $ angles (sepBy parseAdj' (symbol ","))
+              case mxs of
+                Nothing -> return $ MkAdj M.empty
+                Just xs -> return $ MkAdj (M.fromList xs)
 
-parseAdj' :: MonadicParsing m => m (Adj Raw)
+parseAdj' :: MonadicParsing m => m (Id, [VType Raw])
 parseAdj' = do x <- identifier
                ts <- many parseVType
-               return (MkAdjPlus MkIdAdj x ts)
-
-makeAdj :: [Adj Raw] -> Adj Raw -> Adj Raw
-makeAdj ((MkAdjPlus MkIdAdj id ts) : adjs) adj =
-  makeAdj adjs (MkAdjPlus adj id ts)
-makeAdj [] adj = adj
-makeAdj _ _ = error "expected identity adjustment"
+               return (x, ts)
 
 parseDTAb :: MonadicParsing m => m (Ab Raw)
-parseDTAb = do ab <- optional $ brackets (sepBy parseAb' (symbol ","))
-               case ab of
-                 Nothing -> return $ MkEmpAb -- pure data types
-                 Just es -> return $ makeAb es MkOpenAb
+parseDTAb = do mxs <- optional $ brackets (sepBy parseAb' (symbol ","))
+               case mxs of
+                 Nothing -> return $ MkAb MkEmpAb M.empty -- pure data types
+                 Just xs -> return $ MkAb (MkAbVar "£") (M.fromList xs)
 
 parseAb :: MonadicParsing m => m (Ab Raw)
-parseAb = do ab <- optional $ brackets (sepBy parseAb' (symbol ","))
-             case ab of
-               Nothing -> return MkOpenAb
-               Just es -> return $ makeAb es MkOpenAb
+parseAb = do mxs <- optional $ brackets (sepBy parseAb' (symbol ","))
+             case mxs of
+               Nothing -> return $ MkAb (MkAbVar "£") M.empty
+               Just xs -> return $ MkAb (MkAbVar "£") (M.fromList xs)
 
-parseAb' :: MonadicParsing m => m (Ab Raw)
+parseAb' :: MonadicParsing m => m (Id, [VType Raw])
 parseAb' = do x <- identifier
               ts <- many parseVType
-              return (MkAbPlus MkOpenAb x ts)
-
-makeAb :: [Ab Raw] -> Ab Raw -> Ab Raw
-makeAb ((MkAbPlus MkOpenAb id ts) : abs) ab = makeAb abs (MkAbPlus ab id ts)
-makeAb [] ab = ab
-makeAb _ _ = error "expected open ability"
+              return (x, ts)
 
 parseVType :: MonadicParsing m => m (VType Raw)
 parseVType = try parseDTType <|>

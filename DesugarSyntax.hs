@@ -16,7 +16,10 @@ type Desugar = StateT DState (FreshMT Identity)
 
 type IdTVMap = M.Map Id (VType Desugared)
 
-data DState = MkDState { env :: IdTVMap }
+type IdAbModMap = M.Map Id (AbMod Desugared)
+
+data DState = MkDState { env :: IdTVMap
+                       , abModEnv :: IdAbModMap }
 
 getDState :: Desugar DState
 getDState = get
@@ -40,8 +43,17 @@ getEnv :: Desugar IdTVMap
 getEnv = do s <- getDState
             return $ env s
 
+putAbModEnv :: IdAbModMap -> Desugar ()
+putAbModEnv p = do s <- getDState
+                   putDState $ s { abModEnv = p }
+
+getAbModEnv :: Desugar IdAbModMap
+getAbModEnv = do s <- getDState
+                 return $ abModEnv s
+
+
 initDState :: DState 
-initDState = MkDState M.empty
+initDState = MkDState M.empty M.empty
 
 desugar :: Prog Refined -> Prog Desugared
 desugar (MkProg xs) = MkProg $ evalFresh m
@@ -114,17 +126,24 @@ desugarPeg :: Peg Refined -> Desugar (Peg Desugared)
 desugarPeg (MkPeg ab ty) = MkPeg <$> desugarAb ab <*> desugarVType ty
 
 desugarAb :: Ab Refined -> Desugar (Ab Desugared)
-desugarAb (MkAbPlus ab id xs) = do ab' <- desugarAb ab
-                                   xs' <- mapM desugarVType xs
-                                   return $ MkAbPlus ab' id xs'
-desugarAb MkEmpAb = return MkEmpAb
-desugarAb MkOpenAb = return MkOpenAb
+desugarAb (MkAb v m) = do v' <- desugarAbMod v
+                          m' <- mapM (mapM desugarVType) m
+                          return $ MkAb v' m'
+
+desugarAbMod :: AbMod Refined -> Desugar (AbMod Desugared)
+desugarAbMod MkEmpAb = return MkEmpAb
+desugarAbMod (MkAbVar x) =
+  do env <- getAbModEnv
+     case M.lookup x env of
+       Nothing -> do n <- fresh
+                     let var = MkAbRVar (x ++ "$r" ++ (show n))
+                     putAbModEnv $ M.insert x var env
+                     return var
+       Just var -> return var
+
 
 desugarAdj :: Adj Refined -> Desugar (Adj Desugared)
-desugarAdj (MkAdjPlus adj id xs) = do adj' <- desugarAdj adj
-                                      xs' <- mapM desugarVType xs
-                                      return $ MkAdjPlus adj' id xs'
-desugarAdj MkIdAdj = return MkIdAdj
+desugarAdj (MkAdj m) = MkAdj <$> mapM (mapM desugarVType) m
 
 -- Clauses (and constituents) unaffected between Refined/Desugared phase
 desugarClause :: Clause Refined -> Desugar (Clause Desugared)
@@ -158,7 +177,7 @@ testProg = MkProg $
                                                   ,MkCtr "two" [MkTVar "X"
                                                                ,MkTVar "Y"]]
            ,MkDataTm $ MkDT "TypeB" [] ["X"] [MkCtr "Just" [MkTVar "X"]]
-           ,MkDefTm $ MkDef "k" (MkCType [MkPort MkIdAdj (MkTVar "X")
-                                         ,MkPort MkIdAdj (MkTVar "Y")]
-                                 (MkPeg MkOpenAb (MkTVar "X"))) []]
+           ,MkDefTm $ MkDef "k" (MkCType [MkPort (MkAdj M.empty) (MkTVar "X")
+                                         ,MkPort (MkAdj M.empty) (MkTVar "Y")]
+                                 (MkPeg (MkAb (MkAbVar "£") M.empty) (MkTVar "X"))) []]
 
