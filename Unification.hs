@@ -51,7 +51,6 @@ unify (MkDTTy dt0 abs0 xs) (MkDTTy dt1 abs1 ys)
                  mapM_ (uncurry unify) (zip xs ys)
 unify (MkSCTy cty0) (MkSCTy cty1) = unifyCType cty0 cty1
 unify (MkRTVar a)  (MkRTVar b) | a == b = return ()
-unify MkStringTy   MkStringTy        = return ()
 unify MkIntTy      MkIntTy           = return ()
 unify MkCharTy     MkCharTy          = return ()
 unify (MkFTVar a)  (MkFTVar b)       = onTop $ \c d ->
@@ -65,7 +64,8 @@ unify (MkFTVar a)  (MkFTVar b)       = onTop $ \c d ->
         cmp False False _         = unify (MkFTVar a) (MkFTVar b) >> restore
 unify (MkFTVar a)  ty                = solve a [] ty
 unify ty           (MkFTVar a)       = solve a [] ty
-unify _            _                 = throwError "Rigid-rigid mismatch"
+unify t            s                 = throwError $ "failed to unify " ++
+                                       (show t) ++ " with " ++ (show s)
 
 unifyAb :: Ab Desugared -> Ab Desugared -> Contextual ()
 unifyAb (MkAb (MkAbFVar a) m0) (MkAb (MkAbFVar b) m1) =
@@ -80,7 +80,7 @@ unifyAb (MkAb v m0) (MkAb (MkAbFVar a) m1) | M.null (M.difference m1 m0) =
   let m = M.difference m0 m1 in solveForEVar a [] (MkAb v m)
 unifyAb (MkAb v0 m0) (MkAb v1 m1) | v0 == v1 = unifyItfMap m0 m1
 unifyAb ab0 ab1 =
-  throwError $ "cannot unify abilities: " ++ (show ab0) ++ " and " ++
+  throwError $ "cannot unify abilities " ++ (show ab0) ++ " and " ++
   (show ab1)
 
 unifyItfMap :: ItfMap Desugared -> ItfMap Desugared -> Contextual ()
@@ -121,7 +121,7 @@ solveForEVar a ext ab = onTopEVar $ \b d ->
       restore
     (True, True, AbHole) -> throwError "solveForEvar: occurs check failure"
     (True, False, AbHole) -> replaceAbs (ext ++ [(a, AbDefn ab)])
-    (False, True, AbHole) -> solveForEVar a ((b,d):ext) ab >> replace []
+    (False, True, AbHole) -> solveForEVar a ((b,d):ext) ab >> replaceAbs []
     (False, False, AbHole) -> solveForEVar a ext ab >> restore
 
 subst :: VType Desugared -> Id -> VType Desugared -> VType Desugared

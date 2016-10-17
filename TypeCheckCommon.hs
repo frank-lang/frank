@@ -22,8 +22,8 @@ newtype Contextual a = Contextual
 
 type IdCmdInfoMap = M.Map Id (Id,[VType Desugared],
                               [VType Desugared],VType Desugared)
-type CtrInfoMap = M.Map (Id,Id) ([AbMod Desugared], [VType Desugared],
-                                 [VType Desugared])
+type CtrInfoMap = M.Map Id (Id,[AbMod Desugared],
+                            [VType Desugared],[VType Desugared])
 
 data TCState = MkTCState
   { ctx :: Context
@@ -144,12 +144,12 @@ getCmd cmd = get >>= \s -> case M.lookup cmd (cmdMap s) of
   Nothing -> error $ "invariant broken: " ++ show cmd ++ " not a command"
   Just (itf, qs, xs, y) -> return (itf, qs, xs, y)
 
-getCtr :: Id -> Id -> Contextual ([AbMod Desugared],[VType Desugared],
-                                  [VType Desugared])
-getCtr k dt = get >>= \s -> case M.lookup (dt,k) (ctrMap s) of
+getCtr :: Id -> Contextual (Id,[AbMod Desugared],
+                            [VType Desugared],[VType Desugared])
+getCtr k = get >>= \s -> case M.lookup k (ctrMap s) of
   Nothing -> throwError $
-             "'" ++ k ++ "' is not a constructor of '" ++ dt ++ "'"
-  Just (es, ps, xs) -> return (es, ps, xs)
+             "'" ++ k ++ "' is not a constructor"
+  Just (dt, es, ps, xs) -> return (dt, es, ps, xs)
 
 popEntry :: Contextual Entry
 popEntry = do es :< e <- getContext
@@ -191,4 +191,4 @@ addCmd cmd itf ps xs q = get >>= \s ->
 addCtr :: Id -> Id -> [AbMod Desugared] -> [VType Desugared] ->
           [VType Desugared] -> Contextual ()
 addCtr dt ctr es ps xs = get >>= \s ->
-  put $ s { ctrMap = M.insert (dt,ctr) (es,ps,xs) (ctrMap s) }
+  put $ s { ctrMap = M.insert ctr (dt,es,ps,xs) (ctrMap s) }

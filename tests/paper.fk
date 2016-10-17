@@ -57,8 +57,8 @@ abort! = on aborting! {}
 sends : List X -> [Send X]Unit
 sends xs = map send xs; unit
 
-bad : List X -> Unit
-bad xs = map send xs; unit
+--bad : List X -> Unit
+--bad xs = map send xs; unit
 
 catter : [Receive (List a)]List a
 catter! = on receive! { nil -> nil
@@ -80,13 +80,14 @@ pipe   <send x -> s>    <receive -> r> = pipe (s unit) (r x)
 pipe        <_>                y       = y
 pipe        unit              <_>      = abort!
 
-eg1 : List Char
+eg1 : [Abort]List Char
 eg1! = pipe (sends (cons "do" (cons "be" (cons "" nil)))) catter!
 
 spacer : [Send (List Char), Receive (List Char)]Unit
 spacer! = send receive!; send " "; spacer!
 
-eg2 : List Char
+
+eg2 : [Abort]List Char
 eg2! = pipe (sends (cons "do" (cons "be" (cons "" nil))))
             (pipe spacer! catter!)
 

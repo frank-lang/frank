@@ -141,7 +141,7 @@ data VType a where
   MkTVar :: NotDesugared a => Id -> VType a
   MkRTVar :: Id -> VType Desugared
   MkFTVar :: Id -> VType Desugared
-  MkStringTy :: VType a
+  MkStringTy :: NotDesugared a => VType a
   MkIntTy :: VType a
   MkCharTy :: VType a
 
@@ -169,6 +169,9 @@ deriving instance Eq (AbMod a)
 
 idAdj :: Adj a
 idAdj = MkAdj M.empty
+
+desugaredStrTy :: [Ab Desugared] -> VType Desugared
+desugaredStrTy abs = MkDTTy "List" abs [MkCharTy]
 
 getItfs :: [TopTm a] -> [Itf a]
 getItfs xs = getItfs' xs []

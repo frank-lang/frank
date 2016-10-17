@@ -277,7 +277,10 @@ refineVType (MkDTTy x abs xs) =
                    if isHdrCtxt ctx || M.member x m then return $ MkTVar x
                    else throwError $ "no type variable " ++ x ++ " defined"
 refineVType (MkSCTy ty) = refineCType ty >>= return . MkSCTy
-refineVType (MkTVar id) = return $ MkTVar id
+refineVType (MkTVar x) = do dts <- getRDTs
+                            case x `elem` dts of
+                              True -> return $ MkDTTy x [] []
+                              False -> return $ MkTVar x
 refineVType MkStringTy = return MkStringTy
 refineVType MkIntTy = return MkIntTy
 refineVType MkCharTy = return MkCharTy

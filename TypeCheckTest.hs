@@ -13,9 +13,8 @@ tcProg progName =
        Right prog -> case refine prog of
          Left err -> print err
          Right p' -> case check (desugar p') of
-             Left err -> print $
-                         "typechecking error:" ++ err
-             Right p' -> print "typechecking succeeded!"
+           Left err -> print err
+           Right p' -> print "typechecking succeeded!"
 
 main :: IO ()
 main = tcProg "paper"

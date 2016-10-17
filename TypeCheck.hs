@@ -16,6 +16,8 @@ import Data.List.Unique
 import qualified Data.Set as S
 import qualified Data.Map.Strict as M
 
+import Debug.Trace
+
 import BwdFwd
 import Syntax
 import FreshNames
@@ -35,8 +37,8 @@ find (MkCmdId x) =
   do amb <- getAmbient
      (itf, qs, ts, y) <- getCmd x
      case lkpItf itf amb of
-       Nothing -> throwError $ "command " ++ (show x) ++
-                  " belonging to interface " ++ (show itf) ++
+       Nothing -> throwError $ "command " ++ x ++
+                  " belonging to interface " ++ itf ++
                   " not permitted by ambient ability"
        Just ps ->
          do addMark
@@ -115,7 +117,7 @@ inferUse (MkApp f xs) =
 checkTm :: Tm Desugared -> VType Desugared -> Contextual ()
 checkTm (MkSC sc) (MkSCTy cty) = checkSComp sc cty
 checkTm MkLet _ = return ()
-checkTm (MkStr _) ty = unify MkStringTy ty
+checkTm (MkStr _) ty = unify (desugaredStrTy []) ty
 checkTm (MkInt _) ty = unify MkIntTy ty
 checkTm (MkChar _) ty = unify MkCharTy ty
 checkTm (MkTmSeq tm1 tm2) ty = do ftvar <- freshFTVar "seq"
@@ -123,14 +125,13 @@ checkTm (MkTmSeq tm1 tm2) ty = do ftvar <- freshFTVar "seq"
                                   checkTm tm2 ty
 checkTm (MkUse u) t = do s <- inferUse u
                          unify t s
-checkTm (MkDCon (MkDataCon k xs)) (MkDTTy dt abs ps) =
-  do (es, qs, ts) <- getCtr k dt
+checkTm (MkDCon (MkDataCon k xs)) ty =
+  do (dt, es, qs, ts) <- getCtr k
      addMark
      qs' <- mapM makeFlexible qs
      es' <- mapM (makeFlexibleAb . liftAbMod) es
      ts' <- mapM makeFlexible ts
-     mapM_ (uncurry unify) (zip ps qs')
-     mapM_ (uncurry unifyAb) (zip abs es')
+     unify ty (MkDTTy dt es' qs')
      mapM_ (uncurry checkTm) (zip xs ts')
 checkTm tm ty = throwError $
                 "failed to typecheck term " ++ show tm ++
@@ -183,20 +184,20 @@ contType x adj y =
 
 checkVPat :: ValuePat -> VType Desugared -> Contextual [TermBinding]
 checkVPat (MkVarPat x) ty = return [(MkMono x, ty)]
-checkVPat (MkDataPat k xs) (MkDTTy dt abs ps) =
-  do (es, qs, ts) <- getCtr k dt
+checkVPat (MkDataPat k xs) ty = --(MkDTTy dt abs ps) =
+  do (dt, es, qs, ts) <- getCtr k
      addMark
      qs' <- mapM makeFlexible qs
      es' <- mapM (makeFlexibleAb . liftAbMod) es
      ts' <- mapM makeFlexible ts
-     mapM_ (uncurry unify) (zip ps qs')
-     mapM_ (uncurry unifyAb) (zip abs es')
+     unify ty (MkDTTy dt es' qs')
      bs <- fmap concat $ mapM (uncurry checkVPat) (zip xs ts')
      return bs
 checkVPat (MkCharPat _) MkCharTy = return []
-checkVPat (MkStrPat _) MkStringTy = return []
+checkVPat (MkStrPat _) ty = unify ty (desugaredStrTy []) >> return []
 checkVPat (MkIntPat _) MkIntTy = return []
-checkVPat _ _ = throwError "failed to match value pattern and type"
+checkVPat p ty = throwError $ "failed to match value pattern " ++ (show p) ++
+                 " with type " ++ (show ty)
 
 -- Replace rigid type variables with flexible ones
 makeFlexible :: VType Desugared -> Contextual (VType Desugared)

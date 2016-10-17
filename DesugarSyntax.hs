@@ -111,7 +111,7 @@ desugarVType (MkDTTy dt abs xs) = do abs' <- mapM desugarAb abs
                                      xs' <- mapM desugarVType xs
                                      return $ MkDTTy dt abs' xs'
 desugarVType (MkSCTy ty) = MkSCTy <$> desugarCType ty
-desugarVType MkStringTy = return $ MkStringTy
+desugarVType MkStringTy = return $ desugaredStrTy []
 desugarVType MkIntTy = return $ MkIntTy
 desugarVType MkCharTy = return $ MkCharTy
                              
