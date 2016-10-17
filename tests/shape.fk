@@ -1,0 +1,11 @@
+-- Small tests to ensure typechecker enforces a shape on metavariables
+
+id : X -> X
+id x = x
+
+-- suspended computation shape; use of id
+k : X -> {Y -> X}
+k x = id {y -> x}
+
+main : Unit
+main! = unit

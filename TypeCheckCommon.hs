@@ -41,27 +41,24 @@ deriving instance MonadState TCState Contextual
 deriving instance MonadError String Contextual
 deriving instance GenFresh Contextual
 
-data Entry = FlexTVar Id Decl | FlexEVar Id AbDecl
+data Entry = FlexMVar Id Decl
            | TermVar Operator (VType Desugared) | Mark
            deriving (Show)
-data Decl = Hole | Defn (VType Desugared)
+data Decl = Hole | TyDefn (VType Desugared) | AbDefn (Ab Desugared)
           deriving (Show)
-data AbDecl = AbHole | AbDefn (Ab Desugared)
-            deriving (Show)
 type Context = Bwd Entry
 type TermBinding = (Operator, VType Desugared)
 type Suffix = [(Id, Decl)]
-type AbSuffix = [(Id, AbDecl)]
 
 -- Only to be applied to identifiers representing rigid or flexible
 -- metavariables (type or effect).
 trimTVar :: Id -> Id
 trimTVar = takeWhile (/= '$')
 
-freshEVar :: Id -> Contextual Id
-freshEVar x = do n <- fresh
+freshMVar :: Id -> Contextual Id
+freshMVar x = do n <- fresh
                  let s = trimTVar x ++ "$f" ++ (show n)
-                 modify (:< FlexEVar s AbHole)
+                 modify (:< FlexMVar s Hole)
                  return s
 
 fmv :: VType Desugared -> S.Set Id
@@ -94,10 +91,7 @@ fmvPort :: Port Desugared -> S.Set Id
 fmvPort (MkPort adj ty) = S.union (fmvAdj adj) (fmv ty)
 
 entrify :: Suffix -> [Entry]
-entrify = map $ uncurry FlexTVar
-
-entrifyAbs :: AbSuffix -> [Entry]
-entrifyAbs = map $ uncurry FlexEVar
+entrify = map $ uncurry FlexMVar
 
 liftAbMod :: AbMod a -> Ab a
 liftAbMod v = MkAb v M.empty

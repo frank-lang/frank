@@ -12,7 +12,7 @@ import FreshNames
 import Syntax
 import TypeCheckCommon
 
-data Extension = Restore | Replace Suffix | ReplaceAbs AbSuffix
+data Extension = Restore | Replace Suffix
 
 restore :: Contextual Extension
 restore = return Restore
@@ -20,30 +20,15 @@ restore = return Restore
 replace :: Suffix -> Contextual Extension
 replace = return . Replace
 
-replaceAbs :: AbSuffix -> Contextual Extension
-replaceAbs = return . ReplaceAbs
-
 onTop :: (Id -> Decl -> Contextual Extension) -> Contextual ()
 onTop f = popEntry >>= focus
   where focus :: Entry -> Contextual ()
-        focus e@(FlexTVar x d) =
+        focus e@(FlexMVar x d) =
           do m <- f x d
              case m of
                Replace ext -> modify (<>< entrify ext)
                Restore -> modify (:< e)
-               _ -> error "onTop: impossible extension"
         focus e = onTop f >> modify (:< e)
-
-onTopEVar :: (Id -> AbDecl -> Contextual Extension) -> Contextual ()
-onTopEVar f = popEntry >>= focus
-  where focus :: Entry -> Contextual ()
-        focus e@(FlexEVar x d) =
-          do m <- f x d
-             case m of
-               ReplaceAbs ext -> modify (<>< entrifyAbs ext)
-               Restore -> modify (:< e)
-               _ -> error "onTopEVar: impossible extension"
-        focus e = onTopEVar f >> modify (:< e)
 
 unify :: VType Desugared -> VType Desugared -> Contextual ()
 unify (MkDTTy dt0 abs0 xs) (MkDTTy dt1 abs1 ys)
@@ -56,12 +41,13 @@ unify MkCharTy     MkCharTy          = return ()
 unify (MkFTVar a)  (MkFTVar b)       = onTop $ \c d ->
   cmp (a == c) (b == c) d
   where cmp :: Bool -> Bool -> Decl -> Contextual Extension
-        cmp True  True  _         = restore
-        cmp True  False Hole      = replace [(a, Defn (MkFTVar b))]
-        cmp False True  Hole      = replace [(b, Defn (MkFTVar a))]
-        cmp True  False (Defn ty) = unify ty (MkFTVar b) >> restore
-        cmp False True  (Defn ty) = unify (MkFTVar a) ty >> restore
-        cmp False False _         = unify (MkFTVar a) (MkFTVar b) >> restore
+        cmp True  True  _           = restore
+        cmp True  False Hole        = replace [(a, TyDefn (MkFTVar b))]
+        cmp False True  Hole        = replace [(b, TyDefn (MkFTVar a))]
+        cmp True  False (TyDefn ty) = unify ty (MkFTVar b) >> restore
+        cmp False True  (TyDefn ty) = unify (MkFTVar a) ty >> restore
+        cmp False False _           = unify (MkFTVar a) (MkFTVar b) >> restore
+        cmp _     _     (AbDefn _)  = error "unification invariant broken"
 unify (MkFTVar a)  ty                = solve a [] ty
 unify ty           (MkFTVar a)       = solve a [] ty
 unify t            s                 = throwError $ "failed to unify " ++
@@ -69,7 +55,7 @@ unify t            s                 = throwError $ "failed to unify " ++
 
 unifyAb :: Ab Desugared -> Ab Desugared -> Contextual ()
 unifyAb (MkAb (MkAbFVar a) m0) (MkAb (MkAbFVar b) m1) =
-  do v <- MkAbFVar <$> freshEVar "£"
+  do v <- MkAbFVar <$> freshMVar "£"
      let m = M.difference m0 m1
          m' = M.difference m1 m0
      solveForEVar a [] (MkAb v m')
@@ -84,7 +70,14 @@ unifyAb ab0 ab1 =
   (show ab1)
 
 unifyItfMap :: ItfMap Desugared -> ItfMap Desugared -> Contextual ()
-unifyItfMap m0 m1 = return ()
+unifyItfMap m0 m1 = do mapM_ (unifyItfMap' m1) (M.toList m0)
+                       mapM_ (unifyItfMap' m0) (M.toList m1)
+  where unifyItfMap' :: ItfMap Desugared -> (Id,[VType Desugared]) ->
+                        Contextual ()
+        unifyItfMap' m (itf,xs) = case M.lookup itf m of
+          Nothing -> throwError $ "failed to unify abilities " ++ (show m0) ++
+                     " and " ++ (show m1)
+          Just ys -> mapM_ (uncurry unify) (zip xs ys)
 
 unifyAdj :: Adj Desugared -> Adj Desugared -> Contextual ()
 unifyAdj (MkAdj m0) (MkAdj m1) = unifyItfMap m0 m1
@@ -103,26 +96,30 @@ unifyPort (MkPort adj0 ty0) (MkPort adj1 ty1) = unifyAdj adj0 adj1 >>
 solve :: Id -> Suffix -> VType Desugared -> Contextual ()
 solve a ext ty = onTop $ \b d ->
   case ((a == b), (S.member b (fmv ty)), d) of
-    (_, _, Defn bty) -> modify (<>< entrify ext) >>
-                        unify (subst bty b (MkFTVar a)) (subst bty b ty) >>
-                        restore
+    (_, _, TyDefn bty) -> modify (<>< entrify ext) >>
+                          unify (subst bty b (MkFTVar a)) (subst bty b ty) >>
+                          restore
     (True, True, Hole) -> throwError "solve: occurs check failure"
-    (True, False, Hole) -> replace (ext ++ [(a, Defn ty)])
-    (False, True, Hole) -> solve a ((b,d):ext) ty >> replace []
-    (False, False, Hole) -> solve a ext ty >> restore
+    (True, False, Hole) -> replace (ext ++ [(a, TyDefn ty)])
+    (False, True, _) -> solve a ((b,d):ext) ty >> replace []
+    (False, False, _) -> solve a ext ty >> restore
+    (_, _, AbDefn _) ->
+      error "solve invariant broken: reached impossible case"
 
-solveForEVar :: Id -> AbSuffix -> Ab Desugared -> Contextual ()
-solveForEVar a ext ab = onTopEVar $ \b d ->
+solveForEVar :: Id -> Suffix -> Ab Desugared -> Contextual ()
+solveForEVar a ext ab = onTop $ \b d ->
   case (a == b, (S.member b (fmvAb ab)), d) of
     (_, _, AbDefn ab') ->
       let vab = MkAb (MkAbFVar a) M.empty in
-      modify (<>< entrifyAbs ext) >>
+      modify (<>< entrify ext) >>
       unifyAb (substEVarAb ab' b vab) (substEVarAb ab' b ab) >>
       restore
-    (True, True, AbHole) -> throwError "solveForEvar: occurs check failure"
-    (True, False, AbHole) -> replaceAbs (ext ++ [(a, AbDefn ab)])
-    (False, True, AbHole) -> solveForEVar a ((b,d):ext) ab >> replaceAbs []
-    (False, False, AbHole) -> solveForEVar a ext ab >> restore
+    (True, True, Hole) -> throwError "solveForEvar: occurs check failure"
+    (True, False, Hole) -> replace (ext ++ [(a, AbDefn ab)])
+    (False, True, _) -> solveForEVar a ((b,d):ext) ab >> replace []
+    (False, False, _) -> solveForEVar a ext ab >> restore
+    (_, _, TyDefn _) ->
+      error "solveForEVar invariant broken: reached impossible case"
 
 subst :: VType Desugared -> Id -> VType Desugared -> VType Desugared
 subst ty x (MkDTTy dt abs xs) =

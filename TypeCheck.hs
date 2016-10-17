@@ -26,12 +26,6 @@ import Unification
 
 type EVMap a = M.Map Id (Ab a)
 
-freshFTVar :: Id -> Contextual Id
-freshFTVar x = do n <- fresh
-                  let s = trimTVar x ++ "$f" ++ (show n)
-                  modify (:< FlexTVar s Hole)
-                  return s
-
 find :: Operator -> Contextual (VType Desugared)
 find (MkCmdId x) =
   do amb <- getAmbient
@@ -115,12 +109,12 @@ inferUse (MkApp f xs) =
         checkArg (MkPort adj ty) tm = inAmbient adj (checkTm tm ty)
 
 checkTm :: Tm Desugared -> VType Desugared -> Contextual ()
-checkTm (MkSC sc) (MkSCTy cty) = checkSComp sc cty
+checkTm (MkSC sc) ty = checkSComp sc ty
 checkTm MkLet _ = return ()
 checkTm (MkStr _) ty = unify (desugaredStrTy []) ty
 checkTm (MkInt _) ty = unify MkIntTy ty
 checkTm (MkChar _) ty = unify MkCharTy ty
-checkTm (MkTmSeq tm1 tm2) ty = do ftvar <- freshFTVar "seq"
+checkTm (MkTmSeq tm1 tm2) ty = do ftvar <- freshMVar "seq"
                                   checkTm tm1 (MkFTVar ftvar)
                                   checkTm tm2 ty
 checkTm (MkUse u) t = do s <- inferUse u
@@ -133,12 +127,28 @@ checkTm (MkDCon (MkDataCon k xs)) ty =
      ts' <- mapM makeFlexible ts
      unify ty (MkDTTy dt es' qs')
      mapM_ (uncurry checkTm) (zip xs ts')
-checkTm tm ty = throwError $
-                "failed to typecheck term " ++ show tm ++
-                " against type " ++ show ty
 
-checkSComp :: SComp Desugared -> CType Desugared -> Contextual ()
-checkSComp (MkSComp xs) (MkCType ps q) = mapM_ (\cls -> checkCls cls ps q) xs
+checkSComp :: SComp Desugared -> VType Desugared -> Contextual ()
+checkSComp (MkSComp xs) (MkSCTy (MkCType ps q)) =
+  mapM_ (\cls -> checkCls cls ps q) xs
+checkSComp (MkSComp xs) ty = mapM_ (checkCls' ty) xs
+  where checkCls' :: VType Desugared -> Clause Desugared -> Contextual ()
+        checkCls' ty cls@(MkCls pats tm) =
+          do pushMarkCtx
+             ps <- mapM (\_ -> freshPort "X") pats
+             q <- freshPeg "e" "X"
+             checkCls cls ps q
+             unify ty (MkSCTy (MkCType ps q))
+             purgeMarks
+
+        freshPort :: Id -> Contextual (Port Desugared)
+        freshPort x = do ty <- MkFTVar <$> freshMVar x
+                         return $ MkPort (MkAdj M.empty) ty
+
+        freshPeg :: Id -> Id -> Contextual (Peg Desugared)
+        freshPeg x y = do v <- MkAbFVar <$> freshMVar x
+                          ty <- MkFTVar <$> freshMVar y
+                          return $ MkPeg (MkAb v M.empty) ty
 
 checkCls :: Clause Desugared -> [Port Desugared] -> Peg Desugared ->
             Contextual ()
@@ -205,9 +215,9 @@ makeFlexible (MkDTTy id abs xs) =
   MkDTTy <$> pure id <*> mapM makeFlexibleAb abs <*> mapM makeFlexible xs
 makeFlexible (MkSCTy cty) = MkSCTy <$> makeFlexibleCType cty
 makeFlexible (MkRTVar x) = MkFTVar <$> (getContext >>= find')
-  where find' BEmp = freshFTVar x
-        find' (es :< FlexTVar y _) | trimTVar x == trimTVar y = return y
-        find' (es :< Mark) = freshFTVar x
+  where find' BEmp = freshMVar x
+        find' (es :< FlexMVar y _) | trimTVar x == trimTVar y = return y
+        find' (es :< Mark) = freshMVar x
         find' (es :< _) = find' es
 
 makeFlexible ty = return ty
@@ -219,9 +229,9 @@ makeFlexibleAb (MkAb v m) = case v of
                    return $ MkAb v' m'
   _ -> do m' <- mapM (mapM makeFlexible) m
           return $ MkAb v m'
-  where find' x BEmp = freshEVar x
-        find' x (es :< FlexEVar y _) | trimTVar x == trimTVar y = return y
-        find' x (es :< Mark) = freshEVar x
+  where find' x BEmp = freshMVar x
+        find' x (es :< FlexMVar y _) | trimTVar x == trimTVar y = return y
+        find' x (es :< Mark) = freshMVar x
         find' x (es :< _) = find' x es
 
 makeFlexibleAdj :: Adj Desugared -> Contextual (Adj Desugared)

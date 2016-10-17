@@ -71,11 +71,17 @@ tterm = MkDataTm <$> parseDataT <|>
 parseDataT :: MonadicParsing m => m (DataT Raw)
 parseDataT = do reserved "data"
                 name <- identifier
-                es <- many $ brackets identifier
+                es <- many $ brackets $ parseEVar
                 ps <- many identifier
                 symbol "="
                 xs <- localIndentation Gt ctrlist
                 return $ MkDT name es ps xs
+
+parseEVar :: MonadicParsing m => m Id
+parseEVar = do mx <- optional identifier
+               case mx of
+                 Nothing -> return "£"
+                 Just x -> return x
 
 ctrlist :: MonadicParsing m => m [Ctr Raw]
 ctrlist = sepBy parseCtr (symbol "|")
