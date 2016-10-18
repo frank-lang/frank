@@ -194,7 +194,7 @@ contType x adj y =
 
 checkVPat :: ValuePat -> VType Desugared -> Contextual [TermBinding]
 checkVPat (MkVarPat x) ty = return [(MkMono x, ty)]
-checkVPat (MkDataPat k xs) ty = --(MkDTTy dt abs ps) =
+checkVPat (MkDataPat k xs) ty =
   do (dt, es, qs, ts) <- getCtr k
      addMark
      qs' <- mapM makeFlexible qs
@@ -203,11 +203,11 @@ checkVPat (MkDataPat k xs) ty = --(MkDTTy dt abs ps) =
      unify ty (MkDTTy dt es' qs')
      bs <- fmap concat $ mapM (uncurry checkVPat) (zip xs ts')
      return bs
-checkVPat (MkCharPat _) MkCharTy = return []
+checkVPat (MkCharPat _) ty = unify ty MkCharTy >> return []
 checkVPat (MkStrPat _) ty = unify ty (desugaredStrTy []) >> return []
-checkVPat (MkIntPat _) MkIntTy = return []
-checkVPat p ty = throwError $ "failed to match value pattern " ++ (show p) ++
-                 " with type " ++ (show ty)
+checkVPat (MkIntPat _) ty = unify ty MkIntTy >> return []
+-- checkVPat p ty = throwError $ "failed to match value pattern " ++
+--                  (show p) ++ " with type " ++ (show ty)
 
 -- Replace rigid type variables with flexible ones
 makeFlexible :: VType Desugared -> Contextual (VType Desugared)
