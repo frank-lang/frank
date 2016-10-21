@@ -14,6 +14,9 @@ import "indentation-trifecta" Text.Trifecta.Indentation
 
 import Data.Char
 import qualified Data.Map.Strict as M
+
+import Debug.Trace
+
 import Text.Parser.Token as Tok
 import Text.Parser.Token.Style
 import qualified Text.Parser.Token.Highlight as Hi
@@ -246,10 +249,13 @@ parseComb = do x <- identifier
                return $ MkRawComb x args
 
 parseRawClause :: MonadicParsing m => m (Clause Raw)
-parseRawClause = do ps <- sepBy1 (parseVPat >>= return . MkVPat) (symbol ",")
-                    symbol "->"
+parseRawClause = do ps <- choice [try parsePatterns, pure []]
                     seq <- parseRawTmSeq
                     return $ MkCls ps seq
+  where parsePatterns =
+          do ps <- sepBy1 (parseVPat >>= return . MkVPat) (symbol ",")
+             symbol "->"
+             return $ ps
 
 parsePattern :: MonadicParsing m => m Pattern
 parsePattern = try parseCPat <|> MkVPat <$> parseVPat

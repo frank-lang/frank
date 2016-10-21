@@ -170,7 +170,9 @@ refine' (MkProg xs) = do initialiseRState xs
                          hdrs <- mapM (refineMH defs) sigs
                          if existsMain hdrs then
                             return $ MkProg (map MkDataTm builtinDataTs ++
-                                             dtTms ++ itfTms ++
+                                             dtTms ++
+                                             map MkItfTm builtinItfs ++
+                                             itfTms ++
                                              map MkDefTm builtinMHDefs ++
                                              hdrs)
                          else throwError $ "no main function defined."
@@ -360,6 +362,11 @@ initialiseRState xs =
      putRCtrs ctrs
      putRMHs mhNames
 
+makeIntBinOp :: Char -> MHDef Refined
+makeIntBinOp c = MkDef [c] (MkCType [MkPort (MkAdj M.empty) MkIntTy
+                                    ,MkPort (MkAdj M.empty) MkIntTy]
+                            (MkPeg (MkAb (MkAbVar "£") M.empty) MkIntTy)) []
+
 {-- The initial state for the refinement pass. -}
 
 builtinDataTs :: [DataT Refined]
@@ -369,13 +376,14 @@ builtinDataTs = [MkDT "List" [] ["X"] [MkCtr "cons" [MkTVar "X"
                                       ,MkCtr "nil" []]
                 ,MkDT "Unit" [] [] [MkCtr "unit" []]]
 
-builtinCmds :: [Id]
-builtinCmds = ["putStrLn"]
 
-makeIntBinOp :: Char -> MHDef Refined
-makeIntBinOp c = MkDef [c] (MkCType [MkPort (MkAdj M.empty) MkIntTy
-                                    ,MkPort (MkAdj M.empty) MkIntTy]
-                            (MkPeg (MkAb (MkAbVar "£") M.empty) MkIntTy)) []
+builtinItfs :: [Itf Refined]
+builtinItfs = [MkItf "Console" [] [MkCmd "putStrLn" [MkStringTy]
+                                   (MkDTTy "Unit" [] [])
+                                  ,MkCmd "getStr" [] MkStringTy]
+              ,MkItf "CursesConsole" [] [MkCmd "inch" [] MkCharTy
+                                        ,MkCmd "ouch" [MkCharTy]
+                                         (MkDTTy "Unit" [] [])]]
 
 builtinMHDefs :: [MHDef Refined]
 builtinMHDefs = [MkDef "strcat"
@@ -387,15 +395,18 @@ builtinMHDefs = [MkDef "strcat"
 builtinMHs :: [Id]
 builtinMHs = map (\(MkDef id _ _) -> id) builtinMHDefs
 
-builtinItfs :: [Id]
-builtinItfs = ["Console"]
-
 builtinDTs :: [Id]
 builtinDTs = collectDTNames builtinDataTs
+
+builtinINames :: [Id]
+builtinINames = collectINames builtinItfs
 
 builtinCtrs :: [Id]
 builtinCtrs = map (\(MkCtr id _) -> id) $ concatMap getCtrs builtinDataTs
 
+builtinCmds :: [Id]
+builtinCmds = map (\(MkCmd id _ _) -> id) $ concatMap getCmds builtinItfs
+
 initRefine :: RState
-initRefine = MkRState builtinItfs builtinDTs builtinMHs builtinCtrs
+initRefine = MkRState builtinINames builtinDTs builtinMHs builtinCtrs
              builtinCmds (MkProg []) M.empty S.empty Nothing

@@ -1,0 +1,5 @@
+on : X -> {X -> Y} -> Y
+on x f = f x
+
+main : [Console]Unit
+main! = on getStr! { x -> putStrLn x }

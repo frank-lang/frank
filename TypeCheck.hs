@@ -30,7 +30,8 @@ find :: Operator -> Contextual (VType Desugared)
 find (MkCmdId x) =
   do amb <- getAmbient
      (itf, qs, ts, y) <- getCmd x
-     case lkpItf itf amb of
+     mps <- lkpItf itf amb
+     case mps of
        Nothing -> throwError $ "command " ++ x ++
                   " belonging to interface " ++ itf ++
                   " not permitted by ambient ability"
@@ -66,8 +67,17 @@ inAmbient adj m = do amb <- getAmbient
                      putAmbient amb
                      return a
 
-lkpItf :: Id -> Ab Desugared -> Maybe [VType Desugared]
-lkpItf itf (MkAb _ m) = M.lookup itf m
+lkpItf :: Id -> Ab Desugared -> Contextual (Maybe [VType Desugared])
+lkpItf itf (MkAb v m) = case M.lookup itf m of
+  Nothing -> lkpItfInAbMod itf v
+  Just xs -> return $ Just xs
+
+lkpItfInAbMod :: Id -> AbMod Desugared -> Contextual (Maybe [VType Desugared])
+lkpItfInAbMod itf (MkAbFVar x) = getContext >>= find'
+  where find' BEmp = return Nothing
+        find' (es :< FlexMVar y (AbDefn ab)) | x == y = lkpItf itf ab
+        find' (es :< _) = find' es
+lkpItfInAbMod itf v = return Nothing
 
 -- Only instantiate polytypic operators
 instantiate :: Operator -> VType Desugared -> Contextual (VType Desugared)
@@ -96,10 +106,10 @@ inferUse (MkOp x) = find x >>= (instantiate x)
 inferUse (MkApp f xs) =
   do ty <- find f >>= (instantiate f)
      case ty of
-       MkSCTy (MkCType ps (MkPeg ab ty)) -> do amb <- getAmbient
-                                               unifyAb amb ab
-                                               checkArgs ps xs
-                                               return ty
+       MkSCTy (MkCType ps (MkPeg ab ty')) -> do amb <- getAmbient
+                                                unifyAb amb ab
+                                                checkArgs ps xs
+                                                return ty'
        _ -> throwError $
             "application:expected suspended computation"
   where checkArgs :: [Port Desugared] -> [Tm Desugared] -> Contextual ()
@@ -170,7 +180,8 @@ checkPat :: Pattern -> Port Desugared -> Contextual [TermBinding]
 checkPat (MkVPat vp) (MkPort _ ty) = checkVPat vp ty
 checkPat (MkCmdPat cmd xs g) (MkPort adj ty) =
   do (itf, qs, ts, y) <- getCmd cmd
-     case lkpItf itf (plus (MkAb MkEmpAb M.empty) adj) of
+     mps <- lkpItf itf (plus (MkAb MkEmpAb M.empty) adj)
+     case mps of
        Nothing -> throwError $
                   "command " ++ cmd ++ " not found in adjustment " ++
                   (show adj)
