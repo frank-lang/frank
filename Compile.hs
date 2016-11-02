@@ -134,11 +134,8 @@ compilePort :: Port Refined -> Compile [String]
 compilePort (MkPort adj _) = compileAdj adj
 
 compileAdj :: Adj Refined -> Compile [String]
-compileAdj MkIdAdj = return []
-compileAdj (MkAdjPlus MkIdAdj id _) = do cmds <- getCCmds id
-                                         return cmds
-compileAdj (MkAdjPlus adj id _) = do xs <- compileAdj adj
-                                     return $ xs ++ [id]
+compileAdj (MkAdj m) = do cmds <- liftM concat $ mapM getCCmds (M.keys m)
+                          return cmds
 
 compileClause :: Clause Refined -> Compile ([S.Pat], S.Exp)
 compileClause (MkCls ps tm) = do ps' <- mapM compilePattern ps
