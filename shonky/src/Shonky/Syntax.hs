@@ -178,6 +178,7 @@ ppProg xs = unlines $ map ppDef xs
 
 ppDef :: Def Exp -> String
 ppDef (id := e) = id ++ " -> " ++ ppExp e
+ppDef (DF id _ _) | isBuiltin id = "" -- builtins not output
 ppDef (DF id [] ys) = ppCSep (\x -> id ++ (ppClause x)) (reverse ys)
 ppDef (DF id xs ys) = unlines hdr
   where hdr = [header, cs]
@@ -210,7 +211,11 @@ ppClause (ps, e) = rhs ++ " -> " ++ lhs
 
 ppBuiltins :: M.Map String String
 ppBuiltins = M.fromList [("+", "plus")
-                        ,("-", "minus")]
+                        ,("-", "minus")
+                        ,("strcat","strcat")]
+
+isBuiltin :: String -> Bool
+isBuiltin x = M.member x ppBuiltins
 
 ppExp :: Exp -> String
 ppExp (EV x) = case M.lookup x ppBuiltins of

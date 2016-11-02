@@ -1,0 +1,11 @@
+
+mult : Int -> Int -> Int
+mult 0 y = 0
+mult x y = y + mult (x-1) y
+
+fact : Int -> Int
+fact 0 = 1
+fact n = mult n (fact (n - 1))
+
+main : Int
+main! = fact 5
