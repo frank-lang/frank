@@ -1,0 +1,43 @@
+data Zero = -- empty type
+data Bool = tt | ff
+
+interface Choice = choice : Bool
+
+interface Fail = fail : Zero
+
+append : List a -> List a -> List a
+append nil ys = ys
+append (cons x xs) ys = cons x (append xs ys)
+
+if : Bool -> {a} -> {a} -> a
+if tt t e = t!
+if ff t e = e!
+
+choose : a -> a -> [Choice]a
+choose x y = if choice! {x} {y}
+
+allResults : <Choice, Fail>a -> List a
+allResults x = cons x nil
+allResults <choice -> k> = append (allResults (k tt)) (allResults (k ff))
+allResults <fail -> k> = nil
+
+data Toss = Heads | Tails
+
+toss : [Choice]Toss
+toss! = choose Heads Tails
+
+on : X -> {X -> Y} -> Y
+on x f = f x
+
+failure : [Fail]X
+failure! = on fail! {}
+
+drunkToss : [Choice,Fail]Toss
+drunkToss! = if choice! toss failure
+
+drunkTosses : Int -> [Choice, Fail]List Toss
+drunkTosses 0 = nil
+drunkTosses n = cons drunkToss! (drunkTosses (n-1))
+
+main : List (List Toss)
+main! = allResults (drunkTosses 3)

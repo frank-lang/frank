@@ -41,6 +41,19 @@ data Frame
   | Txt Env [Char] [Either Char Exp]
   deriving Show
 
+ppVal :: Val -> String
+ppVal (VA s) = "'" ++ s
+ppVal (VI n) = show n
+ppVal p@(_ :&& _) = "[" ++ ppListVal p
+ppVal (VX s) = s
+ppVal v = show v
+
+ppListVal :: Val -> String
+ppListVal (v :&& VA "") = ppVal v ++ "]"
+ppListVal (v :&& vs) = ppVal v ++ "," ++ ppListVal vs
+ppListVal (VA "") = "]"
+ppListVal v = ppVal v
+
 plus :: Env -> [Comp] -> Val
 plus g [a1,a2] = VI (f a1 + f a2)
   where f x = case x of
@@ -246,9 +259,7 @@ envBuiltins = Empty :/ [DF "strcat" []
                        ,DF "plus" [] []
                        ,DF "minus" [] []
                        ,DF "getChar" [] []
-                       ,DF "putChar" [] []
-                       ,DF "cons" [] [([PV (VPV "x1"), PV (VPV "x2")],
-                                       EV "x1" :& EV "x2" :& EA "")]]
+                       ,DF "putChar" [] []]
 
 prog :: Env -> [Def Exp] -> Env
 prog g ds = g' where

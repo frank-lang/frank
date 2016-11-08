@@ -223,12 +223,11 @@ ppExp (EV x) = case M.lookup x ppBuiltins of
   Nothing -> x
 ppExp (EI n) = show n
 ppExp (EA x)
-  | x == "" = "[]"
+  | x `elem` listCtrs = ""
   | otherwise = "'" ++ x
 ppExp (EX xs) = "[|" ++ ppText ppExp xs
-ppExp (x :& e) =
-  let xs = collectExp e (EA "") in
-  ppLisp (x:xs) ppExp
+ppExp (e :& e') | isListExp e = "[" ++ ppListExp e'
+ppExp p@(_ :& _) = "[" ++ ppExp' p
 ppExp (f :$ xs) = ppExp f ++ "(" ++ ppCSep ppExp xs ++ ")"
 ppExp (e :! e') = ppExp e ++ ";" ++ ppExp e'
 ppExp (e :// e') = ppExp e ++ "/" ++ ppExp e'
@@ -236,15 +235,22 @@ ppExp (EF xs ys) =
   let clauses = ppCSep (\x -> ppClause x) ys in
   "{" ++ clauses ++ "}"
 
-collectExp :: Exp -> Exp -> [Exp]
-collectExp e d | e == d = []
-collectExp (e :& e') d = e : (collectExp e' d)
-collectExp e d = [e]
+ppExp' :: Exp -> String
+ppExp' (e :& EA "") = ppExp e ++ "]"
+ppExp' (e :& es) = ppExp e ++ "," ++ ppExp' es
+ppExp' e = ppExp e
 
-ppLisp :: [x] -> (x -> String) -> String
-ppLisp xs f = "[" ++ g xs ++ "]"
-  where g [x,y] = f x ++ "|" ++ f y
-        g xs = ppCSep f xs
+isListExp :: Exp -> Bool
+isListExp (EA v) | v `elem` listCtrs = True
+isListExp (e :& _) = isListExp e
+isListExp _ = False
+
+-- Special case for lists
+ppListExp :: Exp -> String
+ppListExp (e :& EA "") = ppExp e ++ "]"
+ppListExp (e :& es) = ppExp e ++ "|" ++ ppListExp es
+ppListExp (EA "") = "]"
+ppListExp _ = "ppListExp: invariant broken"
 
 ppPat :: Pat -> String
 ppPat (PV x) = ppVPat x
@@ -256,20 +262,28 @@ ppVPat :: VPat -> String
 ppVPat (VPV x) = x
 ppVPat (VPI n) = show n
 ppVPat (VPA x)
-  | x == "" = "[]"
+  | x `elem` listCtrs = ""
   | otherwise = "'" ++ x
 ppVPat (VPX xs) = "[|" ++ ppText ppVPat xs
-ppVPat (p :&: p') =
-  let ps = collectVPat p' (VPA "") in
-  ppLisp (p:ps) ppVPat
+ppVPat (v1 :&: v2 :&: v3) = ppVPat (v1 :&: (v2 :&: v3))
+ppVPat (v :&: v') | isListPat v = "[" ++ ppVPatList v'
+ppVPat p@(_ :&: _) = "[" ++ ppVPat' p
 
-collectVPat :: VPat -> VPat -> [VPat]
-collectVPat p d | p == d = []
-collectVPat (p :&: p') d = p : (collectVPat p' d)
-collectVPat p d = [p]
+ppVPatList :: VPat -> String
+ppVPatList (v :&: VPA "") = ppVPat v ++ "]"
+ppVPatList (v :&: vs) = ppVPat v ++ "|" ++ ppVPatList vs
+ppVPatList (VPA "") = "]"
+ppVPatList _ = error "ppVPatList: broken invariant"
 
---newtype PP x = PP {print :: x -> String}
+ppVPat' :: VPat -> String
+ppVPat' (v :&: VPA "") = ppVPat v ++ "]"
+ppVPat' (v :&: vs) = ppVPat v ++ "," ++ ppVPat' vs
+ppVPat' v = ppVPat v
 
---instance Monad PP where
---  return x = PP $ \ s -> x
---  PP f >>= k = PP $ \ s -> 
+isListPat :: VPat -> Bool
+isListPat (VPA v) | v `elem` listCtrs = True
+isListPat (v :&: _) = isListPat v
+isListPat _ = False
+
+listCtrs :: [String]
+listCtrs = ["nil", "cons"]

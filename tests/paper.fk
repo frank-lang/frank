@@ -95,5 +95,5 @@ catch : <Abort>X       -> {X} -> X
 catch       x              _  =  x
 catch  <aborting -> _>     h  =  h!
 
-main : Unit
-main! = unit
+main : [Abort]List Char
+main! = eg2!

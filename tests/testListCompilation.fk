@@ -1,0 +1,22 @@
+-- Testing the compilation of lists of lists
+
+data Zero =
+
+data MyStruct X = ES | MkStruct X (MyStruct X)
+
+interface Abort = aborting : Zero
+
+on : X -> {X -> Y} -> Y
+on x f = f x
+
+abort : [Abort]X
+abort! = on aborting! {}
+
+head : List X -> [Abort]X
+head nil = abort!
+head (cons x xs) = x
+
+main : MyStruct (MyStruct (MyStruct Int))
+main! = MkStruct (MkStruct (MkStruct 0 ES) ES) ES
+
+
