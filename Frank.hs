@@ -9,6 +9,8 @@ import qualified ExpectedTestOutput as ETO
 
 import Shonky.Semantics
 
+import System.Environment
+
 compileAndRunProg progName =
   do p <- runTokenParse <$> readFile ("tests/" ++ progName ++ ".fk")
      case p of
@@ -17,11 +19,12 @@ compileAndRunProg progName =
          Left err -> print err
          Right p' -> case check (desugar p') of
           Left err -> print err
-          Right p' -> do compile p' progName
-                         env <- load progName
+          Right p' -> do compile p' ("tests/" ++ progName)
+                         env <- load ("tests/" ++ progName)
                          case try env "main()" of
                            Ret v -> print $ ppVal v
                            comp -> print comp
 
 main :: IO ()
-main = compileAndRunProg "paper"
+main = do xs <- getArgs
+          compileAndRunProg $ head xs

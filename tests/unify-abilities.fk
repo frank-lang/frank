@@ -1,0 +1,18 @@
+-- Problem identified by Jack Williams
+data Zero =
+
+interface Abort = aborting : Zero
+
+data Bar = One {Int -> Int}
+
+apply : Bar [Abort] -> Int -> [Abort]Int
+apply (One f) x = f x
+
+foo : Bar [Abort]
+foo! = One {x -> x+1}
+
+ex : Int -> [Abort]Int
+ex n = apply foo! n
+
+main : [Abort]Int
+main! = ex 0
