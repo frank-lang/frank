@@ -5,6 +5,7 @@ import Compile
 import TypeCheck
 import RefineSyntax
 import DesugarSyntax
+import System.Environment
 import qualified ExpectedTestOutput as ETO
 
 import Shonky.Semantics
@@ -20,8 +21,14 @@ compileAndRunProg progName =
           Right p' -> do compile p' progName
                          env <- load progName
                          case try env "main()" of
-                           Ret v -> print $ ppVal v
-                           comp -> print comp
+                           Ret v -> putStrLn $ ppVal v
+                           comp -> putStrLn (show comp)
+
+run = compileAndRunProg
 
 main :: IO ()
-main = compileAndRunProg "paper"
+main = do
+  args <- getArgs
+  case args of
+    [file] -> run file
+    _      -> run "paper"

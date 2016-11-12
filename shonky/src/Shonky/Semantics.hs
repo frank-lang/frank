@@ -45,7 +45,7 @@ ppVal :: Val -> String
 ppVal (VA s) = "'" ++ s
 ppVal (VI n) = show n
 ppVal p@(_ :&& _) = "[" ++ ppListVal p
-ppVal (VX s) = s
+ppVal (VX s) = "\"" ++ s ++ "\""
 ppVal v = show v
 
 ppListVal :: Val -> String
