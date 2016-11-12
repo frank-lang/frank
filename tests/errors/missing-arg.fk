@@ -1,0 +1,19 @@
+
+-- Bar missing arg
+interface Eff X Y = one : X -> Y -> Bar
+
+data Bar X = One X
+
+-- Bar missing arg
+ex : Bar -> Int
+ex (One x) = x
+
+-- Eff missing arg
+exI : <Eff Int>Bar Int -> Int
+-- one missing arg
+exI   <one x -> _> = x
+exI    (One x)     = x 
+
+main : Int
+-- One missing arg
+main! = ex (One) + exI (one 2)

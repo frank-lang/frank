@@ -266,16 +266,18 @@ refineItfMap m = do xs <- mapM (uncurry refineEntry) (M.toList m)
   where refineEntry :: Id -> [VType Raw] -> Refine (Id, [VType Refined])
         refineEntry id xs =
           do itfs <- getRItfs
-             if id `mem` itfs then do xs' <- mapM refineVType xs
-                                      return (id, xs')
-             else throwError $ "no such effect variable or interface " ++ id
+             case id `findPair` itfs of
+               Just n -> do checkArgs id n (length xs)
+                            xs' <- mapM refineVType xs
+                            return (id, xs')
+               Nothing -> idError id "interface"
 
 refineAbMod :: AbMod Raw -> AbMod Refined
 refineAbMod MkEmpAb = MkEmpAb
 refineAbMod (MkAbVar x) = MkAbVar x
 
 refineAdj :: Adj Raw -> Refine (Adj Refined)
-refineAdj (MkAdj m) = do m' <- mapM (mapM refineVType) m
+refineAdj (MkAdj m) = do m' <- refineItfMap m
                          return $ MkAdj m'
 
 refineVType :: VType Raw -> Refine (VType Refined)
@@ -283,24 +285,18 @@ refineVType :: VType Raw -> Refine (VType Refined)
 refineVType (MkDTTy x abs xs) =
   do dts <- getRDTs
      case x `findPair` dts of
-       Just n -> if n /= (length xs) then
-                    throwError $ x ++ " expects " ++ show n ++
-                                 " argument(s) but " ++ show (length xs) ++
-                                 " given."
-                 else do abs' <- mapM refineAb abs
-                         xs' <- mapM refineVType xs
-                         return $ MkDTTy x abs' xs'
+       Just n -> do checkArgs x n (length xs)
+                    abs' <- mapM refineAb abs
+                    xs' <- mapM refineVType xs
+                    return $ MkDTTy x abs' xs'
        Nothing -> do -- interfaces or datatypes explicitly declare their type
-                   -- variables.
+                     -- variables.
                    m <- getTMap
                    ctx <- getTopLevelCtxt
                    if isHdrCtxt ctx || M.member x m then return $ MkTVar x
-                   else throwError $ "no type variable " ++ x ++ " defined"
+                   else idError x "type variable"
 refineVType (MkSCTy ty) = refineCType ty >>= return . MkSCTy
-refineVType (MkTVar x) = do dts <- getRDTs
-                            case x `mem` dts of
-                              True -> return $ MkDTTy x [] []
-                              False -> return $ MkTVar x
+refineVType (MkTVar x) = return $ MkTVar x
 refineVType MkStringTy = return MkStringTy
 refineVType MkIntTy = return MkIntTy
 refineVType MkCharTy = return MkCharTy
@@ -319,19 +315,33 @@ refineTm (MkRawId id) =
   do ctrs <- getRCtrs
      cmds <- getRCmds
      hdrs <- getRMHs
-     if id `mem` ctrs then return $ MkDCon $ MkDataCon id []
-     else if id `mem` cmds then return $ MkUse $ MkOp $ MkCmdId id
-     else if id `mem` hdrs then return $ MkUse $ MkOp $ MkPoly id
-     else return $ MkUse $ MkOp $ MkMono id
+     case id `findPair` ctrs of
+        Just n -> do checkArgs id n 0
+                     return $ MkDCon $ MkDataCon id []
+        Nothing ->
+          case id `findPair` cmds of
+            Just n -> return $ MkUse $ MkOp $ MkCmdId id
+            Nothing ->
+              case id `findPair` hdrs of
+                Just n -> return $ MkUse $ MkOp $ MkPoly id
+                Nothing -> return $ MkUse $ MkOp $ MkMono id
 refineTm (MkRawComb id xs) =
   do xs' <- mapM refineTm xs
      ctrs <- getRCtrs
      cmds <- getRCmds
      hdrs <- getRMHs
-     if id `mem` ctrs then return $ MkDCon $ MkDataCon id xs'
-     else if id `mem` cmds then return $ MkUse $ MkApp (MkCmdId id) xs'
-     else if id `mem` hdrs then return $ MkUse $ MkApp (MkPoly id) xs'
-     else return $ MkUse $ MkApp (MkMono id) xs'
+     case id `findPair` ctrs of
+        Just n -> do checkArgs id n (length xs')
+                     return $ MkDCon $ MkDataCon id xs'
+        Nothing ->
+          case id `findPair` cmds of
+            Just n -> do checkArgs id n (length xs')
+                         return $ MkUse $ MkApp (MkCmdId id) xs'
+            Nothing ->
+              case id `findPair` hdrs of
+                Just n -> do checkArgs id n (length xs')
+                             return $ MkUse $ MkApp (MkPoly id) xs'
+                Nothing -> return $ MkUse $ MkApp (MkMono id) xs'
 refineTm (MkSC x) = do x' <- refineSComp x
                        return $ MkSC x'
 refineTm (MkStr x) = return $ MkStr x
@@ -352,16 +362,41 @@ refineClause (MkCls ps tm) = do ps' <- mapM refinePattern ps
 
 refinePattern :: Pattern -> Refine Pattern
 refinePattern (MkVPat p) = MkVPat <$> refineVPat p
-refinePattern (MkCmdPat cmd ps k) = do ps' <- mapM refineVPat ps
-                                       return $ MkCmdPat cmd ps' k
+refinePattern (MkCmdPat x ps k) =
+  do cmds <- getRCmds
+     case x `findPair` cmds of
+       Just n -> do checkArgs x n (length ps)
+                    ps' <- mapM refineVPat ps
+                    return $ MkCmdPat x ps' k
+       Nothing -> idError x "command"
 refinePattern p = return p
 
 refineVPat :: ValuePat -> Refine ValuePat
 refineVPat p@(MkVarPat x) =
   do ctrs <- getRCtrs
-     if x `mem` ctrs then return $ MkDataPat x []
-     else return p
+     case x `findPair` ctrs of
+       Just n -> do checkArgs x n 0
+                    return $ MkDataPat x []
+       Nothing -> return p
+refineVPat (MkDataPat x xs) =
+  do ctrs <- getRCtrs
+     case x `findPair` ctrs of
+       Just n -> do checkArgs x n (length xs)
+                    xs' <- mapM refineVPat xs
+                    return $ MkDataPat x xs'
+       Nothing -> idError x "constructor"
 refineVPat p = return p
+
+checkArgs :: Id -> Int -> Int -> Refine ()
+checkArgs x exp act =
+  if exp /= act then
+    throwError $ x ++ " expects " ++ show exp ++
+                 " argument(s) but " ++ show act ++
+                 " given."
+  else return ()
+
+idError :: Id -> String -> Refine a
+idError x cls = throwError $ "no " ++ cls ++ " named '" ++ x ++ "' declared"
 
 initialiseRState :: [TopTm Raw] -> Refine ()
 initialiseRState xs =
@@ -416,7 +451,7 @@ builtinMHs = map add builtinMHDefs
 
 builtinDTs :: [IPair]
 builtinDTs = map add builtinDataTs
-  where add (MkDT id xs _ _) = (id,length xs)
+  where add (MkDT id _ xs _) = (id,length xs)
 
 builtinINames :: [IPair]
 builtinINames = map add builtinItfs
