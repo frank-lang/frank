@@ -197,14 +197,15 @@ existsMain [] = False
 existsMain (_ : xs) = error "invalid top term: expected multihandler"
 
 refineDataT :: DataT Raw -> Refine (TopTm Refined)
-refineDataT (MkDT dt es ps ctrs) =
+refineDataT d@(MkDT dt es ps ctrs) =
   if uniqueIds ps && uniqueIds es then
      do putTMap (M.fromList $ zip ps (map MkTVar ps))
-        putEVSet (S.fromList es)
+        let es' = if dtContainsCType d && null es then ["£"] else es
+        putEVSet (S.fromList es')
         ctrs' <- mapM refineCtr ctrs
         putTMap M.empty
         putEVSet S.empty
-        return $ MkDataTm $ MkDT dt es ps ctrs'
+        return $ MkDataTm $ MkDT dt es' ps ctrs'
   else throwError $ "duplicate parameter in datatype " ++ dt
 
 refineItf :: Itf Raw -> Refine (TopTm Refined)
@@ -419,6 +420,16 @@ makeIntBinOp :: Char -> MHDef Refined
 makeIntBinOp c = MkDef [c] (MkCType [MkPort (MkAdj M.empty) MkIntTy
                                     ,MkPort (MkAdj M.empty) MkIntTy]
                             (MkPeg (MkAb (MkAbVar "£") M.empty) MkIntTy)) []
+
+dtContainsCType :: DataT a -> Bool
+dtContainsCType (MkDT _ _ _ xs) = any ctrHasCTypeArg xs
+
+ctrHasCTypeArg :: Ctr a -> Bool
+ctrHasCTypeArg (MkCtr _ ts) = any isCType ts
+
+isCType :: VType a -> Bool
+isCType (MkSCTy _) = True
+isCType _ = False
 
 {-- The initial state for the refinement pass. -}
 

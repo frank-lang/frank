@@ -2,9 +2,9 @@ interface Eff = bang : Unit
 
 data Bar = One {Int -> Int}
 
--- type error: Eff not declared in peg but f is applied
+-- type error: Eff not declared in peg but f:{Int -> [Eff]Int} is applied
 apply : Bar [Eff] -> Int -> Int
 apply (One f) x = f x
 
-main : Int
+main : [Eff]Int
 main! = apply (One {x -> x+1}) 0
