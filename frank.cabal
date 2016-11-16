@@ -1,0 +1,57 @@
+name:                frank
+version:             0.1.0.0
+synopsis:            Frank programming language
+description:         Please see README.md
+homepage:            https://github.com/cmcl/frankjnr
+author:              Craig McLaughlin
+maintainer:          example@example.com
+copyright:           2016 Craig McLaughlin
+category:            Web
+build-type:          Simple
+cabal-version:       >=1.10
+
+executable frank
+  hs-source-dirs:      .
+                       , shonky/src
+  other-modules: BwdFwd
+               , Compile
+               , DesugarSyntax
+               , ExpectedTestOutput
+               , FreshNames
+               , Parser
+               , RefineSyntax
+               , Shonky.Semantics
+               , Shonky.Syntax
+               , Syntax
+               , TypeCheck
+               , TypeCheckCommon
+               , Unification
+
+  build-depends: base >= 4.7 && < 5
+               , mtl
+               , containers
+               , transformers
+               , Unique
+               , text
+               , unordered-containers
+               , parsers
+               , trifecta
+               , tasty
+               , tasty-hunit
+               , indentation-trifecta
+  main-is:          Frank.hs
+  ghc-options:      -threaded -rtsopts -with-rtsopts=-N 
+  default-language: Haskell2010
+
+test-suite frank-test
+  type:                exitcode-stdio-1.0
+  hs-source-dirs:      test
+  main-is:             Spec.hs
+  build-depends:       base
+                     , frank
+  ghc-options:         -threaded -rtsopts -with-rtsopts=-N
+  default-language:    Haskell2010
+
+source-repository head
+  type:     git
+  location: https://github.com/cmcl/frankjnr/
