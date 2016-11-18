@@ -22,11 +22,12 @@ type EVarSet = S.Set Id
 
 -- Object-Int pair
 type IPair = (Id,Int)
+type DTMap = M.Map Id ([Id],[Id])
 
 data TopLevelCtxt = Interface | Datatype | Handler deriving (Show, Eq)
 
 data RState = MkRState { interfaces :: [IPair]
-                       , datatypes :: [IPair]
+                       , datatypes :: DTMap
                        , handlers :: [IPair]
                        , ctrs :: [IPair]
                        , cmds :: [IPair]
@@ -49,11 +50,11 @@ getRItfs :: Refine [IPair]
 getRItfs = do s <- getRState
               return $ interfaces s
 
-putRDTs :: [IPair] -> Refine ()
-putRDTs xs = do s <- getRState
-                putRState $ s { datatypes = xs }
+putRDTs :: DTMap -> Refine ()
+putRDTs m = do s <- getRState
+               putRState $ s { datatypes = m }
 
-getRDTs :: Refine [IPair]
+getRDTs :: Refine DTMap
 getRDTs = do s <- getRState
              return $ datatypes s
 
@@ -150,8 +151,11 @@ addEntry xs x n prefix = if x `mem` xs then throwError (prefix ++ x ++
 addItf :: [IPair] -> Itf a -> Refine [IPair]
 addItf xs (MkItf x ys _) = addEntry xs x (length ys) "duplicate interface: "
 
-addDataT :: [IPair] -> DataT a -> Refine [IPair]
-addDataT xs (MkDT x _ ys _) = addEntry xs x (length ys) "duplicate datatype: "
+addDataT :: DTMap -> DataT a -> Refine DTMap
+addDataT m (MkDT x es ps _) = if M.member x m then
+                                 throwError ("duplicate datatype: " ++ x ++
+                                             " already defined.")
+                              else return $ M.insert x (es,ps) m
 
 addCtr :: [IPair] -> Ctr a -> Refine [IPair]
 addCtr xs (MkCtr x ts) = addEntry xs x (length ts) "duplicate constructor: "
@@ -203,6 +207,8 @@ refineDataT d@(MkDT dt es ps ctrs) =
         let es' = if dtContainsCType d && null es then ["£"] else es
         putEVSet (S.fromList es')
         ctrs' <- mapM refineCtr ctrs
+        m <- getRDTs
+        putRDTs $ M.insert dt (es',ps) m
         putTMap M.empty
         putEVSet S.empty
         return $ MkDataTm $ MkDT dt es' ps ctrs'
@@ -239,6 +245,15 @@ refinePeg :: Peg Raw -> Refine (Peg Refined)
 refinePeg (MkPeg ab ty) = do ab' <- refineAb ab
                              ty' <- refineVType ty
                              return $ MkPeg ab' ty'
+
+refineDTAbs :: [Ab Raw] -> [Id] -> Refine ([Ab Raw])
+refineDTAbs abs es = return xs
+  where xs = map (\v -> MkAb v M.empty) (take n $ repeat varepi)
+
+        n = length es - length abs
+
+        varepi :: AbMod Raw
+        varepi = MkAbVar "£"
 
 refineAb :: Ab Raw -> Refine (Ab Refined)
 refineAb ab@(MkAb v m) =
@@ -284,12 +299,13 @@ refineAdj (MkAdj m) = do m' <- refineItfMap m
 refineVType :: VType Raw -> Refine (VType Refined)
 -- Check that dt is a datatype, otherwise it must have been a type variable.
 refineVType (MkDTTy x abs xs) =
-  do dts <- getRDTs
-     case x `findPair` dts of
-       Just n -> do checkArgs x n (length xs)
-                    abs' <- mapM refineAb abs
-                    xs' <- mapM refineVType xs
-                    return $ MkDTTy x abs' xs'
+  do dtm <- getRDTs
+     case M.lookup x dtm of
+       Just (es,ps) -> do checkArgs x (length ps) (length xs)
+                          abs' <- refineDTAbs abs es
+                          abs'' <- mapM refineAb abs'
+                          xs' <- mapM refineVType xs
+                          return $ MkDTTy x abs'' xs'
        Nothing -> do -- interfaces or datatypes explicitly declare their type
                      -- variables.
                    m <- getTMap
@@ -297,7 +313,14 @@ refineVType (MkDTTy x abs xs) =
                    if isHdrCtxt ctx || M.member x m then return $ MkTVar x
                    else idError x "type variable"
 refineVType (MkSCTy ty) = refineCType ty >>= return . MkSCTy
-refineVType (MkTVar x) = return $ MkTVar x
+refineVType (MkTVar x) =
+  do dtm <- getRDTs
+     case M.lookup x dtm of
+       Just (es,ps) -> do checkArgs x (length ps) 0
+                          abs' <- refineDTAbs [] es
+                          abs'' <- mapM refineAb abs'
+                          return $ MkDTTy x abs'' []
+       Nothing -> return $ MkTVar x
 refineVType MkStringTy = return MkStringTy
 refineVType MkIntTy = return MkIntTy
 refineVType MkCharTy = return MkCharTy
@@ -460,9 +483,9 @@ builtinMHs :: [IPair]
 builtinMHs = map add builtinMHDefs
   where add (MkDef x (MkCType ps _) _) = (x,length ps)
 
-builtinDTs :: [IPair]
-builtinDTs = map add builtinDataTs
-  where add (MkDT id _ xs _) = (id,length xs)
+builtinDTs :: DTMap
+builtinDTs = foldl add M.empty builtinDataTs
+  where add m (MkDT id abs xs _) = M.insert id (abs,xs) m
 
 builtinINames :: [IPair]
 builtinINames = map add builtinItfs

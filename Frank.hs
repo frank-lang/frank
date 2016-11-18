@@ -23,12 +23,15 @@ compileAndRunProg progName b =
           Right p' -> do env <- if b then
                                   do compileToFile p' progName
                                      loadFile progName
-                                else return $ load $ compile p'
+                                else
+                                  -- Currently not producing runnable
+                                  -- code.
+                                  return $ load $ compile p'
                          case try env "main()" of
                            Ret v -> putStrLn $ ppVal v
                            comp -> putStrLn (show comp)
 
-run x = compileAndRunProg x False
+run x = compileAndRunProg x True --False
 
 main :: IO ()
 main = do

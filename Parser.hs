@@ -161,10 +161,8 @@ parseAdj' = do x <- identifier
                return (x, ts)
 
 parseDTAb :: MonadicParsing m => m (Ab Raw)
-parseDTAb = do mxs <- optional $ brackets (sepBy parseAb' (symbol ","))
-               case mxs of
-                 Nothing -> return $ MkAb MkEmpAb M.empty -- pure data types
-                 Just xs -> return $ MkAb (MkAbVar "£") (M.fromList xs)
+parseDTAb = do xs <- brackets (sepBy parseAb' (symbol ","))
+               return $ MkAb (MkAbVar "£") (M.fromList xs)
 
 parseAb :: MonadicParsing m => m (Ab Raw)
 parseAb = do mxs <- optional $ brackets (sepBy parseAb' (symbol ","))
@@ -192,9 +190,9 @@ parseVType' = parens parseVType <|>
 -- Parse a potential datatype. Note it may actually be a type variable.
 parseDTType :: MonadicParsing m => m (VType Raw)
 parseDTType = do x <- identifier
-                 abs <- parseDTAb
+                 abs <- many parseDTAb
                  ps <- localIndentation Gt $ many parseVType'
-                 return $ MkDTTy x [abs] ps
+                 return $ MkDTTy x abs ps
 
 parseRawTmSeq :: MonadicParsing m => m (Tm Raw)
 parseRawTmSeq = do tm1 <- parseRawTm
