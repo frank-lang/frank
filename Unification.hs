@@ -30,10 +30,14 @@ onTop f = popEntry >>= focus
                Restore -> modify (:< e)
         focus e = onTop f >> modify (:< e)
 
+eqLens :: [a] -> [a] -> Bool
+eqLens xs ys = length xs == length ys
+
 unify :: VType Desugared -> VType Desugared -> Contextual ()
 unify (MkDTTy dt0 abs0 xs) (MkDTTy dt1 abs1 ys)
-  | dt0 == dt1 = mapM (uncurry unifyAb) (zip abs0 abs1) >>
-                 mapM_ (uncurry unify) (zip xs ys)
+  | dt0 == dt1 && eqLens abs0 abs1 && eqLens xs ys =
+    mapM (uncurry unifyAb) (zip abs0 abs1) >>
+    mapM_ (uncurry unify) (zip xs ys)
 unify (MkSCTy cty0) (MkSCTy cty1) = unifyCType cty0 cty1
 unify (MkRTVar a)  (MkRTVar b) | a == b = return ()
 unify MkIntTy      MkIntTy           = return ()
@@ -75,8 +79,8 @@ unifyItfMap m0 m1 = do mapM_ (unifyItfMap' m1) (M.toList m0)
   where unifyItfMap' :: ItfMap Desugared -> (Id,[VType Desugared]) ->
                         Contextual ()
         unifyItfMap' m (itf,xs) = case M.lookup itf m of
-          Nothing -> throwError $ "failed to unify abilities " ++ (show m0) ++
-                     " and " ++ (show m1)
+          Nothing -> throwError $ "failed to unify abilities " ++
+                     (show m0) ++ " and " ++ (show m1)
           Just ys -> mapM_ (uncurry unify) (zip xs ys)
 
 unifyAdj :: Adj Desugared -> Adj Desugared -> Contextual ()

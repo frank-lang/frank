@@ -5,6 +5,9 @@ module RefineSyntax where
 import Control.Monad
 import Control.Monad.Except
 import Control.Monad.State
+
+import Debug.Trace
+
 import Data.List
 import qualified Data.Map.Strict as M
 import qualified Data.Set as S
@@ -17,13 +20,16 @@ type TVarMap = M.Map Id (VType Raw)
 
 type EVarSet = S.Set Id
 
+-- Object-Int pair
+type IPair = (Id,Int)
+
 data TopLevelCtxt = Interface | Datatype | Handler deriving (Show, Eq)
 
-data RState = MkRState { interfaces :: [Id]
-                       , datatypes :: [Id]
-                       , handlers :: [Id]
-                       , ctrs :: [Id]
-                       , cmds :: [Id]
+data RState = MkRState { interfaces :: [IPair]
+                       , datatypes :: [IPair]
+                       , handlers :: [IPair]
+                       , ctrs :: [IPair]
+                       , cmds :: [IPair]
                        , program :: Prog Refined
                        , tmap :: TVarMap
                        , evmap :: EVarSet
@@ -35,43 +41,43 @@ getRState = get
 putRState :: RState -> Refine ()
 putRState = put
 
-putRItfs :: [Id] -> Refine ()
+putRItfs :: [IPair] -> Refine ()
 putRItfs xs = do s <- getRState
                  putRState $ s { interfaces = xs }
 
-getRItfs :: Refine [Id]
+getRItfs :: Refine [IPair]
 getRItfs = do s <- getRState
               return $ interfaces s
 
-putRDTs :: [Id] -> Refine ()
+putRDTs :: [IPair] -> Refine ()
 putRDTs xs = do s <- getRState
                 putRState $ s { datatypes = xs }
 
-getRDTs :: Refine [Id]
+getRDTs :: Refine [IPair]
 getRDTs = do s <- getRState
              return $ datatypes s
 
-putRCtrs :: [Id] -> Refine ()
+putRCtrs :: [IPair] -> Refine ()
 putRCtrs xs = do s <- getRState
                  putRState $ s { ctrs = xs }
 
-getRCtrs :: Refine [Id]
+getRCtrs :: Refine [IPair]
 getRCtrs = do s <- getRState
               return $ ctrs s
 
-putRCmds :: [Id] -> Refine ()
+putRCmds :: [IPair] -> Refine ()
 putRCmds xs = do s <- getRState
                  putRState $ s { cmds = xs }
 
-getRCmds :: Refine [Id]
+getRCmds :: Refine [IPair]
 getRCmds = do s <- getRState
               return $ cmds s
 
-putRMHs :: [Id] -> Refine ()
+putRMHs :: [IPair] -> Refine ()
 putRMHs xs = do s <- getRState
                 putRState $ s { handlers = xs }
 
-getRMHs :: Refine [Id]
+getRMHs :: Refine [IPair]
 getRMHs = do s <- getRState
              return $ handlers s
 
@@ -98,6 +104,13 @@ getTopLevelCtxt = do s <- getRState
 putTopLevelCtxt :: TopLevelCtxt -> Refine ()
 putTopLevelCtxt ctxt = do s <- getRState
                           putRState $ s { tlctxt = Just ctxt }
+
+mem :: Id -> [IPair] -> Bool
+mem x xs = x `elem` (map fst xs)
+
+findPair :: Id -> [IPair] -> Maybe Int
+findPair x ((y,n) : xs) = if x == y then Just n else findPair x xs
+findPair _ _ = Nothing
 
 collectCmds :: [Cmd a] -> [Id]
 collectCmds ((MkCmd cmd _ _) : xs) = cmd : (collectCmds xs)
@@ -129,25 +142,26 @@ splitTopTm xs = (getHdrSigs xs, getHdrDefs xs [], dts, itfs)
         itfs = getItfs xs
 
 -- Add the name if not already present
-addName :: [Id] -> Id -> String -> Refine [Id]
-addName xs x prefix = if x `elem` xs then throwError (prefix ++ x ++
-                                                      " already defined.")
-                      else return $ x : xs
+addEntry :: [IPair] -> Id -> Int -> String -> Refine [IPair]
+addEntry xs x n prefix = if x `mem` xs then throwError (prefix ++ x ++
+                                                        " already defined.")
+                         else return $ (x,n) : xs
 
-addItf :: [Id] -> Id -> Refine [Id]
-addItf xs x = addName xs x "duplicate interface: "
+addItf :: [IPair] -> Itf a -> Refine [IPair]
+addItf xs (MkItf x ys _) = addEntry xs x (length ys) "duplicate interface: "
 
-addDataT :: [Id] -> Id -> Refine [Id]
-addDataT xs x = addName xs x "duplicate datatype: "
+addDataT :: [IPair] -> DataT a -> Refine [IPair]
+addDataT xs (MkDT x _ ys _) = addEntry xs x (length ys) "duplicate datatype: "
 
-addCtr :: [Id] -> Id -> Refine [Id]
-addCtr xs x = addName xs x "duplicate constructor: "
+addCtr :: [IPair] -> Ctr a -> Refine [IPair]
+addCtr xs (MkCtr x ts) = addEntry xs x (length ts) "duplicate constructor: "
 
-addCmd :: [Id] -> Id -> Refine [Id]
-addCmd xs x = addName xs x "duplicate command: "
+addCmd :: [IPair] -> Cmd a -> Refine [IPair]
+addCmd xs (MkCmd x ts _) = addEntry xs x (length ts) "duplicate command: "
 
-addMH :: [Id] -> Id -> Refine [Id]
-addMH xs x = addName xs x "duplicate multihandler: "
+addMH :: [IPair] -> MHSig -> Refine [IPair]
+addMH xs (MkSig x (MkCType ps p)) =
+  addEntry xs x (length ps) "duplicate multihandler: "
 
 uniqueIds :: [Id] -> Bool
 uniqueIds xs = length xs == length (nub xs)
@@ -183,14 +197,15 @@ existsMain [] = False
 existsMain (_ : xs) = error "invalid top term: expected multihandler"
 
 refineDataT :: DataT Raw -> Refine (TopTm Refined)
-refineDataT (MkDT dt es ps ctrs) =
+refineDataT d@(MkDT dt es ps ctrs) =
   if uniqueIds ps && uniqueIds es then
      do putTMap (M.fromList $ zip ps (map MkTVar ps))
-        putEVSet (S.fromList es)
+        let es' = if dtContainsCType d && null es then ["£"] else es
+        putEVSet (S.fromList es')
         ctrs' <- mapM refineCtr ctrs
         putTMap M.empty
         putEVSet S.empty
-        return $ MkDataTm $ MkDT dt es ps ctrs'
+        return $ MkDataTm $ MkDT dt es' ps ctrs'
   else throwError $ "duplicate parameter in datatype " ++ dt
 
 refineItf :: Itf Raw -> Refine (TopTm Refined)
@@ -252,37 +267,37 @@ refineItfMap m = do xs <- mapM (uncurry refineEntry) (M.toList m)
   where refineEntry :: Id -> [VType Raw] -> Refine (Id, [VType Refined])
         refineEntry id xs =
           do itfs <- getRItfs
-             if id `elem` itfs then do xs' <- mapM refineVType xs
-                                       return (id, xs')
-             else throwError $ "no such effect variable or interface " ++ id
+             case id `findPair` itfs of
+               Just n -> do checkArgs id n (length xs)
+                            xs' <- mapM refineVType xs
+                            return (id, xs')
+               Nothing -> idError id "interface"
 
 refineAbMod :: AbMod Raw -> AbMod Refined
 refineAbMod MkEmpAb = MkEmpAb
 refineAbMod (MkAbVar x) = MkAbVar x
 
 refineAdj :: Adj Raw -> Refine (Adj Refined)
-refineAdj (MkAdj m) = do m' <- mapM (mapM refineVType) m
+refineAdj (MkAdj m) = do m' <- refineItfMap m
                          return $ MkAdj m'
 
 refineVType :: VType Raw -> Refine (VType Refined)
 -- Check that dt is a datatype, otherwise it must have been a type variable.
 refineVType (MkDTTy x abs xs) =
   do dts <- getRDTs
-     case x `elem` dts of
-       True -> do abs' <- mapM refineAb abs
-                  xs' <- mapM refineVType xs
-                  return $ MkDTTy x abs' xs'
-       False -> do -- interfaces or datatypes explicitly declare their type
-                   -- variables.
+     case x `findPair` dts of
+       Just n -> do checkArgs x n (length xs)
+                    abs' <- mapM refineAb abs
+                    xs' <- mapM refineVType xs
+                    return $ MkDTTy x abs' xs'
+       Nothing -> do -- interfaces or datatypes explicitly declare their type
+                     -- variables.
                    m <- getTMap
                    ctx <- getTopLevelCtxt
                    if isHdrCtxt ctx || M.member x m then return $ MkTVar x
-                   else throwError $ "no type variable " ++ x ++ " defined"
+                   else idError x "type variable"
 refineVType (MkSCTy ty) = refineCType ty >>= return . MkSCTy
-refineVType (MkTVar x) = do dts <- getRDTs
-                            case x `elem` dts of
-                              True -> return $ MkDTTy x [] []
-                              False -> return $ MkTVar x
+refineVType (MkTVar x) = return $ MkTVar x
 refineVType MkStringTy = return MkStringTy
 refineVType MkIntTy = return MkIntTy
 refineVType MkCharTy = return MkCharTy
@@ -301,19 +316,33 @@ refineTm (MkRawId id) =
   do ctrs <- getRCtrs
      cmds <- getRCmds
      hdrs <- getRMHs
-     if id `elem` ctrs then return $ MkDCon $ MkDataCon id []
-     else if id `elem` cmds then return $ MkUse $ MkOp $ MkCmdId id
-     else if id `elem` hdrs then return $ MkUse $ MkOp $ MkPoly id
-     else return $ MkUse $ MkOp $ MkMono id
+     case id `findPair` ctrs of
+        Just n -> do checkArgs id n 0
+                     return $ MkDCon $ MkDataCon id []
+        Nothing ->
+          case id `findPair` cmds of
+            Just n -> return $ MkUse $ MkOp $ MkCmdId id
+            Nothing ->
+              case id `findPair` hdrs of
+                Just n -> return $ MkUse $ MkOp $ MkPoly id
+                Nothing -> return $ MkUse $ MkOp $ MkMono id
 refineTm (MkRawComb id xs) =
   do xs' <- mapM refineTm xs
      ctrs <- getRCtrs
      cmds <- getRCmds
      hdrs <- getRMHs
-     if id `elem` ctrs then return $ MkDCon $ MkDataCon id xs'
-     else if id `elem` cmds then return $ MkUse $ MkApp (MkCmdId id) xs'
-     else if id `elem` hdrs then return $ MkUse $ MkApp (MkPoly id) xs'
-     else return $ MkUse $ MkApp (MkMono id) xs'
+     case id `findPair` ctrs of
+        Just n -> do checkArgs id n (length xs')
+                     return $ MkDCon $ MkDataCon id xs'
+        Nothing ->
+          case id `findPair` cmds of
+            Just n -> do checkArgs id n (length xs')
+                         return $ MkUse $ MkApp (MkCmdId id) xs'
+            Nothing ->
+              case id `findPair` hdrs of
+                Just n -> do checkArgs id n (length xs')
+                             return $ MkUse $ MkApp (MkPoly id) xs'
+                Nothing -> return $ MkUse $ MkApp (MkMono id) xs'
 refineTm (MkSC x) = do x' <- refineSComp x
                        return $ MkSC x'
 refineTm (MkStr x) = return $ MkStr x
@@ -334,16 +363,41 @@ refineClause (MkCls ps tm) = do ps' <- mapM refinePattern ps
 
 refinePattern :: Pattern -> Refine Pattern
 refinePattern (MkVPat p) = MkVPat <$> refineVPat p
-refinePattern (MkCmdPat cmd ps k) = do ps' <- mapM refineVPat ps
-                                       return $ MkCmdPat cmd ps' k
+refinePattern (MkCmdPat x ps k) =
+  do cmds <- getRCmds
+     case x `findPair` cmds of
+       Just n -> do checkArgs x n (length ps)
+                    ps' <- mapM refineVPat ps
+                    return $ MkCmdPat x ps' k
+       Nothing -> idError x "command"
 refinePattern p = return p
 
 refineVPat :: ValuePat -> Refine ValuePat
 refineVPat p@(MkVarPat x) =
   do ctrs <- getRCtrs
-     if x `elem` ctrs then return $ MkDataPat x []
-     else return p
+     case x `findPair` ctrs of
+       Just n -> do checkArgs x n 0
+                    return $ MkDataPat x []
+       Nothing -> return p
+refineVPat (MkDataPat x xs) =
+  do ctrs <- getRCtrs
+     case x `findPair` ctrs of
+       Just n -> do checkArgs x n (length xs)
+                    xs' <- mapM refineVPat xs
+                    return $ MkDataPat x xs'
+       Nothing -> idError x "constructor"
 refineVPat p = return p
+
+checkArgs :: Id -> Int -> Int -> Refine ()
+checkArgs x exp act =
+  if exp /= act then
+    throwError $ x ++ " expects " ++ show exp ++
+                 " argument(s) but " ++ show act ++
+                 " given."
+  else return ()
+
+idError :: Id -> String -> Refine a
+idError x cls = throwError $ "no " ++ cls ++ " named '" ++ x ++ "' declared"
 
 initialiseRState :: [TopTm Raw] -> Refine ()
 initialiseRState xs =
@@ -351,21 +405,31 @@ initialiseRState xs =
      let itfs = getItfs xs
          dts = getDataTs xs
          hdrSigs = getHdrSigs xs
-     itfNames <- foldM addItf (interfaces i) (collectINames itfs)
-     dtNames <- foldM addDataT (datatypes i) (collectDTNames dts)
-     mhNames <- foldM addMH (handlers i) (collectMHNames hdrSigs)
-     cmds <- foldM addCmd (cmds i) (collectCmds $ concatMap getCmds itfs)
-     ctrs <- foldM addCtr (ctrs i) (collectCtrs $ concatMap getCtrs dts)
-     putRItfs itfNames
-     putRDTs dtNames
+     xs <- foldM addItf (interfaces i) itfs
+     ys <- foldM addDataT (datatypes i) dts
+     zs <- foldM addMH (handlers i) hdrSigs
+     cmds <- foldM addCmd (cmds i) (concatMap getCmds itfs)
+     ctrs <- foldM addCtr (ctrs i) (concatMap getCtrs dts)
+     putRItfs xs
+     putRDTs ys
      putRCmds cmds
      putRCtrs ctrs
-     putRMHs mhNames
+     putRMHs zs
 
 makeIntBinOp :: Char -> MHDef Refined
 makeIntBinOp c = MkDef [c] (MkCType [MkPort (MkAdj M.empty) MkIntTy
                                     ,MkPort (MkAdj M.empty) MkIntTy]
                             (MkPeg (MkAb (MkAbVar "£") M.empty) MkIntTy)) []
+
+dtContainsCType :: DataT a -> Bool
+dtContainsCType (MkDT _ _ _ xs) = any ctrHasCTypeArg xs
+
+ctrHasCTypeArg :: Ctr a -> Bool
+ctrHasCTypeArg (MkCtr _ ts) = any isCType ts
+
+isCType :: VType a -> Bool
+isCType (MkSCTy _) = True
+isCType _ = False
 
 {-- The initial state for the refinement pass. -}
 
@@ -392,20 +456,25 @@ builtinMHDefs = [MkDef "strcat"
                   (MkPeg (MkAb (MkAbVar "£") M.empty) MkStringTy)) []] ++
                 (map makeIntBinOp "+-")
 
-builtinMHs :: [Id]
-builtinMHs = map (\(MkDef id _ _) -> id) builtinMHDefs
+builtinMHs :: [IPair]
+builtinMHs = map add builtinMHDefs
+  where add (MkDef x (MkCType ps _) _) = (x,length ps)
 
-builtinDTs :: [Id]
-builtinDTs = collectDTNames builtinDataTs
+builtinDTs :: [IPair]
+builtinDTs = map add builtinDataTs
+  where add (MkDT id _ xs _) = (id,length xs)
 
-builtinINames :: [Id]
-builtinINames = collectINames builtinItfs
+builtinINames :: [IPair]
+builtinINames = map add builtinItfs
+  where add (MkItf x xs _) = (x,length xs)
 
-builtinCtrs :: [Id]
-builtinCtrs = map (\(MkCtr id _) -> id) $ concatMap getCtrs builtinDataTs
+builtinCtrs :: [IPair]
+builtinCtrs = map add $ concatMap getCtrs builtinDataTs
+  where add (MkCtr id ts) = (id,length ts)
 
-builtinCmds :: [Id]
-builtinCmds = map (\(MkCmd id _ _) -> id) $ concatMap getCmds builtinItfs
+builtinCmds :: [IPair]
+builtinCmds = map add $ concatMap getCmds builtinItfs
+  where add (MkCmd id ts _) = (id,length ts)
 
 initRefine :: RState
 initRefine = MkRState builtinINames builtinDTs builtinMHs builtinCtrs
