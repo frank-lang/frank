@@ -268,8 +268,11 @@ prog g ds = g' where
   ev (x := e) = x := v where
     Ret v = compute g' e []
 
-load :: String -> IO Env
-load x = do
+load :: [Def Exp] -> Env
+load = prog envBuiltins
+
+loadFile :: String -> IO Env
+loadFile x = do
   s <- readFile (x ++ ".uf")
   let Just (d, "") = parse pProg s
   return (prog envBuiltins d)

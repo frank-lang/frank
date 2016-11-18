@@ -49,8 +49,11 @@ isAtom :: Id -> Compile Bool
 isAtom id = do s <- getCState
                return $ S.member id (atoms s)
 
-compile :: NotRaw a => Prog a -> String -> IO ()
-compile (MkProg xs) dst = writeFile (dst ++ ".uf") (S.ppProg res)
+compileToFile :: NotRaw a => Prog a -> String -> IO ()
+compileToFile p dst = writeFile (dst ++ ".uf") (S.ppProg $ compile p)
+
+compile :: NotRaw a => Prog a -> [S.Def S.Exp]
+compile (MkProg xs) = res
   where res = reverse $ evalState (compile' xs) st
         st = initialiseItfMap initCState (getItfs xs)
 

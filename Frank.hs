@@ -12,25 +12,27 @@ import Shonky.Semantics
 
 import System.Environment
 
-compileAndRunProg progName =
-  do p <- runTokenParse <$> readFile ("tests/" ++ progName ++ ".fk")
+compileAndRunProg progName b =
+  do p <- runTokenParse <$> readFile (progName ++ ".fk")
      case p of
        Left err -> print err
        Right prog -> case refine prog of
          Left err -> print err
          Right p' -> case check (desugar p') of
           Left err -> print err
-          Right p' -> do compile p' ("tests/" ++ progName)
-                         env <- load ("tests/" ++ progName)
+          Right p' -> do env <- if b then
+                                  do compileToFile p' progName
+                                     loadFile progName
+                                else return $ load $ compile p'
                          case try env "main()" of
                            Ret v -> putStrLn $ ppVal v
                            comp -> putStrLn (show comp)
 
-run = compileAndRunProg
+run x = compileAndRunProg x False
 
 main :: IO ()
 main = do
   args <- getArgs
   case args of
     [file] -> run file
-    _      -> run "paper"
+    _      -> run "tests/paper"
