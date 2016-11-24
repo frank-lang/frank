@@ -1,3 +1,5 @@
+{-# LANGUAGE ScopedTypeVariables #-}
+
 -- Compile Frank to Shonky
 module Compile where
 
@@ -124,6 +126,16 @@ compilePattern (MkCmdPat cmd xs k) = do xs' <- mapM compileVPat xs
                                         return $ S.PC cmd xs' k
 compilePattern (MkThkPat id) = return $ S.PT id
 
+-- SL: The commented out cases for strings in compileVPat and
+-- compileTM attempted to map strings directly onto Shonky's string
+-- representation. But this was problematic for various reasons. In
+-- particular, Shonky doesn't appear to distinguish between individual
+-- characters and strings.
+--
+-- The current version simply represents Frank characters as one
+-- character Shonky strings and Frank strings as a Shonky datatype
+-- with "cons" and "nil" constructors.
+
 compileVPat :: ValuePat -> Compile S.VPat
 compileVPat (MkVarPat id) = return $ S.VPV id
 compileVPat (MkDataPat id xs) =
@@ -132,15 +144,23 @@ compileVPat (MkDataPat id xs) =
        xs -> do xs' <- mapM compileVPat xs
                 return $ foldr1 (S.:&:) $ (S.VPA id) : (xs' ++ [S.VPA ""])
 compileVPat (MkIntPat n) = return $ S.VPI n
-compileVPat (MkStrPat s) = return $ S.VPX $ map Left s
+compileVPat (MkStrPat s) = compileVPat (f s) where
+  f :: String -> ValuePat
+  f []     = MkDataPat "nil" []
+  f (c:cs) = MkDataPat "cons" [MkCharPat c, f cs]
+  --return $ S.VPX $ map Left s
 compileVPat (MkCharPat c) = return $ S.VPX [Left c]
 
 compileTm :: NotRaw a => Tm a -> Compile S.Exp
 compileTm (MkSC sc) = compileSComp sc
 compileTm MkLet = return $ S.EV "let"
-compileTm (MkStr s) -- list of characters
-  | s == "" = return $ S.EA "nil" S.:& S.EA "" -- empty string
-  | otherwise = return $ S.EX $ map Left s
+compileTm (MkStr s :: Tm a) = compileDataCon (f s) where
+  f :: String -> DataCon a
+  f [] = MkDataCon "nil" []
+  f (c:cs) = MkDataCon "cons" [MkChar c, MkDCon $ f cs]
+-- -- list of characters
+--   | s == "" = return $ S.EA "nil" S.:& S.EA "" -- empty string
+--   | otherwise = return $ S.EX $ map Left s
 compileTm (MkInt n) = return $ S.EI n
 compileTm (MkChar c) = return $ S.EX [Left c]
 compileTm (MkTmSeq t1 t2) = (S.:!) <$> compileTm t1 <*> compileTm t2

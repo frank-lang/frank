@@ -286,4 +286,4 @@ isListPat (v :&: _) = isListPat v
 isListPat _ = False
 
 listCtrs :: [String]
-listCtrs = ["nil", "cons"]
+listCtrs = [] -- ["nil", "cons"]
