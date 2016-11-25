@@ -41,18 +41,53 @@ data Frame
   | Txt Env [Char] [Either Char Exp]
   deriving Show
 
-ppVal :: Val -> String
-ppVal (VA s) = "'" ++ s
-ppVal (VI n) = show n
-ppVal p@(_ :&& _) = "[" ++ ppListVal p
-ppVal (VX s) = "\"" ++ s ++ "\""
-ppVal v = show v
+-- ppVal :: Val -> String
+-- ppVal (VA s) = "'" ++ s
+-- ppVal (VI n) = show n
+-- ppVal p@(_ :&& _) = "[" ++ ppListVal p
+-- ppVal (VX s) = "\"" ++ s ++ "\""
+-- ppVal v = show v
 
-ppListVal :: Val -> String
-ppListVal (v :&& VA "") = ppVal v ++ "]"
-ppListVal (v :&& vs) = ppVal v ++ "," ++ ppListVal vs
-ppListVal (VA "") = "]"
-ppListVal v = ppVal v
+-- ppListVal :: Val -> String
+-- ppListVal (v :&& VA "") = ppVal v ++ "]"
+-- ppListVal (v :&& vs) = ppVal v ++ "," ++ ppListVal vs
+-- ppListVal (VA "") = "]"
+-- ppListVal v = ppVal v
+
+-- This pretty-printer more-or-less does the right thing for rendering
+-- Frank values encoded in shonky.
+--
+-- One thing it still gets wrong is printing 'nil' for an empty
+-- string, because it does not know the type.
+--
+-- Another problem is that for complex values (including computations)
+-- it resorts to invoking show.
+
+ppVal :: Val -> String
+ppVal (VA s)                           = "'" ++ s
+ppVal (VI n)                           = show n
+ppVal (VX [c])                         = "'" ++ [c] ++ "'"
+ppVal v@(VA "cons" :&& (VX [_] :&& _)) = "\"" ++ ppStringVal v ++ "\""
+ppVal (VA k :&& v)                     = k ++ ppConsArgs v
+ppVal v                                = "[COMPLEX VALUE: " ++ show v ++ "]"
+
+-- parentheses if necessary
+ppValp :: Val -> String
+ppValp v@(VA "cons" :&& (VX [_] :&& _)) = ppVal v   -- string
+ppValp v@(VA _ :&& VA "")               = ppVal v   -- nullary constructor
+ppValp v@(VA _ :&& _)                   = "(" ++ ppVal v ++ ")"
+ppValp v                                = ppVal v
+
+ppConsArgs :: Val -> String
+ppConsArgs (v :&& w) = " " ++ ppValp v ++ ppConsArgs w
+ppConsArgs (VA "")    = ""
+ppConsArgs v          = "[BROKEN CONSTRUCTOR ARGUMENTS: " ++ ppVal v ++ "]"
+
+ppStringVal :: Val -> String
+ppStringVal (v :&& VA "")                  = ppStringVal v
+ppStringVal (VA "cons" :&& (VX [c] :&& v)) = c : ppStringVal v
+ppStringVal (VA "nil")                     = ""
+ppStringVal v                              = "[BROKEN STRING: " ++ ppVal v ++ "]"
 
 plus :: Env -> [Comp] -> Val
 plus g [a1,a2] = VI (f a1 + f a2)
