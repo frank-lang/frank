@@ -184,7 +184,7 @@ checkPat (MkCmdPat cmd xs g) (MkPort adj ty) =
      case mps of
        Nothing -> throwError $
                   "command " ++ cmd ++ " not found in adjustment " ++
-                  (show adj)
+                  (show $ ppAdj adj)
        Just ps -> do addMark -- localise the following type variables
                      qs' <- mapM makeFlexible qs
                      ts' <- mapM makeFlexible ts
@@ -227,7 +227,7 @@ makeFlexible (MkDTTy id abs xs) =
 makeFlexible (MkSCTy cty) = MkSCTy <$> makeFlexibleCType cty
 makeFlexible (MkRTVar x) = MkFTVar <$> (getContext >>= find')
   where find' BEmp = freshMVar x
-        find' (es :< FlexMVar y _) | trimTVar x == trimTVar y = return y
+        find' (es :< FlexMVar y _) | trimVar x == trimVar y = return y
         find' (es :< Mark) = freshMVar x
         find' (es :< _) = find' es
 
@@ -241,7 +241,7 @@ makeFlexibleAb (MkAb v m) = case v of
   _ -> do m' <- mapM (mapM makeFlexible) m
           return $ MkAb v m'
   where find' x BEmp = freshMVar x
-        find' x (es :< FlexMVar y _) | trimTVar x == trimTVar y = return y
+        find' x (es :< FlexMVar y _) | trimVar x == trimVar y = return y
         find' x (es :< Mark) = freshMVar x
         find' x (es :< _) = find' x es
 

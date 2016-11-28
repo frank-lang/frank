@@ -50,14 +50,9 @@ type Context = Bwd Entry
 type TermBinding = (Operator, VType Desugared)
 type Suffix = [(Id, Decl)]
 
--- Only to be applied to identifiers representing rigid or flexible
--- metavariables (type or effect).
-trimTVar :: Id -> Id
-trimTVar = takeWhile (/= '$')
-
 freshMVar :: Id -> Contextual Id
 freshMVar x = do n <- fresh
-                 let s = trimTVar x ++ "$f" ++ (show n)
+                 let s = trimVar x ++ "$f" ++ (show n)
                  modify (:< FlexMVar s Hole)
                  return s
 

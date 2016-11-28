@@ -54,8 +54,9 @@ unify (MkFTVar a)  (MkFTVar b)       = onTop $ \c d ->
         cmp _     _     (AbDefn _)  = error "unification invariant broken"
 unify (MkFTVar a)  ty                = solve a [] ty
 unify ty           (MkFTVar a)       = solve a [] ty
-unify t            s                 = throwError $ "failed to unify " ++
-                                       (show t) ++ " with " ++ (show s)
+unify t            s                 =
+  throwError $ "failed to unify " ++
+  (show $ ppVType t) ++ " with " ++ (show $ ppVType s)
 
 unifyAb :: Ab Desugared -> Ab Desugared -> Contextual ()
 unifyAb (MkAb (MkAbFVar a) m0) (MkAb (MkAbFVar b) m1) =
@@ -70,8 +71,8 @@ unifyAb (MkAb v m0) (MkAb (MkAbFVar a) m1) | M.null (M.difference m1 m0) =
   let m = M.difference m0 m1 in solveForEVar a [] (MkAb v m)
 unifyAb (MkAb v0 m0) (MkAb v1 m1) | v0 == v1 = unifyItfMap m0 m1
 unifyAb ab0 ab1 =
-  throwError $ "cannot unify abilities " ++ (show ab0) ++ " and " ++
-  (show ab1)
+  throwError $ "cannot unify abilities " ++ (show $ ppAb ab0) ++ " and " ++
+  (show $ ppAb ab1)
 
 unifyItfMap :: ItfMap Desugared -> ItfMap Desugared -> Contextual ()
 unifyItfMap m0 m1 = do mapM_ (unifyItfMap' m1) (M.toList m0)
@@ -80,7 +81,7 @@ unifyItfMap m0 m1 = do mapM_ (unifyItfMap' m1) (M.toList m0)
                         Contextual ()
         unifyItfMap' m (itf,xs) = case M.lookup itf m of
           Nothing -> throwError $ "failed to unify abilities " ++
-                     (show m0) ++ " and " ++ (show m1)
+                     (show $ ppItfMap m0) ++ " and " ++ (show $ ppItfMap m1)
           Just ys -> mapM_ (uncurry unify) (zip xs ys)
 
 unifyAdj :: Adj Desugared -> Adj Desugared -> Contextual ()

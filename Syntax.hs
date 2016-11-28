@@ -7,6 +7,8 @@ module Syntax where
 
 import qualified Data.Map.Strict as M
 
+import qualified Text.PrettyPrint as PP
+
 {-------------------}
 {-- Syntax description: raw syntax comes from the parser and preprocessed into
     refined syntax. --}
@@ -255,3 +257,60 @@ getOpName :: Operator -> Id
 getOpName (MkMono x) = x
 getOpName (MkPoly x) = x
 getOpName (MkCmdId x) = x
+
+-- Syntax pretty printing facilities
+
+(<+>) = (PP.<+>)
+(<>) = (PP.<>)
+text = PP.text
+
+type Doc = PP.Doc
+
+-- Only to be applied to identifiers representing rigid or flexible
+-- metavariables (type or effect).
+trimVar :: Id -> Id
+trimVar = takeWhile (/= '$')
+
+ppVType :: VType a -> Doc
+ppVType (MkDTTy x abs xs) = text x <+> absRep <+> xsRep
+  where absRep = foldl abToDoc PP.empty abs'
+        abToDoc acc ab = ab <+> acc
+        abs' = map ppAb abs
+        xsRep = foldl (<+>) PP.empty $ map ppParenVType xs
+ppVType (MkSCTy (MkCType ps q)) = ports <+> peg
+  where ports = foldl (<+>) PP.empty $ map ppPort ps
+        peg = ppPeg q
+ppVType (MkTVar x) = text x
+ppVType (MkRTVar x) = text x
+ppVType (MkFTVar x) = text x
+ppVType MkStringTy = text "String"
+ppVType MkIntTy = text "Int"
+ppVType MkCharTy = text "Char"
+
+ppParenVType :: VType a -> Doc
+ppParenVType v@(MkDTTy _ _ _) = text "(" <+> ppVType v <+> text ")"
+ppParenVType v = ppVType v
+
+ppPort :: Port a -> Doc
+ppPort (MkPort adj ty) = ppAdj adj <+> ppVType ty
+
+ppPeg :: Peg a -> Doc
+ppPeg (MkPeg ab ty) = ppAb ab <+> ppVType ty
+
+ppAdj :: Adj a -> Doc
+ppAdj (MkAdj m) = text "<" <> ppItfMap m <> text ">"
+
+ppAb :: Ab a -> Doc
+ppAb (MkAb v m) = text "[" <> ppAbMod v <+> ppItfMap m <> text "]"
+
+ppAbMod :: AbMod a -> Doc
+ppAbMod MkEmpAb = text "@"
+ppAbMod (MkAbVar x) = text x
+ppAbMod (MkAbRVar x) = text x
+ppAbMod (MkAbFVar x) = text x
+
+ppItfMap :: ItfMap a -> Doc
+ppItfMap m = foldl (<+>) PP.empty $ map ppItfMapPair $ M.toList m
+ where ppItfMapPair :: (Id, [VType a]) -> Doc
+       ppItfMapPair (x, vs) = 
+         text x <+> (foldl (<+>) PP.empty $ map ppParenVType vs)
