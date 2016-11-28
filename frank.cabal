@@ -27,19 +27,20 @@ executable frank
                , TypeCheckCommon
                , Unification
 
-  build-depends: base >= 4.7 && < 5
-               , mtl
+  build-depends: Unique
+               , base >= 4.7 && < 5
                , containers
-               , transformers
-               , Unique
-               , text
-               , unordered-containers
+               , indentation-trifecta
+               , mtl
                , parsers
-               , trifecta
+               , pretty
+               , pretty >= 1.1.3.3
                , tasty
                , tasty-hunit
-               , indentation-trifecta
-               , pretty
+               , text
+               , transformers
+               , trifecta
+               , unordered-containers
   main-is:          Frank.hs
   ghc-options:      -threaded -rtsopts -with-rtsopts=-N 
   default-language: Haskell2010
@@ -50,6 +51,7 @@ test-suite frank-test
   main-is:             Spec.hs
   build-depends:       base
                      , frank
+                     , pretty >= 1.1.3.3
   ghc-options:         -threaded -rtsopts -with-rtsopts=-N
   default-language:    Haskell2010
 
