@@ -1,0 +1,63 @@
+Some musings on testing
+###########################
+Craig McLaughlin 29/11/2016
+---------------------------
+
+NB: Below are some musings of a not yet implemented testing methodology.
+
+I have a collection of Frank programs:
+
+tests/
+
+These are further sub-divided in to tests that are expected to pass and tests
+which are expected to fail:
+
+tests/should-pass
+tests/should-fail
+
+Make a distinction between a test program and a regression. A regression r#.fk
+corresponds to an identified defect. A test program t#.fk is created to
+exhibit some system functionality. Perhaps test programs will have more
+specific names since there is in general no numbering scheme for them.
+
+The naming convention is respected by the test harness. The test harness may
+give diagnostics on passing/failing regression/test programs.
+
+Checking failure is two-fold: compare the error message and check for an error
+exit code (!= 0).
+
+The test programs will use comments to instruct the test harness.
+
+For example, say we wish to test that pattern matching on lists of string is
+functioning as expected. We might write a program (tests/str.fk) like so:
+
+  -- #return 1
+  foo : List String -> Int
+  foo (cons "ab" (cons "cd" nil)) = 0
+  foo (cons "abcd" nil) = 1
+  foo _ = 2
+
+  main : Int
+  main! = foo (cons "abcd" nil)
+
+The directive #return specifies the expected return value of the program (the
+main function). We can also get it to evaluate specific segments of a program:
+
+   -- #test foo nil #return 2
+
+which runs the test and compares the output to the expected
+result. #return X is shorthand for #test main! #return X.
+
+The test harness will scour the test directory running all the tests and
+summarising the results. There will be an option to provide more detailed test
+output such as the expected and actual result.
+
+For algebraic datatypes as expected results one could encode this using
+(in)equality tests and booleans. For this, Frank must support at least (==)
+and (!=). Alternatively, we could compare the output (string representation of
+the ADT) of the program with an expected string result.
+
+
+
+
+
