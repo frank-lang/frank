@@ -34,7 +34,8 @@ find (MkCmdId x) =
      case mps of
        Nothing -> throwError $ "command " ++ x ++
                   " belonging to interface " ++ itf ++
-                  " not permitted by ambient ability"
+                  " not permitted by ambient ability:" ++
+                  (show $ ppAb amb)
        Just ps ->
          do addMark
             qs' <- mapM makeFlexible qs

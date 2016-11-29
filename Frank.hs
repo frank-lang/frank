@@ -11,15 +11,16 @@ import qualified ExpectedTestOutput as ETO
 import Shonky.Semantics
 
 import System.Environment
+import System.Exit
 
 compileAndRunProg progName b =
   do p <- runTokenParse <$> readFile (progName ++ ".fk")
      case p of
-       Left err -> print err
+       Left err -> die err
        Right prog -> case refine prog of
-         Left err -> print err
+         Left err -> die err
          Right p' -> case check (desugar p') of
-          Left err -> print err
+          Left err -> die err
           Right p' -> do env <- if b then
                                   do compileToFile p' progName
                                      loadFile progName
