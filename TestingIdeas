@@ -18,10 +18,8 @@ tests/should-fail
 Make a distinction between a test program and a regression. A regression r#.fk
 corresponds to an identified defect. A test program t#.fk is created to
 exhibit some system functionality. Perhaps test programs will have more
-specific names since there is in general no numbering scheme for them.
-
-The naming convention is respected by the test harness. The test harness may
-give diagnostics on passing/failing regression/test programs.
+specific names since there is in general no numbering scheme for them. The
+naming convention is respected by the test harness.
 
 Checking failure is two-fold: compare the error message and check for an error
 exit code (!= 0).
@@ -31,6 +29,7 @@ The test programs will use comments to instruct the test harness.
 For example, say we wish to test that pattern matching on lists of string is
 functioning as expected. We might write a program (tests/str.fk) like so:
 
+  -- #desc Pattern matching description
   -- #return 1
   foo : List String -> Int
   foo (cons "ab" (cons "cd" nil)) = 0
@@ -57,7 +56,21 @@ For algebraic datatypes as expected results one could encode this using
 and (!=). Alternatively, we could compare the output (string representation of
 the ADT) of the program with an expected string result.
 
+Example output from test harness:
 
+###################################
+----Test Harness Result Summary----
+Expected Failures  :  3
+Actual Failures    :  2
+Unexpected Failures:  1
 
+Expected Passes    : 30
+Actual Passes      : 23
+Unexpected Passes  :  0
+-----------------------------------
+###################################
+For more detailed output execute test harness with --verbose.
 
-
+A logger will keep track of the summary as the tests are executed. The summary
+may be further decomposed into diagnostics on passing/failing regression/test
+programs.
