@@ -15,7 +15,7 @@ class TestHarnessLogger:
         * postfix: p (pass), f (failure)
 
     A further sub-division into regressions (r) and tests (t)."""
-    def __init__(self, verbose):
+    def __init__(self):
         self.ef = self.new_pair()
         self.af = self.new_pair()
         self.uf = self.new_pair()
@@ -35,7 +35,8 @@ class TestHarnessLogger:
         self.keyw = self.field_width(lambda x:len(x[0]))
 
         ## Verbose logging
-        self.verbose = verbose
+        self.verbose = False
+        self.verbose_on = ""
 
     def new_pair(self):
         return { "r" : 0, "t" : 0 }
@@ -72,6 +73,16 @@ class TestHarnessLogger:
         if self.verbose:
             print(msg)
 
+    def set_verbose(self, b):
+        self.verbose = b
+
+    def set_verbose_on(self, x):
+        """x is a file or dir. for which verbose output is produced."""
+        self.verbose_on = x
+
+    def is_verbose_on(self, x):
+        return self.verbose_on == x
+
     def field_width(self, f):
         return max(list(map(f,self.all_desc())))
 
@@ -80,7 +91,9 @@ class TestHarnessLogger:
 
 def main(okDirs,errDirs,opts):
     ## A test of the summary output
-    logger = TestHarnessLogger("--verbose" in opts)
+    logger = TestHarnessLogger()
+    ## Command line options may change the state of the logger.
+    parse_opts(logger, opts)
     for x in okDirs:
         run_tests_in_dir(logger, check_pass, x)
     for x in errDirs:
@@ -89,19 +102,40 @@ def main(okDirs,errDirs,opts):
 
 def run_tests_in_dir(logger, fn, d):
     """Execute tests in directory d checking results with function fn."""
+    if logger.is_verbose_on(d):
+        logger.set_verbose(True)
     logger.verbose_log("Entering test directory {0}".format(d))
     for x in os.listdir(d):
         x = d+x
         if os.path.isdir(x):
             run_tests_in_dir(logger, fn, x+"/")
         elif os.path.isfile(x):
+            if logger.is_verbose_on(x):
+                logger.set_verbose(True)
             logger.verbose_log("{0} is a file".format(x))
+            if logger.is_verbose_on(d):
+                logger.set_verbose(False)
+    if logger.is_verbose_on(d):
+        logger.set_verbose(False)
 
 def check_pass(logger):
     logger.inc("ep","t")
 
 def check_fail(logger):
     logger.inc("ef","t")
+
+def parse_opts(logger, opts):
+    x = 0
+    while x < len(opts):
+        if opts[x] == "--verbose":
+            ## Check for verbose to be set locally
+            if x+1 < len(opts) and not opts[x+1].startswith("--"):
+                logger.set_verbose_on(opts[x+1])
+                x = x + 1 ## Move past option value.
+            else:
+                ## Globally verbose
+                logger.set_verbose(True)
+        x = x + 1
 
 if __name__ == "__main__":
     import sys
