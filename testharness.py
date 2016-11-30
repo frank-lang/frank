@@ -11,25 +11,21 @@ class TestHarnessLogger:
     """Defines the logger for the test harness.
 
     The fields are defined as follows:
-        * prefix: e (expected), a (actual), u (unexpected)
+        * prefix: e (expected), u (unexpected)
         * postfix: p (pass), f (failure)
 
     A further sub-division into regressions (r) and tests (t)."""
     def __init__(self):
         self.ef = self.new_pair()
-        self.af = self.new_pair()
         self.uf = self.new_pair()
 
         self.ep = self.new_pair()
-        self.ap = self.new_pair()
         self.up = self.new_pair()
 
         self.descf = [("Expected Failures", self.ef)
-                     ,("Actual Failures", self.af)
                      ,("Unexpected Failures", self.uf)]
 
         self.descp = [("Expected Passes", self.ep)
-                     ,("Actual Passes", self.ap)
                      ,("Unexpected Passes", self.up)]
 
         self.keyw = self.field_width(lambda x:len(x[0]))
@@ -89,6 +85,13 @@ class TestHarnessLogger:
     def all_desc(self):
         return self.descf + self.descp
 
+class Result:
+    def regression(self):
+        return True
+
+    def success(self):
+        return True
+
 def main(okDirs,errDirs,opts):
     ## A test of the summary output
     logger = TestHarnessLogger()
@@ -109,20 +112,49 @@ def run_tests_in_dir(logger, fn, d):
         x = d+x
         if os.path.isdir(x):
             run_tests_in_dir(logger, fn, x+"/")
-        elif os.path.isfile(x):
+        elif os.path.isfile(x) and x.endswith(".fk"):
             if logger.is_verbose_on(x):
                 logger.set_verbose(True)
-            logger.verbose_log("{0} is a file".format(x))
+            process_file(logger, fn, x)
             if logger.is_verbose_on(d):
                 logger.set_verbose(False)
     if logger.is_verbose_on(d):
         logger.set_verbose(False)
 
-def check_pass(logger):
-    logger.inc("ep","t")
+def process_file(logger, fn, x):
+    ## Parse the file to obtain list of directives
+    ds = parse_directives(logger, x)
+    res = process_directives(logger, ds, x)
+    fn(logger, res)
 
-def check_fail(logger):
-    logger.inc("ef","t")
+def check_pass(logger, res):
+    ttype = "r" if res.regression() else "t"
+    if res.success():
+        logger.inc("ep",ttype)
+    else:
+        logger.inc("uf",ttype)
+
+def check_fail(logger, res):
+    ttype = "r" if res.regression() else "t"
+    if res.success():
+        logger.inc("up",ttype)
+    else:
+        logger.inc("ef",ttype)
+
+def parse_directives(logger, x):
+    ds = []
+    with open(x) as f:
+        for line in f:
+            if line.startswith("--"):
+                ds += parse_line(line[2:])
+    return ds
+
+def parse_line(line):
+    line = line.strip()
+    return []
+
+def process_directives(logger, ds, x):
+    return Result()
 
 def parse_opts(logger, opts):
     x = 0
