@@ -13,7 +13,7 @@ import Shonky.Semantics
 import System.Environment
 import System.Exit
 
-compileAndRunProg progName b =
+parseAndCheckProg progName b =
   do p <- runTokenParse <$> readFile (progName ++ ".fk")
      case p of
        Left err -> die err
@@ -24,19 +24,25 @@ compileAndRunProg progName b =
           Right p' -> do env <- if b then
                                   do compileToFile p' progName
                                      loadFile progName
-                                else
-                                  -- Currently not producing runnable
-                                  -- code.
-                                  return $ load $ compile p'
-                         case try env "main()" of
-                           Ret v -> putStrLn $ ppVal v
-                           comp -> putStrLn (show comp)
+                                else return $ load $ compile p'
+                         return env
 
-run x = compileAndRunProg x True --False
+compileAndRunProg progName b =
+  do env <- parseAndCheckProg progName b
+     case try env "main()" of
+       Ret v -> putStrLn $ ppVal v
+       comp -> putStrLn (show comp)
+
+run x = compileAndRunProg x False
+
+runWithOpts x opts =
+  case opts of
+    "--output-shonky" : opts -> compileAndRunProg x True
+    _ -> run x
 
 main :: IO ()
 main = do
   args <- getArgs
   case args of
-    [file] -> run file
+    file : opts -> runWithOpts file opts
     _      -> run "tests/paper"

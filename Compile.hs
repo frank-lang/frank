@@ -71,8 +71,9 @@ initialiseItfMap st xs = st { imap = foldl f (imap st) xs }
 
 compileTopTm :: NotRaw a => TopTm a -> Compile [S.Def S.Exp]
 compileTopTm (MkDataTm x) = compileDatatype x
-compileTopTm (MkDefTm x) = do def <- compileMHDef x
-                              return $ [def]
+compileTopTm (MkDefTm x@(MkDef id _ _)) = if isBuiltin id then return []
+                                          else do def <- compileMHDef x
+                                                  return $ [def]
 compileTopTm _ = return [] -- interfaces are ignored for now. add to a map?
 
 -- a constructor is then just a cons cell of its arguments
@@ -179,10 +180,22 @@ compileSComp :: NotRaw a => SComp a -> Compile S.Exp
 compileSComp (MkSComp xs) = S.EF <$> pure [[]] <*> mapM compileClause xs
 
 compileOp :: Operator -> Compile S.Exp
-compileOp (MkMono id) = do b <- isAtom id
-                           return $ if b then S.EA id
-                                    else S.EV id
-compileOp (MkPoly id) = return $ S.EV id
-compileOp (MkCmdId id) = return $ S.EA id
+compileOp (MkMono id) = case M.lookup id builtins of
+  Just v -> return $ S.EV v
+  Nothing ->  do b <- isAtom id
+                 return $ if b then S.EA id
+                          else S.EV id
+compileOp (MkPoly id) = case M.lookup id builtins of
+  Just v -> return $ S.EV v
+  Nothing -> return $ S.EV id
+compileOp (MkCmdId id) = case M.lookup id builtins of
+  Just v -> return $ S.EV v
+  Nothing -> return $ S.EV id
 
--- use the mappings of interface names to obtain the commands
+builtins :: M.Map String String
+builtins = M.fromList [("+", "plus")
+                        ,("-", "minus")
+                        ,("strcat","strcat")]
+
+isBuiltin :: String -> Bool
+isBuiltin x = M.member x builtins

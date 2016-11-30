@@ -135,7 +135,7 @@ collectMHNames [] = []
 getHdrDefs :: [TopTm Raw] -> [MHCls] -> [MHCls]
 getHdrDefs ((MkClsTm cls) : xs) ys = getHdrDefs xs (cls : ys)
 getHdrDefs (_ : xs) ys = getHdrDefs xs ys
-getHdrDefs [] ys = ys
+getHdrDefs [] ys = reverse ys
 
 splitTopTm :: [TopTm Raw] -> ([MHSig], [MHCls], [DataT Raw], [Itf Raw])
 splitTopTm xs = (getHdrSigs xs, getHdrDefs xs [], dts, itfs)
