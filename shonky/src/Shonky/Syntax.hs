@@ -285,5 +285,8 @@ isListPat (VPA v) | v `elem` listCtrs = True
 isListPat (v :&: _) = isListPat v
 isListPat _ = False
 
+-- SL: disable special treatment of lists. Shonky can perfectly well
+-- represent them in the same way as any other algebraic data type.
+
 listCtrs :: [String]
 listCtrs = [] -- ["nil", "cons"]

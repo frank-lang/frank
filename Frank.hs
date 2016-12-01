@@ -13,6 +13,8 @@ import Shonky.Semantics
 import System.Environment
 import System.Exit
 
+import System.IO
+
 compileAndRunProg progName b =
   do p <- runTokenParse <$> readFile (progName ++ ".fk")
      case p of
@@ -30,12 +32,17 @@ compileAndRunProg progName b =
                                   return $ load $ compile p'
                          case try env "main()" of
                            Ret v -> putStrLn $ ppVal v
-                           comp -> putStrLn (show comp)
+                           comp ->
+                             do --putStrLn $ "Running top-level computation: " ++ show comp
+                                v <- ioHandler comp
+                                putStrLn $ ppVal v
 
 run x = compileAndRunProg x True --False
 
 main :: IO ()
 main = do
+  hSetBuffering stdin NoBuffering
+  hSetEcho stdin False
   args <- getArgs
   case args of
     [file] -> run file

@@ -466,11 +466,11 @@ builtinDataTs = [MkDT "List" [] ["X"] [MkCtr "cons" [MkTVar "X"
 
 builtinItfs :: [Itf Refined]
 builtinItfs = [MkItf "Console" [] [MkCmd "putStrLn" [MkStringTy]
-                                   (MkDTTy "Unit" [] [])
-                                  ,MkCmd "getStr" [] MkStringTy]
-              ,MkItf "CursesConsole" [] [MkCmd "inch" [] MkCharTy
-                                        ,MkCmd "ouch" [MkCharTy]
-                                         (MkDTTy "Unit" [] [])]]
+                                                    (MkDTTy "Unit" [] [])
+                                  ,MkCmd "getStr" [] MkStringTy
+                                  ,MkCmd "inch" [] MkCharTy
+                                  ,MkCmd "ouch" [MkCharTy]
+                                                (MkDTTy "Unit" [] [])]]
 
 builtinMHDefs :: [MHDef Refined]
 builtinMHDefs = [MkDef "strcat"

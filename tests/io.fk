@@ -1,0 +1,6 @@
+on : a -> {a -> b} -> b
+on x f = f x
+
+main : [Console]Unit
+main! = ouch 'a'; ouch 'b'; on (inch!) {x -> ouch x}
+--main! = on (inch!) {x -> ouch x; main!}
