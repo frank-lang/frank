@@ -1,0 +1,19 @@
+-- #desc Fibonacci generation and negative integer test
+-- #return 5
+
+--- haell
+
+-- #test fib 6 ~return 8
+fib : Int -> Int
+fib 0 = 0
+fib 1 = 1
+fib 2 = 1
+fib n = fib (n-1) + fib (n-2)
+
+-- #test minusTwoOnZero 0 ~return -2
+minusTwoOnZero : Int -> Int
+minusTwoOnZero 0 = -2
+minusTwoOnZero n = 0
+
+main : Int
+main! = fib 5

@@ -5,7 +5,10 @@
 ## See the musings document for details on the proposed specification for this
 ## harness.
 
+import io
 import os
+from subprocess import Popen,PIPE
+
 
 class TestHarnessLogger:
     """Defines the logger for the test harness.
@@ -86,11 +89,21 @@ class TestHarnessLogger:
         return self.descf + self.descp
 
 class Result:
-    def regression(self):
-        return True
+    def __init__(self,test,code,aout,eout,regression):
+        self.test = test ## filename
+        self.code = code
+        self.aout = aout ## actual output
+        self.eout = eout
+        self.regression = regression
+
+    def is_regression(self):
+        return self.regression
 
     def success(self):
-        return True
+        return self.code == 0 and self.aout == self.eout
+
+    def output(self):
+        return self.aout
 
 def main(okDirs,errDirs,opts):
     ## A test of the summary output
@@ -113,48 +126,112 @@ def run_tests_in_dir(logger, fn, d):
         if os.path.isdir(x):
             run_tests_in_dir(logger, fn, x+"/")
         elif os.path.isfile(x) and x.endswith(".fk"):
-            if logger.is_verbose_on(x):
+            if logger.is_verbose_on(os.path.basename(x)):
                 logger.set_verbose(True)
             process_file(logger, fn, x)
-            if logger.is_verbose_on(d):
+            if logger.is_verbose_on(os.path.basename(x)):
                 logger.set_verbose(False)
     if logger.is_verbose_on(d):
         logger.set_verbose(False)
 
 def process_file(logger, fn, x):
     ## Parse the file to obtain list of directives
-    ds = parse_directives(logger, x)
-    res = process_directives(logger, ds, x)
-    fn(logger, res)
+    ds = parse_file(logger, x)
+    if ds:
+        log_directives(logger, x, ds)
+        res = process_directives(logger, x, ds)
+        fn(logger, res[0])
+        map(lambda r: fn(logger,r), res)
+
+def log_directives(logger, x, ds):
+    logger.verbose_log("Directives for {0}".format(x))
+    for (k,v,args) in ds:
+        argRep = "".join(["~{0} {1}".format(x,y) for (x,y) in args])
+        logger.verbose_log("{0:>4}{1} {2} {3}".format('#',k,v,argRep))
 
 def check_pass(logger, res):
-    ttype = "r" if res.regression() else "t"
+    ttype = "r" if res.is_regression() else "t"
     if res.success():
+        status = "passed"
         logger.inc("ep",ttype)
     else:
+        status = "FAILED"
         logger.inc("uf",ttype)
+    log_run(logger,status,res)
 
 def check_fail(logger, res):
-    ttype = "r" if res.regression() else "t"
+    ttype = "r" if res.is_regression() else "t"
     if res.success():
+        status = "PASSED"
         logger.inc("up",ttype)
     else:
+        status = "failed"
         logger.inc("ef",ttype)
 
-def parse_directives(logger, x):
+def log_run(logger,status,res):
+    rep = "{0} {1} with output:\n".format(res.test,status)
+    top = "\n".rjust(len(rep),'-')
+    bot = "\n".ljust(len(rep),'-')
+    output = res.aout.center(len(rep)-1)
+    logger.verbose_log(top + rep + output + bot)
+
+def parse_file(logger, x):
     ds = []
     with open(x) as f:
         for line in f:
             if line.startswith("--"):
-                ds += parse_line(line[2:])
+                parse_line(ds, line[2:])
     return ds
 
-def parse_line(line):
+def parse_line(ds, line):
     line = line.strip()
-    return []
+    if line.startswith('#'):
+        ds.append(parse_directive(line[1:]))
 
-def process_directives(logger, ds, x):
-    return Result()
+def parse_directive(line):
+    args = [] ## directive arguments
+    (key,value),line = parse_pair(line)
+    parse_args(args,line)
+    return (key,value,args)
+
+def parse_args(args,line):
+    line = line.strip()
+    if line.startswith('~'):
+        p,line = parse_pair(line[1:])
+        args.append(p)
+
+def parse_pair(line):
+    key,value = "",""
+    x = 0
+    while x < len(line) and line[x].isalpha():
+        key += line[x]
+        x = x + 1
+    while x < len(line) and line[x] != '~':
+        value += line[x]
+        x = x + 1
+    return (key,value.strip()),line[x:]
+
+def process_directives(logger, x, ds):
+    rs = []
+    for (k,v,args) in ds:
+        if directive_has_result(k):
+            rs.append(process_directive(logger,x,k,v,args))
+    return rs
+
+def process_directive(logger,x,k,v,args):
+    isRegression = True if os.path.basename(x).startswith('r') else False
+    if k == "return":
+        logger.verbose_log("Running {0} against main! == {1}".format(x,v))
+        p = Popen(["frank", x],stderr=PIPE,stdout=PIPE)
+        p.wait()
+        ret = p.returncode
+        (out,err) = p.communicate()
+        out = err.decode("utf-8") + out.decode("utf-8")
+        res = Result(x,ret,out.strip('\n'),v,isRegression)
+        return res
+
+def directive_has_result(k):
+    return k == "return"
 
 def parse_opts(logger, opts):
     x = 0
