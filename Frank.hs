@@ -13,8 +13,9 @@ import Shonky.Semantics
 import System.Environment
 import System.Exit
 
-parseAndCheckProg progName b =
-  do p <- runTokenParse <$> readFile progName
+parseAndCheckProg fileName b =
+  let progName = takeWhile (\c -> c /= '.') fileName in
+  do p <- runTokenParse <$> readFile fileName
      case p of
        Left err -> die err
        Right prog -> case refine prog of

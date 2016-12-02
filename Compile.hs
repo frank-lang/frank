@@ -188,9 +188,7 @@ compileOp (MkMono id) = case M.lookup id builtins of
 compileOp (MkPoly id) = case M.lookup id builtins of
   Just v -> return $ S.EV v
   Nothing -> return $ S.EV id
-compileOp (MkCmdId id) = case M.lookup id builtins of
-  Just v -> return $ S.EV v
-  Nothing -> return $ S.EV id
+compileOp (MkCmdId id) = return $ S.EA id
 
 builtins :: M.Map String String
 builtins = M.fromList [("+", "plus")
