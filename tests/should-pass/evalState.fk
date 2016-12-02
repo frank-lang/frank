@@ -1,3 +1,10 @@
+-- #desc hello world
+-- #return "Hello World!"
+
+append : List X -> List X -> List X
+append nil ys = ys
+append (cons x xs) ys = cons x (append xs ys)
+
 interface State X = get : X
 	          | put : X -> Unit
 
@@ -7,4 +14,4 @@ evalState   x    <get    -> k>  = evalState x (k x)
 evalState   x         y         = y
 
 main : String
-main! = evalState "Hello" (put (strcat get! " World!\n"); get!)
+main! = evalState "Hello" (put (append get! " World!"); get!)

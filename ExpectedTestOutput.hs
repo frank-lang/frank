@@ -33,6 +33,7 @@ expected = [
                                        ,MkVPat (MkVarPat "y")]
                                  (MkRawId "y")))
   ,MkSigTm (MkSig "main" (MkCType [] (MkPeg (MkAb (MkAbVar "£") M.empty) MkStringTy)))
+  -- FIXME
   ,MkClsTm (MkMHCls "main"
             (MkCls []
              (MkRawComb "evalState"

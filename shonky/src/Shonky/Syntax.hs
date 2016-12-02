@@ -8,16 +8,17 @@ import Data.List
 import qualified Data.Map as M
 
 data Exp
-  = EV String
-  | EI Integer
-  | EA String
-  | Exp :& Exp
-  | Exp :$ [Exp]
-  | Exp :! Exp
-  | Exp :// Exp
-  | EF [[String]] [([Pat], Exp)]
-  | [Def Exp] :- Exp
-  | EX [Either Char Exp]
+  = EV String                     -- variable
+  | EI Integer                    -- integer
+  | EA String                     -- atom
+  | Exp :& Exp                    -- cons
+  | Exp :$ [Exp]                  -- application
+  | Exp :! Exp                    -- composition (;)
+  | Exp :// Exp                   -- composition (o)
+  | EF [[String]] [([Pat], Exp)]  -- operator
+  | [Def Exp] :- Exp              -- ? (not used by Frank)
+  | EX [Either Char Exp]          -- string concatenation expression
+                                  -- (only used for characters in source Frank (Left c), but used by strcat)
   deriving (Show, Eq)
 infixr 6 :&
 infixl 5 :$
@@ -212,9 +213,7 @@ ppClause (ps, e) = rhs ++ " -> " ++ lhs
 ppExp :: Exp -> String
 ppExp (EV x) = x
 ppExp (EI n) = show n
-ppExp (EA x)
-  | x `elem` listCtrs = ""
-  | otherwise = "'" ++ x
+ppExp (EA x) = "'" ++ x
 ppExp (EX xs) = "[|" ++ ppText ppExp xs
 ppExp (e :& e') | isListExp e = "[" ++ ppListExp e'
 ppExp p@(_ :& _) = "[" ++ ppExp' p
@@ -231,7 +230,6 @@ ppExp' (e :& es) = ppExp e ++ "," ++ ppExp' es
 ppExp' e = ppExp e
 
 isListExp :: Exp -> Bool
-isListExp (EA v) | v `elem` listCtrs = True
 isListExp (e :& _) = isListExp e
 isListExp _ = False
 
@@ -251,9 +249,7 @@ ppPat (PC cmd ps k) = "{'" ++ cmd ++ "(" ++ args ++ ") -> " ++ k ++ "}"
 ppVPat :: VPat -> String
 ppVPat (VPV x) = x
 ppVPat (VPI n) = show n
-ppVPat (VPA x)
-  | x `elem` listCtrs = ""
-  | otherwise = "'" ++ x
+ppVPat (VPA x) = "'" ++ x
 ppVPat (VPX xs) = "[|" ++ ppText ppVPat xs
 ppVPat (v1 :&: v2 :&: v3) = ppVPat (v1 :&: (v2 :&: v3))
 ppVPat (v :&: v') | isListPat v = "[" ++ ppVPatList v'
@@ -271,12 +267,5 @@ ppVPat' (v :&: vs) = ppVPat v ++ "," ++ ppVPat' vs
 ppVPat' v = ppVPat v
 
 isListPat :: VPat -> Bool
-isListPat (VPA v) | v `elem` listCtrs = True
 isListPat (v :&: _) = isListPat v
 isListPat _ = False
-
--- SL: disable special treatment of lists. Shonky can perfectly well
--- represent them in the same way as any other algebraic data type.
-
-listCtrs :: [String]
-listCtrs = [] -- ["nil", "cons"]

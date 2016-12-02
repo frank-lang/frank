@@ -465,19 +465,12 @@ builtinDataTs = [MkDT "List" [] ["X"] [MkCtr "cons" [MkTVar "X"
 
 
 builtinItfs :: [Itf Refined]
-builtinItfs = [MkItf "Console" [] [MkCmd "putStrLn" [MkStringTy]
-                                                    (MkDTTy "Unit" [] [])
-                                  ,MkCmd "getStr" [] MkStringTy
-                                  ,MkCmd "inch" [] MkCharTy
+builtinItfs = [MkItf "Console" [] [MkCmd "inch" [] MkCharTy
                                   ,MkCmd "ouch" [MkCharTy]
                                                 (MkDTTy "Unit" [] [])]]
 
 builtinMHDefs :: [MHDef Refined]
-builtinMHDefs = [MkDef "strcat"
-                 (MkCType [MkPort (MkAdj M.empty) MkStringTy
-                          ,MkPort (MkAdj M.empty) MkStringTy]
-                  (MkPeg (MkAb (MkAbVar "£") M.empty) MkStringTy)) []] ++
-                (map makeIntBinOp "+-")
+builtinMHDefs = map makeIntBinOp "+-"
 
 builtinMHs :: [IPair]
 builtinMHs = map add builtinMHDefs

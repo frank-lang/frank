@@ -85,6 +85,8 @@ instantiate :: Operator -> VType Desugared -> Contextual (VType Desugared)
 instantiate (MkPoly _) ty = addMark >> makeFlexible ty
 instantiate _ ty = return ty
 
+-- TODO: change output of check to Maybe String?
+
 -- Main typechecking function
 check :: Prog Desugared -> Either String (Prog Desugared)
 check p = runExcept $ evalFreshMT $ evalStateT (checkProg p) initTCState
