@@ -1,0 +1,11 @@
+-- #desc Map a pure (addition) function over a list
+-- #return cons (cons 2 nil) (cons (cons 3 nil) (cons (cons 4 nil) nil))
+interface State X = get : X
+	          | put : X -> Unit
+
+map : {a -> b} -> List a -> List b
+map f nil = nil
+map f (cons x xs) = cons (f x) (map f xs)
+
+main : List (List Int)
+main! = map {x -> cons (x+1) nil} (cons 1 (cons 2 (cons 3 nil)))

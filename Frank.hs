@@ -14,7 +14,7 @@ import System.Environment
 import System.Exit
 
 parseAndCheckProg progName b =
-  do p <- runTokenParse <$> readFile (progName ++ ".fk")
+  do p <- runTokenParse <$> readFile progName
      case p of
        Left err -> die err
        Right prog -> case refine prog of
@@ -45,4 +45,4 @@ main = do
   args <- getArgs
   case args of
     file : opts -> runWithOpts file opts
-    _      -> run "tests/paper"
+    _      -> run "tests/paper.fk"

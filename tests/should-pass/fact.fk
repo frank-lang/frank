@@ -1,3 +1,5 @@
+-- #desc Factorial
+-- #return 120
 
 mult : Int -> Int -> Int
 mult 0 y = 0
