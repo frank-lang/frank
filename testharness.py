@@ -89,21 +89,17 @@ class TestHarnessLogger:
         return self.descf + self.descp
 
 class Result:
-    def __init__(self,test,code,aout,eout,regression):
+    def __init__(self,test,desc,code,aout,eout,directive,regression):
         self.test = test ## filename
+        self.desc = desc
         self.code = code
         self.aout = aout ## actual output
         self.eout = eout
+        self.directive = directive
         self.regression = regression
-
-    def is_regression(self):
-        return self.regression
 
     def success(self):
         return self.code == 0 and self.aout == self.eout
-
-    def output(self):
-        return self.aout
 
 def main(okDirs,errDirs,opts):
     ## A test of the summary output
@@ -138,21 +134,18 @@ def process_file(logger, fn, x):
     ## Parse the file to obtain list of directives
     ds = parse_file(logger, x)
     if ds:
-        log_directives(logger, x, ds)
         res = process_directives(logger, x, ds)
-        fn(logger, res[0])
-        map(lambda r: fn(logger,r), res)
+        list(map(lambda r: fn(logger,r), res))
 
 def log_directives(logger, x, ds):
     logger.verbose_log("Directives for {0}".format(x))
     for (k,v,args) in ds:
-        argRep = "".join(["~{0} {1}".format(x,y) for (x,y) in args])
-        logger.verbose_log("{0:>4}{1} {2} {3}".format('#',k,v,argRep))
+        logger.verbose_log(show_directive(k,v,args))
 
 def check_pass(logger, res):
-    ttype = "r" if res.is_regression() else "t"
+    ttype = "r" if res.regression else "t"
     if res.success():
-        status = "passed"
+        status = "Passed"
         logger.inc("ep",ttype)
     else:
         status = "FAILED"
@@ -160,20 +153,31 @@ def check_pass(logger, res):
     log_run(logger,status,res)
 
 def check_fail(logger, res):
-    ttype = "r" if res.is_regression() else "t"
+    ttype = "r" if res.regression else "t"
     if res.success():
         status = "PASSED"
         logger.inc("up",ttype)
     else:
-        status = "failed"
+        status = "Failed"
         logger.inc("ef",ttype)
+    log_run(logger,status,res)
 
 def log_run(logger,status,res):
-    rep = "{0} {1} with output:\n".format(res.test,status)
-    top = "\n".rjust(len(rep),'-')
-    bot = "\n".ljust(len(rep),'-')
-    output = res.aout.center(len(rep)-1)
-    logger.verbose_log(top + rep + output + bot)
+    log = [("File",res.test)
+          ,("Description",res.desc)
+          ,("Directive", show_directive(*res.directive))
+          ,("Status", status)
+          ,("Output", res.aout)]
+    width = max(list(map(lambda x:len(x[0]),log)))
+    top = "\n".rjust(width+2,'-')
+    bot = "\n".ljust(width+2,'-')
+    logRep = '\n'.join(["{1:{0}}: {2}".format(width,k,v) for (k,v) in log])
+    rep = top + logRep + bot
+    logger.verbose_log(rep)
+
+def show_directive(k,v,args):
+    argRep = "".join(["~{0} {1}".format(x,y) for (x,y) in args])
+    return "#{0} {1} {2}".format(k,v,argRep)
 
 def parse_file(logger, x):
     ds = []
@@ -211,23 +215,29 @@ def parse_pair(line):
         x = x + 1
     return (key,value.strip()),line[x:]
 
+def get_desc(ds):
+    for (k,v,args) in ds:
+        if k == "desc":
+            return v
+    return None
+
 def process_directives(logger, x, ds):
     rs = []
+    desc = get_desc(ds)
     for (k,v,args) in ds:
         if directive_has_result(k):
-            rs.append(process_directive(logger,x,k,v,args))
+            rs.append(process_directive(logger,x,desc,k,v,args))
     return rs
 
-def process_directive(logger,x,k,v,args):
+def process_directive(logger,x,desc,k,v,args):
     isRegression = True if os.path.basename(x).startswith('r') else False
     if k == "return":
-        logger.verbose_log("Running {0} against main! == {1}".format(x,v))
         p = Popen(["frank", x],stderr=PIPE,stdout=PIPE)
         p.wait()
         ret = p.returncode
         (out,err) = p.communicate()
         out = err.decode("utf-8") + out.decode("utf-8")
-        res = Result(x,ret,out.strip('\n'),v,isRegression)
+        res = Result(x,desc,ret,out.strip('\n'),v,(k,v,args),isRegression)
         return res
 
 def directive_has_result(k):
