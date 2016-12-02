@@ -2,7 +2,7 @@ module Shonky.Semantics where
 
 import Control.Monad
 import Debug.Trace
-import System.IO.Unsafe
+import System.IO
 
 import qualified Data.Map.Strict as M
 
@@ -103,18 +103,17 @@ minus g [a1,a2] = VI (f a1 - f a2)
           _ -> error "minus: argument not an integer"
 minus g _ = error "minus: incorrect number of arguments, expected 2."
 
-getChar' :: Env -> [Comp] -> Val
-getChar' g [] = VX [c]
-  where c = unsafePerformIO getChar
-getChar' g _ = error "getChar: incorrect number of arguments, expected 0."
+-- getChar' :: Env -> [Comp] -> Val
+-- getChar' g [] = VX [c]
+--   where c = unsafePerformIO getChar
+-- getChar' g _ = error "getChar: incorrect number of arguments, expected 0."
 
-putChar' :: Env -> [Comp] -> Val
-putChar' g [Ret (VX [c])] = unsafePerformIO (do Prelude.putChar c
-                                                return $ VA "unit")
+-- putChar' :: Env -> [Comp] -> Val
+-- putChar' g [Ret (VX [c])] = unsafePerformIO (do Prelude.putChar c
+--                                                 return $ VA "unit")
 
 builtins :: M.Map String (Env -> [Comp] -> Val)
-builtins = M.fromList [("plus", plus), ("minus", minus)
-                      ,("getChar", getChar'), ("putChar", putChar')]
+builtins = M.fromList [("plus", plus), ("minus", minus)]
 
 fetch :: Env -> String -> Val
 fetch g y = go g where
@@ -152,6 +151,20 @@ consume _ (Qed v               : ls) = consume v ls
 consume v (Def g dvs x des e   : ls) = define g ((x := v) : dvs) des e ls
 consume v (Txt g cs ces        : ls) = combine g (revapp (txt v) cs) ces ls
 consume v []                         = Ret v
+
+-- inch and ouch commands in the IO monad
+ioHandler :: Comp -> IO Val
+ioHandler (Ret v) = return v
+ioHandler (Call "inch" [] ls) =
+  do c <- getChar
+     -- HACK: for some reason backspace seems to produce '\DEL' instead of '\b'
+     let c' = if c == '\DEL' then '\b' else c
+     ioHandler (consume (VX [c']) ls)
+ioHandler (Call "ouch" [VX [c]] ls) =
+  do putChar c
+     hFlush stdout
+     ioHandler (consume (VA "unit") ls)
+ioHandler c = error $ "Unhandled computation: " ++ show c
 
 -- A helper to simplify strings (list of characters)
 -- this allows regular list append [x|xs] to function like [|`x``xs`|] but
@@ -292,9 +305,7 @@ envBuiltins = Empty :/ [DF "strcat" []
                         [([PV (VPV "x"), PV (VPV "y")],
                           EX [Right (EV "x"), Right (EV "y")])]
                        ,DF "plus" [] []
-                       ,DF "minus" [] []
-                       ,DF "getChar" [] []
-                       ,DF "putChar" [] []]
+                       ,DF "minus" [] []]
 
 prog :: Env -> [Def Exp] -> Env
 prog g ds = g' where

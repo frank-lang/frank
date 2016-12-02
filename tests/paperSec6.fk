@@ -8,10 +8,10 @@ data Log [] X = start {[]X}
 
 data Buffer = empty | hold Char
 
-input :  Log [LookAhead, Abort, CursesConsole] X ->
+input :  Log [LookAhead, Abort, Console] X ->
          Buffer ->
          <LookAhead, Abort>X ->
-         [CursesConsole]X
+         [Console]X
 input _ _        x               = x
 input l (hold c) <peek -> k>     =
   input l (hold c) (k c)
@@ -24,13 +24,13 @@ input l empty    <peek -> k>     = on inch!
   | c   -> input (inched l k) (hold c) (k c) }
 input l _        <aborting -> k> = rollback l
 
-rollback : Log [LookAhead, Abort, CursesConsole] X ->
-           [CursesConsole]X
+rollback : Log [LookAhead, Abort, Console] X ->
+           [Console]X
 rollback (start p)    = parse p
 rollback (ouched l)   = map ouch "\b \b"; rollback l
 rollback (inched l k) = input l empty (k peek!)
 
-parse : {[LookAhead, Abort, CursesConsole]X} -> [CursesConsole]X
+parse : {[LookAhead, Abort, Console]X} -> [Console]X
 parse p = input (start p) empty p!
 
 -- Not in paper but applies above code to an example
@@ -50,7 +50,7 @@ map : {a -> b} -> List a -> List b
 map f nil = nil
 map f (cons x xs) = cons (f x) (map f xs)
 
-main : [CursesConsole]String
+main : [Console]String
 main! = parse {blah zero}
 
 blah : Nat -> [LookAhead, Abort]String

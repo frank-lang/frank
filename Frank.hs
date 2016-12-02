@@ -12,6 +12,7 @@ import Shonky.Semantics
 
 import System.Environment
 import System.Exit
+import System.IO
 
 parseAndCheckProg fileName b =
   let progName = takeWhile (\c -> c /= '.') fileName in
@@ -32,7 +33,8 @@ compileAndRunProg progName b =
   do env <- parseAndCheckProg progName b
      case try env "main()" of
        Ret v -> putStrLn $ ppVal v
-       comp -> putStrLn (show comp)
+       comp -> do v <- ioHandler comp
+                  putStrLn $ ppVal v
 
 run x = compileAndRunProg x False
 
@@ -43,6 +45,8 @@ runWithOpts x opts =
 
 main :: IO ()
 main = do
+  hSetBuffering stdin NoBuffering
+  hSetEcho stdin False
   args <- getArgs
   case args of
     file : opts -> runWithOpts file opts
