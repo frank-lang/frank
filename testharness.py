@@ -101,11 +101,10 @@ class Result:
     def success(self):
         return self.code == 0 and self.aout == self.eout
 
-def main(okDirs,errDirs,opts):
+def main(okDirs,errDirs,args):
     ## A test of the summary output
     logger = TestHarnessLogger()
-    ## Command line options may change the state of the logger.
-    parse_opts(logger, opts)
+    parse_cmd_args(logger,args)
     for x in okDirs:
         run_tests_in_dir(logger, check_pass, x)
     for x in errDirs:
@@ -243,20 +242,23 @@ def process_directive(logger,x,desc,k,v,args):
 def directive_has_result(k):
     return k == "return"
 
-def parse_opts(logger, opts):
-    x = 0
-    while x < len(opts):
-        if opts[x] == "--verbose":
-            ## Check for verbose to be set locally
-            if x+1 < len(opts) and not opts[x+1].startswith("--"):
-                logger.set_verbose_on(opts[x+1])
-                x = x + 1 ## Move past option value.
-            else:
-                ## Globally verbose
-                logger.set_verbose(True)
-        x = x + 1
+def parse_cmd_args(logger, args):
+    if args.verbose:
+        if args.verbose == True:
+            logger.set_verbose(args.verbose)
+        else:
+            logger.set_verbose_on(args.verbose)
 
 if __name__ == "__main__":
     import sys
+    import argparse
+    desc = "Run the test suite for the Frank implementation"
+    more = "PATH may be a filename or sub-directory \
+    in which case verbose output is produced for PATH only."
+    parser = argparse.ArgumentParser(description=desc)
+    parser.add_argument("--verbose", nargs='?', const=True, default=False,
+                        metavar="PATH",
+                        help="Produce verbose output. {0}".format(more))
+    args = parser.parse_args()
     # Invariant: All directories end with a forward slash.
-    main(["tests/should-pass/"], ["tests/should-fail/"], sys.argv[1:])
+    main(["tests/should-pass/"], ["tests/should-fail/"], args)
