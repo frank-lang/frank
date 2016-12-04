@@ -279,10 +279,7 @@ txt (VX a)     = a
 txt (u :&& v)  = txt u ++ txt v
 
 envBuiltins :: Env
-envBuiltins = Empty :/ [DF "strcat" []
-                        [([PV (VPV "x"), PV (VPV "y")],
-                          EX [Right (EV "x"), Right (EV "y")])]
-                       ,DF "plus" [] []
+envBuiltins = Empty :/ [DF "plus" [] []
                        ,DF "minus" [] []]
 
 prog :: Env -> [Def Exp] -> Env
