@@ -38,6 +38,11 @@ unify (MkDTTy dt0 abs0 xs) (MkDTTy dt1 abs1 ys)
   | dt0 == dt1 && eqLens abs0 abs1 && eqLens xs ys =
     mapM (uncurry unifyAb) (zip abs0 abs1) >>
     mapM_ (uncurry unify) (zip xs ys)
+unify t@(MkDTTy dt0 abs0 xs) s@(MkDTTy dt1 abs1 ys)
+  | not $ eqLens abs0 abs1 =
+  throwError $ "failed to unify " ++
+  (show $ ppVType t) ++ " with " ++ (show $ ppVType s) ++
+    " because they have different numbers of ability variables"
 unify (MkSCTy cty0) (MkSCTy cty1) = unifyCType cty0 cty1
 unify (MkRTVar a)  (MkRTVar b) | a == b = return ()
 unify MkIntTy      MkIntTy           = return ()
