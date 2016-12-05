@@ -41,19 +41,6 @@ data Frame
   | Txt Env [Char] [Either Char Exp]
   deriving Show
 
--- ppVal :: Val -> String
--- ppVal (VA s) = "'" ++ s
--- ppVal (VI n) = show n
--- ppVal p@(_ :&& _) = "[" ++ ppListVal p
--- ppVal (VX s) = "\"" ++ s ++ "\""
--- ppVal v = show v
-
--- ppListVal :: Val -> String
--- ppListVal (v :&& VA "") = ppVal v ++ "]"
--- ppListVal (v :&& vs) = ppVal v ++ "," ++ ppListVal vs
--- ppListVal (VA "") = "]"
--- ppListVal v = ppVal v
-
 -- This pretty-printer more-or-less does the right thing for rendering
 -- Frank values encoded in shonky.
 --
@@ -64,7 +51,7 @@ data Frame
 -- it resorts to invoking show.
 
 ppVal :: Val -> String
-ppVal (VA s)                           = "'" ++ s
+ppVal (VA s)                           = "'" ++ s   -- TODO: error message here?
 ppVal (VI n)                           = show n
 ppVal (VX [c])                         = "'" ++ [c] ++ "'"
 ppVal v@(VA "cons" :&& (VX [_] :&& _)) = "\"" ++ ppStringVal v ++ "\""
@@ -80,8 +67,8 @@ ppValp v                                = ppVal v
 
 ppConsArgs :: Val -> String
 ppConsArgs (v :&& w) = " " ++ ppValp v ++ ppConsArgs w
-ppConsArgs (VA "")    = ""
-ppConsArgs v          = "[BROKEN CONSTRUCTOR ARGUMENTS: " ++ ppVal v ++ "]"
+ppConsArgs (VA "")   = ""
+ppConsArgs v         = "[BROKEN CONSTRUCTOR ARGUMENTS: " ++ ppVal v ++ "]"
 
 ppStringVal :: Val -> String
 ppStringVal (v :&& VA "")                  = ppStringVal v
@@ -102,15 +89,6 @@ minus g [a1,a2] = VI (f a1 - f a2)
           Ret (VI n) -> n
           _ -> error "minus: argument not an integer"
 minus g _ = error "minus: incorrect number of arguments, expected 2."
-
--- getChar' :: Env -> [Comp] -> Val
--- getChar' g [] = VX [c]
---   where c = unsafePerformIO getChar
--- getChar' g _ = error "getChar: incorrect number of arguments, expected 0."
-
--- putChar' :: Env -> [Comp] -> Val
--- putChar' g [Ret (VX [c])] = unsafePerformIO (do Prelude.putChar c
---                                                 return $ VA "unit")
 
 builtins :: M.Map String (Env -> [Comp] -> Val)
 builtins = M.fromList [("plus", plus), ("minus", minus)]
@@ -163,7 +141,7 @@ ioHandler (Call "inch" [] ls) =
 ioHandler (Call "ouch" [VX [c]] ls) =
   do putChar c
      hFlush stdout
-     ioHandler (consume (VA "unit") ls)
+     ioHandler (consume (VA "unit" :&& VA "") ls)
 ioHandler c = error $ "Unhandled computation: " ++ show c
 
 -- A helper to simplify strings (list of characters)
@@ -301,10 +279,7 @@ txt (VX a)     = a
 txt (u :&& v)  = txt u ++ txt v
 
 envBuiltins :: Env
-envBuiltins = Empty :/ [DF "strcat" []
-                        [([PV (VPV "x"), PV (VPV "y")],
-                          EX [Right (EV "x"), Right (EV "y")])]
-                       ,DF "plus" [] []
+envBuiltins = Empty :/ [DF "plus" [] []
                        ,DF "minus" [] []]
 
 prog :: Env -> [Def Exp] -> Env

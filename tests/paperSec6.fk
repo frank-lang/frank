@@ -1,3 +1,23 @@
+data Nat = zero | suc Nat
+
+abort : [Abort]X
+abort! = on aborting! {}
+
+map : {X -> Y} -> List X -> List Y
+map f nil         = nil
+map f (cons x xs) = cons (f x) (map f xs)
+
+app : {X -> Y} -> List X -> Unit
+app f nil         = unit
+app f (cons x xs) = f x; app f xs
+
+
+interface Abort = aborting : Zero
+data Zero =
+
+on : X -> {X -> Y} -> Y
+on x f = f x
+
 -- Computation as Data
 
 interface LookAhead = peek : Char | accept : Unit
@@ -20,38 +40,37 @@ input l (hold c) <accept -> k>   =
 input l empty    <accept -> k>   =
   input l empty (k unit)
 input l empty    <peek -> k>     = on inch!
-  {'\b' -> rollback l
-  | c   -> input (inched l k) (hold c) (k c) }
+  { '\b' -> rollback l
+  | c    -> input (inched l k) (hold c) (k c) }
 input l _        <aborting -> k> = rollback l
 
 rollback : Log [LookAhead, Abort, Console] X ->
            [Console]X
 rollback (start p)    = parse p
-rollback (ouched l)   = map ouch "\b \b"; rollback l
+-- 1) code in the paper: fails at run-time during shonky execution
+--rollback (ouched l)   = map ouch "\b \b"; rollback l
+-- 2) the following fails to type check
+--rollback (ouched l)   = on (map ouch "\b \b") {\_ -> rollback l}
+-- 3) fails at run-time during shonky execution
+--rollback (ouched l)   = app ouch "\b \b"; rollback l
+-- 4) fails at run-time during shonky execution
+--rollback (ouched l)   = backspace!; rollback l
+-- 5) compiles and runs as expected
+rollback (ouched l)   = ouch '\b'; ouch ' '; ouch '\b'; rollback l
 rollback (inched l k) = input l empty (k peek!)
+
+backspace : [Console]Unit
+backspace! = ouch '\b'; ouch ' '; ouch '\b'; unit
+--backspace! = map ouch "\b \b"; unit
+--backspace! = app ouch "\b \b"
+--backspace! = on (map ouch "\b \b") {_ -> unit}
 
 parse : {[LookAhead, Abort, Console]X} -> [Console]X
 parse p = input (start p) empty p!
 
--- Not in paper but applies above code to an example
-data Zero =
-
-interface Abort = aborting : Zero
-
-data Nat = zero | suc Nat
-
-on : X -> {X -> Y} -> Y
-on x f = f x
-
-abort : [Abort]X
-abort! = on aborting! {}
-
-map : {a -> b} -> List a -> List b
-map f nil = nil
-map f (cons x xs) = cons (f x) (map f xs)
-
 main : [Console]String
 main! = parse {blah zero}
+
 
 blah : Nat -> [LookAhead, Abort]String
 blah  zero   = on peek! { '(' -> accept!; blah (suc zero)
@@ -59,3 +78,13 @@ blah  zero   = on peek! { '(' -> accept!; blah (suc zero)
 blah (suc n) = on peek! { '(' -> accept!; blah (suc (suc n))
                         | ')' -> accept!; blah n
                         | c   -> accept!; blah (suc n) }
+
+-- example parser from the paper
+
+--main : [Console]Int
+--main! = parse {zeros 0}
+--
+--zeros : Int -> [LookAhead, Abort]Int
+--zeros n = on peek! { '0' -> accept!; zeros (n+1)
+--                   | ' ' -> accept!; n
+--                   | c   -> abort!}

@@ -204,6 +204,10 @@ refineDataT :: DataT Raw -> Refine (TopTm Refined)
 refineDataT d@(MkDT dt es ps ctrs) =
   if uniqueIds ps && uniqueIds es then
      do putTMap (M.fromList $ zip ps (map MkTVar ps))
+        -- FIXME: this is the wrong test.
+        --   * We should account for empty abilities.
+        --   * If neccessary, we should add a "£" even if there are
+        --   other ability variables.
         let es' = if dtContainsCType d && null es then ["£"] else es
         putEVSet (S.fromList es')
         ctrs' <- mapM refineCtr ctrs
@@ -246,9 +250,13 @@ refinePeg (MkPeg ab ty) = do ab' <- refineAb ab
                              ty' <- refineVType ty
                              return $ MkPeg ab' ty'
 
+-- FIXME: Currently this function pads ability variables with the
+-- distinguished ability variable. This is almost certainly wrong.
+-- What is the correct behaviour? Is padding ever necessary? Wouldn't
+-- it make more sense to pad with fresh flexible ability variables?
 refineDTAbs :: [Ab Raw] -> [Id] -> Refine ([Ab Raw])
 refineDTAbs abs es = return xs
-  where xs = map (\v -> MkAb v M.empty) (take n $ repeat varepi)
+  where xs = abs ++ map (\v -> MkAb v M.empty) (take n $ repeat varepi)
 
         n = length es - length abs
 
@@ -465,19 +473,12 @@ builtinDataTs = [MkDT "List" [] ["X"] [MkCtr "cons" [MkTVar "X"
 
 
 builtinItfs :: [Itf Refined]
-builtinItfs = [MkItf "Console" [] [MkCmd "putStrLn" [MkStringTy]
-                                                    (MkDTTy "Unit" [] [])
-                                  ,MkCmd "getStr" [] MkStringTy
-                                  ,MkCmd "inch" [] MkCharTy
+builtinItfs = [MkItf "Console" [] [MkCmd "inch" [] MkCharTy
                                   ,MkCmd "ouch" [MkCharTy]
                                                 (MkDTTy "Unit" [] [])]]
 
 builtinMHDefs :: [MHDef Refined]
-builtinMHDefs = [MkDef "strcat"
-                 (MkCType [MkPort (MkAdj M.empty) MkStringTy
-                          ,MkPort (MkAdj M.empty) MkStringTy]
-                  (MkPeg (MkAb (MkAbVar "£") M.empty) MkStringTy)) []] ++
-                (map makeIntBinOp "+-")
+builtinMHDefs = map makeIntBinOp "+-"
 
 builtinMHs :: [IPair]
 builtinMHs = map add builtinMHDefs

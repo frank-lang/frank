@@ -19,11 +19,13 @@ class NotRaw a where
 class NotDesugared a where
   idNotDesugared :: a -> a
 
+-- output from the parser
 data Raw = MkRaw
 
 instance NotDesugared Raw where
   idNotDesugared = Prelude.id
 
+-- well-formed AST (after tidying up the output from the parser)
 data Refined = MkRefined
 
 instance NotDesugared Refined where
@@ -32,6 +34,9 @@ instance NotDesugared Refined where
 instance NotRaw Refined where
   idNotRaw = Prelude.id
 
+-- desugaring of types:
+--   * type variables are given unique names
+--   * strings are lists of characters
 data Desugared = MkDesugared
 
 instance NotRaw Desugared where
@@ -59,6 +64,9 @@ data MHCls = MkMHCls Id (Clause Raw)
 data MHDef a = MkDef Id (CType a) [Clause a]
            deriving (Show, Eq)
 
+{- MH here = 'operator' in the paper. Operator here doesn't have a name
+   in the paper. -}
+
 data Operator = MkMono Id | MkPoly Id | MkCmdId Id
               deriving (Show, Eq)
 
@@ -84,11 +92,13 @@ data TopTm a where
 deriving instance (Show) (TopTm a)
 deriving instance (Eq) (TopTm a)
 
+-- Tm here = 'construction' in the paper
+
 data Tm a where
   MkRawId :: Id -> Tm Raw
   MkRawComb :: Id -> [Tm Raw] -> Tm Raw
   MkSC :: SComp a -> Tm a
-  MkLet :: Tm a
+  MkLet :: Tm a    -- placeholder
   MkStr :: String -> Tm a
   MkInt :: Integer -> Tm a
   MkChar :: Char -> Tm a
@@ -121,6 +131,7 @@ data Cmd a = MkCmd Id [VType a] (VType a)
 data Pattern = MkVPat ValuePat | MkCmdPat Id [ValuePat] Id | MkThkPat Id
              deriving (Show, Eq)
 
+-- TODO: should we compile away string patterns into list of char patterns?
 data ValuePat = MkVarPat Id | MkDataPat Id [ValuePat] | MkIntPat Integer
               | MkCharPat Char | MkStrPat String
               deriving (Show, Eq)
