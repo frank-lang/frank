@@ -46,13 +46,16 @@ compileAndRunProg fileName args =
      p' <- checkProg p args
      env <- compileProg progName p' args
      case lookup "eval" args of
-       Just v -> evalProg env v
+       Just v ->
+         do putStrLn $ "Evaluating shonky expression: " ++ v
+            evalProg env v
        Nothing -> evalProg env "main()"
 
 arguments :: Mode [(String,String)]
 arguments =
   mode "frank" [] "Frank program" (flagArg (upd "file") "FILE")
   [flagNone ["output-shonky"] (("output-shonky",""):) "Output Shonky code"
+  ,flagReq ["eval"] (upd "eval") "EXPR" "Evaluate expression"
   ,flagHelpSimple (("help",""):)]
   where upd msg x v = Right $ (msg,x):v
 
