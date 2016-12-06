@@ -47,23 +47,11 @@ input l _        <aborting -> k> = rollback l
 rollback : Log [LookAhead, Abort, Console] X ->
            [Console]X
 rollback (start p)    = parse p
--- 1) code in the paper: fails at run-time during shonky execution
---rollback (ouched l)   = map ouch "\b \b"; rollback l
+-- 1) code in the paper
+rollback (ouched l)   = map ouch "\b \b"; rollback l
 -- 2) the following fails to type check
 --rollback (ouched l)   = on (map ouch "\b \b") {\_ -> rollback l}
--- 3) fails at run-time during shonky execution
---rollback (ouched l)   = app ouch "\b \b"; rollback l
--- 4) fails at run-time during shonky execution
---rollback (ouched l)   = backspace!; rollback l
--- 5) compiles and runs as expected
-rollback (ouched l)   = ouch '\b'; ouch ' '; ouch '\b'; rollback l
 rollback (inched l k) = input l empty (k peek!)
-
-backspace : [Console]Unit
-backspace! = ouch '\b'; ouch ' '; ouch '\b'; unit
---backspace! = map ouch "\b \b"; unit
---backspace! = app ouch "\b \b"
---backspace! = on (map ouch "\b \b") {_ -> unit}
 
 parse : {[LookAhead, Abort, Console]X} -> [Console]X
 parse p = input (start p) empty p!

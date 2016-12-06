@@ -36,7 +36,8 @@ compileProg progName p args =
 evalProg env tm =
   case try env tm of
     Ret v -> putStrLn $ ppVal v
-    comp -> do v <- ioHandler comp
+    comp -> do -- putStrLn $ "Generated computation: " ++ show comp
+               v <- ioHandler comp
                putStrLn $ ppVal v
 
 compileAndRunProg fileName args =
@@ -54,6 +55,9 @@ arguments =
   [flagNone ["output-shonky"] (("output-shonky",""):) "Output Shonky code"
   ,flagHelpSimple (("help",""):)]
   where upd msg x v = Right $ (msg,x):v
+
+-- handy for testing in ghci
+run f = compileAndRunProg f []
 
 main :: IO ()
 main = do

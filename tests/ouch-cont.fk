@@ -1,0 +1,7 @@
+-- #desc output a character and then continue
+-- #return unit
+ouch42 : [Console]Int
+ouch42! = ouch '\n'; 42
+
+main : [Console]Unit
+main! = ouch42!; unit

@@ -133,15 +133,15 @@ consume v []                         = Ret v
 -- inch and ouch commands in the IO monad
 ioHandler :: Comp -> IO Val
 ioHandler (Ret v) = return v
-ioHandler (Call "inch" [] ls) =
+ioHandler (Call "inch" [] ks) =
   do c <- getChar
      -- HACK: for some reason backspace seems to produce '\DEL' instead of '\b'
      let c' = if c == '\DEL' then '\b' else c
-     ioHandler (consume (VX [c']) ls)
-ioHandler (Call "ouch" [VX [c]] ls) =
+     ioHandler (consume (VX [c']) (reverse ks))
+ioHandler comp@(Call "ouch" [VX [c]] ks) =
   do putChar c
      hFlush stdout
-     ioHandler (consume (VA "unit" :&& VA "") ls)
+     ioHandler (consume (VA "unit" :&& VA "") (reverse ks))
 ioHandler c = error $ "Unhandled computation: " ++ show c
 
 -- A helper to simplify strings (list of characters)
