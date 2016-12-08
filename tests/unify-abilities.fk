@@ -1,18 +1,11 @@
 -- Problem identified by Jack Williams
-data Zero =
+data Bar = One {Int}
 
-interface Abort = aborting : Zero
+apply : Bar [Console] -> [Console]Int
+apply (One f) = f!
 
-data Bar = One {Int -> Int}
+foo : Bar [Console]
+foo! = One {42}
 
-apply : Bar [Abort] -> Int -> [Abort]Int
-apply (One f) x = f x
-
-foo : Bar [Abort]
-foo! = One {x -> x+1}
-
-ex : Int -> [Abort]Int
-ex n = apply foo! n
-
-main : [Abort]Int
-main! = ex 0
+main : [Console]Int
+main! = apply foo!

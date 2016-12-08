@@ -1,0 +1,15 @@
+on : X -> {X -> Y} -> Y
+on x f = f x
+
+data Bar [] = bar (Bar [])
+
+foo : Bar [] -> Unit
+-- The following line causes the type checker to fail to terminate
+foo (bar b) = on 42 {x -> foo b}
+-- The following line also causes the type checker to fail to terminate
+--foo (bar b) = foo (bar b)
+-- The following line type checks correctly
+--foo (bar b) = foo b
+
+main : Unit
+main! = unit

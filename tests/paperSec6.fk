@@ -11,7 +11,6 @@ app : {X -> Y} -> List X -> Unit
 app f nil         = unit
 app f (cons x xs) = f x; app f xs
 
-
 interface Abort = aborting : Zero
 data Zero =
 
@@ -47,44 +46,32 @@ input l _        <aborting -> k> = rollback l
 rollback : Log [LookAhead, Abort, Console] X ->
            [Console]X
 rollback (start p)    = parse p
--- 1) code in the paper: fails at run-time during shonky execution
---rollback (ouched l)   = map ouch "\b \b"; rollback l
--- 2) the following fails to type check
---rollback (ouched l)   = on (map ouch "\b \b") {\_ -> rollback l}
--- 3) fails at run-time during shonky execution
---rollback (ouched l)   = app ouch "\b \b"; rollback l
--- 4) fails at run-time during shonky execution
---rollback (ouched l)   = backspace!; rollback l
--- 5) compiles and runs as expected
-rollback (ouched l)   = ouch '\b'; ouch ' '; ouch '\b'; rollback l
+-- 1) code in the paper
+rollback (ouched l)   = map ouch "\b \b"; rollback l
+-- 2) the following sends the type checker into an infinite loop
+--rollback (ouched l)   = on (map ouch "\b \b") {_ -> rollback l}
 rollback (inched l k) = input l empty (k peek!)
-
-backspace : [Console]Unit
-backspace! = ouch '\b'; ouch ' '; ouch '\b'; unit
---backspace! = map ouch "\b \b"; unit
---backspace! = app ouch "\b \b"
---backspace! = on (map ouch "\b \b") {_ -> unit}
 
 parse : {[LookAhead, Abort, Console]X} -> [Console]X
 parse p = input (start p) empty p!
 
-main : [Console]String
-main! = parse {blah zero}
+-- a basic parser that counts a sequence of zeros
+zeros : Int -> [LookAhead, Abort]Int
+zeros n = on peek! { '0' -> accept!; zeros (n+1)
+                   | ' ' -> accept!; n
+                   | c   -> abort!}
 
+main : [Console]Int
+main! = parse {zeros 0}
 
-blah : Nat -> [LookAhead, Abort]String
-blah  zero   = on peek! { '(' -> accept!; blah (suc zero)
-                        | c   -> abort! }
-blah (suc n) = on peek! { '(' -> accept!; blah (suc (suc n))
-                        | ')' -> accept!; blah n
-                        | c   -> accept!; blah (suc n) }
+-- another parser that tracks bracket nesting
+nest : String -> Int -> [LookAhead, Abort]String
+nest s 0 = on peek! { '('  -> accept!; nest s 1
+                    | '\n' -> accept!; s
+                    | c    -> abort! }
+nest s n = on peek! { '('  -> accept!; nest s (n+1)
+                    | ')'  -> accept!; nest s (n-1)
+                    | c    -> accept!; nest (cons c s) n }
 
--- example parser from the paper
-
---main : [Console]Int
---main! = parse {zeros 0}
---
---zeros : Int -> [LookAhead, Abort]Int
---zeros n = on peek! { '0' -> accept!; zeros (n+1)
---                   | ' ' -> accept!; n
---                   | c   -> abort!}
+startNest : [Console]String
+startNest! = parse {nest "" 0}
