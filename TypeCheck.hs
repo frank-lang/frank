@@ -114,7 +114,7 @@ inferUse (MkApp f xs) =
                                                 checkArgs ps xs
                                                 return ty'
        _ -> throwError $
-            "application:expected suspended computation"
+            "application:expected suspended computation, got: " ++ show ty
   where checkArgs :: [Port Desugared] -> [Tm Desugared] -> Contextual ()
         checkArgs ps xs = mapM_ (uncurry checkArg) (zip ps xs)
 
