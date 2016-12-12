@@ -1,0 +1,13 @@
+-- #desc Problem with unifying abilities identified by Jack Williams (No. 4)
+-- #return 42
+-- Problem identified by Jack Williams
+data Bar = One {Int}
+
+apply : Bar [Console] -> [Console]Int
+apply (One f) = f!
+
+foo : Bar [Console]
+foo! = One {42}
+
+main : [Console]Int
+main! = apply foo!

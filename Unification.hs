@@ -30,6 +30,12 @@ onTop f = popEntry >>= focus
                Restore -> modify (:< e)
         focus e = onTop f >> modify (:< e)
 
+findEVar :: Id -> Contextual (Maybe (Ab Desugared))
+findEVar x = getContext >>= find'
+  where find' BEmp = return Nothing
+        find' (es :< FlexMVar y (AbDefn ab)) | x == y = return $ Just ab
+        find' (es :< _) = find' es
+
 eqLens :: [a] -> [a] -> Bool
 eqLens xs ys = length xs == length ys
 
@@ -65,11 +71,19 @@ unify t            s                 =
 
 unifyAb :: Ab Desugared -> Ab Desugared -> Contextual ()
 unifyAb (MkAb (MkAbFVar a) m0) (MkAb (MkAbFVar b) m1) =
-  do v <- MkAbFVar <$> freshMVar "£"
-     let m = M.difference m0 m1
-         m' = M.difference m1 m0
-     solveForEVar a [] (MkAb v m')
-     solveForEVar b [] (MkAb v m)
+  do ma <- findEVar a
+     mb <- findEVar b
+     case (ma, mb) of
+       (Just (MkAb v0 m0'), Just (MkAb v1 m1')) ->
+         let m0'' = M.union m0 m0' in
+         let m1'' = M.union m1 m1' in
+         unifyAb (MkAb v0 m0'') (MkAb v1 m1'')
+       (_, _) ->
+         do v <- MkAbFVar <$> freshMVar "£"
+            let m = M.difference m0 m1
+                m' = M.difference m1 m0
+            solveForEVar a [] (MkAb v m')
+            solveForEVar b [] (MkAb v m)
 unifyAb (MkAb (MkAbFVar a) m0) (MkAb v m1) | M.null (M.difference m0 m1) =
   let m = M.difference m1 m0 in solveForEVar a [] (MkAb v m)
 unifyAb (MkAb v m0) (MkAb (MkAbFVar a) m1) | M.null (M.difference m1 m0) =
