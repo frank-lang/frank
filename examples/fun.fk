@@ -1,0 +1,170 @@
+data Bool = true | false
+
+data Nat = zero | suc Nat
+
+data Zero =     -- empty type
+
+-- (the Unit data type is built in)
+-- data Unit = unit
+
+data Pair X Y = pair X Y
+
+data Maybe X = nothing | just X
+
+-- (the list data type is built in)
+-- data List X = nil | cons X (List X)
+
+append : List X -> List X -> List X
+append nil ys         = ys
+append (cons x xs) ys = cons x (append xs ys)
+
+t1 : List Int
+t1! = append (cons 1 (cons 2 nil)) (cons 3 (cons 4 nil))
+
+map : {X -> Y} -> List X -> List Y
+map f nil         = nil
+map f (cons x xs) = cons (f x) (map f xs)
+
+t2 : List Int
+t2! = map {n -> n+1} (cons 1 (cons 2 (cons 3 nil)))
+
+-- (the Console interface is built in)
+-- interface Console = inch : Char
+--                   | ouch : Char -> Unit
+
+-- t3 has the Console ability - it can do inch and ouch commands
+t3 : [Console]Unit
+t3! = map ouch "Hello world!\n"; unit
+
+-- The signature:
+--
+--   map : {X -> Y} -> List X -> List Y
+--
+-- is syntactic sugar for:
+--
+--   map : {X -> [E]Y} -> List X -> [E]List Y
+
+
+print : String -> [Console]Unit
+print s = map ouch s; unit
+
+-- ouch isn't allowed because badPrint doesn't have the Console ability
+--
+--badPrint : String -> Unit
+--badPrint s = map ouch s; unit
+
+
+--- control
+
+-- fst m n:
+--   do m, do n, return the result of doing m 
+fst : X -> Y -> X
+fst x y = x
+
+-- snd m n:
+--   do m, do n, return the result of doing n
+snd : X -> Y -> Y
+snd x y = y
+
+-- m; n == snd m n
+
+t4 : [Console]Char
+t4! = fst (inch!) (ouch 'f')
+
+t5 : [Console]Char
+t5! = print "Please type a character\n"; inch!
+
+
+-- eager conditional
+iffy : Bool -> X -> X -> X
+iffy true  t f = t
+iffy false t f = f
+
+t6 : [Console]Unit
+t6! = iffy true (print "T\n") (print "F\n")
+
+-- lazy conditional
+if : Bool -> {X} -> {X} -> X
+if true  t f = t!
+if false t f = f!
+
+t7 : [Console]Unit
+t7! = if true {print "T\n"} {print "F\n"}
+
+-- sequencing
+on : X -> {X -> Y} -> Y
+on x f = f x
+
+t8 : [Console]Int
+t8! = on inch! { 'a' -> 65
+               | 'b' -> 66
+               | x   -> -1 }
+
+-- Alternative implementation of `if' using `on'
+--
+-- if : Bool -> {X} -> {X} -> X
+-- if b t e = on b { true  -> t!
+--                 | false -> e! }
+
+
+
+--- some user-defined interfaces
+
+interface Send X = send : X -> Unit
+
+interface Receive X = receive : X
+
+interface State S = get : S
+                  | put : S -> Unit
+
+interface Choice = choice : Bool
+
+interface Abort = aborting : Zero
+
+
+
+--- exceptions
+
+abort : [Abort]X
+abort! = on aborting! {}
+  -- Zero is uninhabited, so no clauses are needed
+
+
+head : List X -> [Abort]X
+head nil         = abort!
+head (cons x xs) = x
+
+t9 : [Abort]Int
+t9! = head nil
+
+
+--- an exception handler
+catch : <Abort>X -> {X} -> X
+catch x               h = x
+catch <aborting -> k> h = h!
+
+t10 : Int
+t10! = catch (head nil) { -1 }
+
+t11 : Int
+t11! = catch (head (cons 42 nil)) { -1 }
+
+t12 : [Console]Int
+t12! = catch (print "hello\n"; head nil) { -1 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+main : Unit
+main! = unit
