@@ -6,6 +6,7 @@
 module Syntax where
 
 import qualified Data.Map.Strict as M
+import Data.List
 
 import qualified Text.PrettyPrint as PP
 
@@ -288,9 +289,13 @@ ppVType (MkDTTy x abs xs) = text x <+> absRep <+> xsRep
         abToDoc acc ab = ab <+> acc
         abs' = map ppAb abs
         xsRep = foldl (<+>) PP.empty $ map ppParenVType xs
-ppVType (MkSCTy (MkCType ps q)) = text "{" <> ports <+> peg <> text "}"
-  where ports = foldl (<+>) PP.empty $ map ppPort ps
-        peg = ppPeg q
+ppVType (MkSCTy (MkCType ps q)) = text "{" <> ports <> peg <> text "}"
+  where
+    ports = case map ppPort ps of
+      [] -> PP.empty
+      xs -> foldl (\acc x -> x <+> text "-> " <> acc) PP.empty (reverse xs)
+
+    peg = ppPeg q
 ppVType (MkTVar x) = text x
 ppVType (MkRTVar x) = text x
 ppVType (MkFTVar x) = text x
@@ -303,16 +308,19 @@ ppParenVType v@(MkDTTy _ _ _) = text "(" <+> ppVType v <+> text ")"
 ppParenVType v = ppVType v
 
 ppPort :: Port a -> Doc
-ppPort (MkPort adj ty) = ppAdj adj <+> ppVType ty
+ppPort (MkPort adj ty) = ppAdj adj <> ppVType ty
 
 ppPeg :: Peg a -> Doc
-ppPeg (MkPeg ab ty) = ppAb ab <+> ppVType ty
+ppPeg (MkPeg ab ty) = ppAb ab <> ppVType ty
 
 ppAdj :: Adj a -> Doc
+ppAdj (MkAdj m) | M.null m = PP.empty
 ppAdj (MkAdj m) = text "<" <> ppItfMap m <> text ">"
 
 ppAb :: Ab a -> Doc
-ppAb (MkAb v m) = text "[" <> ppAbMod v <+> ppItfMap m <> text "]"
+ppAb (MkAb v m) | M.null m = text "[" <> ppAbMod v <> text "]"
+ppAb (MkAb v m) =
+  text "[" <> ppAbMod v <> PP.comma <+> ppItfMap m <> text "]"
 
 ppAbMod :: AbMod a -> Doc
 ppAbMod MkEmpAb = text "@"
@@ -321,7 +329,7 @@ ppAbMod (MkAbRVar x) = text x
 ppAbMod (MkAbFVar x) = text x
 
 ppItfMap :: ItfMap a -> Doc
-ppItfMap m = foldl (<+>) PP.empty $ map ppItfMapPair $ M.toList m
+ppItfMap m = PP.hsep $ intersperse PP.comma $ map ppItfMapPair $ M.toList m
  where ppItfMapPair :: (Id, [VType a]) -> Doc
        ppItfMapPair (x, vs) = 
          text x <+> (foldl (<+>) PP.empty $ map ppParenVType vs)
