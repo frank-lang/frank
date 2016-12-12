@@ -70,24 +70,25 @@ unify t            s                 =
   (show $ ppVType t) ++ " with " ++ (show $ ppVType s)
 
 unifyAb :: Ab Desugared -> Ab Desugared -> Contextual ()
-unifyAb (MkAb (MkAbFVar a) m0) (MkAb (MkAbFVar b) m1) =
-  do ma <- findEVar a
-     mb <- findEVar b
-     case (ma, mb) of
+unifyAb (MkAb (MkAbFVar a0) m0) (MkAb (MkAbFVar a1) m1) =
+  do unifyItfMap (M.intersection m0 m1) (M.intersection m1 m0)
+     ma0 <- findEVar a0
+     ma1 <- findEVar a1
+     case (ma0, ma1) of
        (Just (MkAb v0 m0'), Just (MkAb v1 m1')) ->
          let m0'' = M.union m0 m0' in
          let m1'' = M.union m1 m1' in
          unifyAb (MkAb v0 m0'') (MkAb v1 m1'')
        (_, _) ->
          do v <- MkAbFVar <$> freshMVar "£"
-            let m = M.difference m0 m1
-                m' = M.difference m1 m0
-            solveForEVar a [] (MkAb v m')
-            solveForEVar b [] (MkAb v m)
-unifyAb (MkAb (MkAbFVar a) m0) (MkAb v m1) | M.null (M.difference m0 m1) =
-  let m = M.difference m1 m0 in solveForEVar a [] (MkAb v m)
-unifyAb (MkAb v m0) (MkAb (MkAbFVar a) m1) | M.null (M.difference m1 m0) =
-  let m = M.difference m0 m1 in solveForEVar a [] (MkAb v m)
+            solveForEVar a0 [] (MkAb v (M.difference m1 m0))
+            solveForEVar a1 [] (MkAb v (M.difference m0 m1))
+unifyAb (MkAb (MkAbFVar a0) m0) (MkAb v m1) | M.null (M.difference m0 m1) =
+  do unifyItfMap (M.intersection m1 m0) (M.intersection m0 m1)
+     solveForEVar a0 [] (MkAb v (M.difference m1 m0))
+unifyAb (MkAb v m0) (MkAb (MkAbFVar a1) m1) | M.null (M.difference m1 m0) =
+  do unifyItfMap (M.intersection m0 m1) (M.intersection m1 m0)
+     solveForEVar a1 [] (MkAb v (M.difference m0 m1))
 unifyAb (MkAb v0 m0) (MkAb v1 m1) | v0 == v1 = unifyItfMap m0 m1
 unifyAb ab0 ab1 =
   throwError $ "cannot unify abilities " ++ (show $ ppAb ab0) ++ " and " ++

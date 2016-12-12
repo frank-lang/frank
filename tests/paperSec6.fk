@@ -1,5 +1,3 @@
-data Nat = zero | suc Nat
-
 abort : [Abort]X
 abort! = on aborting! {}
 
