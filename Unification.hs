@@ -63,6 +63,8 @@ unify t            s                 =
   throwError $ "failed to unify " ++
   (show $ ppVType t) ++ " with " ++ (show $ ppVType s)
 
+-- FIXME: we need to unify the interfaces in the intersection,
+-- otherwise X,State Int and X,State Bool will unify!
 unifyAb :: Ab Desugared -> Ab Desugared -> Contextual ()
 unifyAb (MkAb (MkAbFVar a) m0) (MkAb (MkAbFVar b) m1) =
   do v <- MkAbFVar <$> freshMVar "£"
