@@ -55,6 +55,8 @@ ppVal (VA s)                           = "'" ++ s   -- TODO: error message here?
 ppVal (VI n)                           = show n
 ppVal (VX [c])                         = "'" ++ [c] ++ "'"
 ppVal v@(VA "cons" :&& (VX [_] :&& _)) = "\"" ++ ppStringVal v ++ "\""
+ppVal (VA "cons" :&& (v :&& w))        = "[" ++ ppVal v ++ ppListVal w ++ "]"
+ppVal (VA "nil" :&& _)                 = "[]"
 ppVal (VA k :&& v)                     = k ++ ppConsArgs v
 ppVal v                                = "[COMPLEX VALUE: " ++ show v ++ "]"
 
@@ -75,6 +77,12 @@ ppStringVal (v :&& VA "")                  = ppStringVal v
 ppStringVal (VA "cons" :&& (VX [c] :&& v)) = c : ppStringVal v
 ppStringVal (VA "nil")                     = ""
 ppStringVal v                              = "[BROKEN STRING: " ++ ppVal v ++ "]"
+
+ppListVal :: Val -> String
+ppListVal (v :&& VA "")             = ppListVal v
+ppListVal (VA "cons" :&& (v :&& w)) = ", " ++ ppVal v ++ ppListVal w
+ppListVal (VA "nil")                = ""
+ppListVal v                         = "[BROKEN LIST: " ++ ppVal v ++ "]"
 
 plus :: Env -> [Comp] -> Val
 plus g [a1,a2] = VI (f a1 + f a2)
