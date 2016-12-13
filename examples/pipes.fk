@@ -14,6 +14,9 @@ map : {X -> Y} -> List X -> List Y
 map f nil = nil
 map f (cons x xs) = cons (f x) (map f xs)
 
+print : String -> [Console]Unit
+print s = map ouch s; unit
+
 if : Bool -> {X} -> {X} -> X
 if true t f = t!
 if false t f = f!
@@ -47,72 +50,45 @@ pipe <send x -> s> <receive -> r> = pipe (s unit) (r x)
 pipe <_>           y              = y
 pipe unit          <_>            = abort!
 
-sendDoBeNil : [Send String]Unit
-sendDoBeNil! = sends (cons "do" (cons "be" (cons "" nil)))
+doBeDoBeDoNil : List String
+doBeDoBeDoNil! = cons "do" (cons "be" (cons "do" (cons "be" (cons "do" (cons "" nil)))))
+
+sendDoBeDoBeDoNil : [Send String]Unit
+sendDoBeDoBeDoNil! = sends doBeDoBeDoNil!
 
 t1 : [Abort]String
-t1! = pipe sendDoBeNil! catter!
+t1! = pipe sendDoBeDoBeDoNil! catter!
 
 spacer : [Send String, Receive String]Unit
 spacer! = send receive!; send " "; spacer!
 
 t2 : [Abort]String
-t2! = pipe sendDoBeNil! (pipe spacer! catter!)
-
-catch : <Abort>X -> {X} -> X
-catch x               h = x
-catch <aborting -> k> h = h!
-
+t2! = pipe sendDoBeDoBeDoNil! (pipe spacer! catter!)
 
 catchList : <Abort>List X -> List X
-catchList x = catch x {nil}
+catchList xs              = xs
+catchList <aborting -> k> = nil
 
 t3 : String
 t3! = catchList t2!
 
 t4 : String
-t4! = catchList (pipe (sends (cons "do" (cons "be" nil)))#
+t4! = catchList (pipe (sends (cons "do" (cons "be" nil)))
                       (pipe spacer! catter!))
 
-
-print : String -> [Console]Unit
-print s = map ouch s; unit
-
-foo : List String -> [Console, Send String]Unit
-foo nil         = unit
-foo (cons s ss) = print (append "Sending: " s); ouch '\n'; send s; foo ss
+sendsPrint : List String -> [Console, Send String]Unit
+sendsPrint nil         = unit
+sendsPrint (cons s ss) = print "Sending: "; print s; ouch '\n'; send s; sendsPrint ss
 
 t5 : [Console]String
-t5! = catchList (pipe (foo (cons "do" (cons "be" (cons "" nil)))) catter!)
+t5! = catchList (pipe (sendsPrint doBeDoBeDoNil!) catter!)
 
 logSend : <Send String>X -> [Console, Send String]X
 logSend x             = x
 logSend <send s -> k> = print "Sending: "; print s; ouch '\n'; send s; logSend (k unit)
 
-
 t6 : [Console]String
-t6! = catchList (pipe (logSend sendDoBeNil!) catter!)
-
-
-
-                     
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+t6! = catchList (pipe (logSend sendDoBeDoBeDoNil!) catter!)
 
 main : Unit
 main! = unit

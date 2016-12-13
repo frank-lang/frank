@@ -5,6 +5,13 @@ map : {X -> Y} -> List X -> List Y
 map f nil         = nil
 map f (cons x xs) = cons (f x) (map f xs)
 
+reverse' : List X -> List X -> List X
+reverse' nil         ys = ys
+reverse' (cons x xs) ys = reverse' xs (cons x ys)
+
+reverse : List X -> List X
+reverse xs = reverse' xs nil
+
 on : X -> {X -> Y} -> Y
 on x f = f x
 
@@ -23,41 +30,63 @@ print s = map ouch s; unit
 interface Co X = fork : X -> Unit
                | yield : Unit
 
-data Proc [E] = proc {[E, Co (Proc [E])]Unit}
+data Process [E] = process {[E, Co (Process [E])]Unit}
 
-run : List Proc -> <Co Proc>Unit -> Unit
-run (cons (proc p) ps) <yield -> k>  = run (cons (proc {k unit}) ps) p!
-run (cons (proc p) ps) unit          = run ps p!
-run ps                 <fork p -> k> = run (cons p ps) (k unit)
-run nil                <_>           = unit
-
-test : [Co (Proc [Console]), Console]Unit
+test : [Co (Process [Console]), Console]Unit
 test! = print "M1 ";
-        fork (proc {print "A1 "; yield!; print "A2 "});
+        fork (process {print "A1 "; yield!; print "A2 "});
         print "M2 ";
         yield!;
-        fork (proc {print "B1 "; yield!; print "B2 "});
+        fork (process {print "B1 "; yield!; print "B2 "});
         yield!;
         print "M3 ";
         yield!; yield!;
         print "\n"
 
+
+-- silly scheduler
+-- (always picks the most recent process to switch to)
+silly : List Process -> <Co Process>Unit -> Unit
+silly (cons (process p) ps) <yield -> k>  = silly (cons (process {k unit}) ps) p!
+silly (cons (process p) ps) unit          = silly ps p!
+silly ps                    <fork p -> k> = silly (cons p ps) (k unit)
+silly nil                   <_>           = unit
+
 t1 : [Console]Unit
-t1! = run nil test!
+t1! = silly nil test!
 
+-- fair scheduler (continuation before fork)
+fairkf : List Process -> List Process -> <Co Process>Unit -> Unit
+fairkf ps                    qs  <fork p -> k> = fairkf ps (cons p qs) (k unit)
+fairkf ps                    qs  <yield -> k>  = fairkf ps (cons (process {k unit}) qs) unit
+fairkf nil                   nil unit          = unit
+fairkf nil                   qs  unit          = fairkf (reverse qs) nil unit
+fairkf (cons (process p) ps) qs  unit          = fairkf ps qs p!
 
+t2 : [Console]Unit
+t2! = fairkf nil nil test!
 
+-- alternative fair scheduler (fork before continuation)
+fairfk : List Process -> List Process -> <Co Process>Unit -> Unit
+fairfk ps                    qs  <fork (process p) -> k> =
+                                                fairfk ps (cons (process {k unit}) qs) p!
+fairfk ps                    qs  <yield -> k> = fairfk ps (cons (process {k unit}) qs) unit
+fairfk nil                   nil unit         = unit
+fairfk nil                   qs  unit         = fairfk (reverse qs) nil unit
+fairfk (cons (process p) ps) qs  unit         = fairfk ps qs p!
 
+t3 : [Console]Unit
+t3! = fairfk nil nil test!
 
+-- a handler that flips continuations with forked processes
+flip : <Co Process>Unit -> [Co Process]Unit
+flip <fork (process p) -> k> = fork (process {flip (k unit)}); flip p!
+flip <yield -> k>            = yield; flip (k unit)
+flip unit                    = unit
 
-
-
-
-
-
-
-
-
+-- fairfk nil nil == (fairkf nil nil) o flip
+t4 : [Console]Unit
+t4! = fairkf nil nil (flip test!)
 
 main : Unit
 main! = unit

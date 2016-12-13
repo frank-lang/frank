@@ -55,7 +55,6 @@ print s = map ouch s; unit
 --badPrint : String -> Unit
 --badPrint s = map ouch s; unit
 
-
 --- control
 
 -- fst m n:
@@ -75,7 +74,6 @@ t4! = fst (inch!) (ouch 'f')
 
 t5 : [Console]Char
 t5! = print "Please type a character\n"; inch!
-
 
 -- eager conditional
 iffy : Bool -> X -> X -> X
@@ -109,7 +107,6 @@ t8! = on inch! { 'a' -> 65
 --                 | false -> e! }
 
 
-
 --- some user-defined interfaces
 
 interface Send X = send : X -> Unit
@@ -122,8 +119,6 @@ interface State S = get : S
 interface Choice = choice : Bool
 
 interface Abort = aborting : Zero
-
-
 
 --- exceptions
 
@@ -139,7 +134,6 @@ head (cons x xs) = x
 t9 : [Abort]Int
 t9! = head nil
 
-
 --- an exception handler
 catch : <Abort>X -> {X} -> X
 catch x               h = x
@@ -153,7 +147,6 @@ t11! = catch (head (cons 42 nil)) { -1 }
 
 t12 : [Console]Int
 t12! = catch (print "hello\n"; head nil) { -1 }
-
 
 
 
