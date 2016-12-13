@@ -26,10 +26,10 @@ interface Co X = fork : X -> Unit
 data Proc [E] = proc {[E, Co (Proc [E])]Unit}
 
 run : List Proc -> <Co Proc>Unit -> Unit
-run (cons (proc p) ps) <yield -> k> = run (cons (proc {k unit}) ps) p!
-run (cons (proc p) ps) unit         = run ps p!
-run ps                <fork p -> k> = run (cons p ps) (k unit)
-run nil               <_>           = unit
+run (cons (proc p) ps) <yield -> k>  = run (cons (proc {k unit}) ps) p!
+run (cons (proc p) ps) unit          = run ps p!
+run ps                 <fork p -> k> = run (cons p ps) (k unit)
+run nil                <_>           = unit
 
 test : [Co (Proc [Console]), Console]Unit
 test! = print "M1 ";
