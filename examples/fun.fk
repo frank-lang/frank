@@ -1,3 +1,6 @@
+{--- Functional programming with Frank ---}
+
+-- some data types
 data Bool = true | false
 
 data Nat = zero | suc Nat
@@ -43,7 +46,6 @@ t3! = map ouch "Hello world!\n"; unit
 -- is syntactic sugar for:
 --
 --   map : {X -> [E]Y} -> List X -> [E]List Y
-
 
 print : String -> [Console]Unit
 print s = map ouch s; unit

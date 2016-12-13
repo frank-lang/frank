@@ -1,0 +1,63 @@
+{--- Cooperative concurrency ---}
+
+--- start of standard stuff ---
+map : {X -> Y} -> List X -> List Y
+map f nil         = nil
+map f (cons x xs) = cons (f x) (map f xs)
+
+on : X -> {X -> Y} -> Y
+on x f = f x
+
+print : String -> [Console]Unit
+print s = map ouch s; unit
+--- end of standard stuff ---
+
+-- The current implementation doesn't support effect-parameterised
+-- interfaces.
+--
+--   interface Co [E] = fork : {[E, Co [E]]Unit} -> Unit
+--                    | yield : Unit
+--
+-- But we can simulate them by parameterising over an ordinary type.
+
+interface Co X = fork : X -> Unit
+               | yield : Unit
+
+data Proc [E] = proc {[E, Co (Proc [E])]Unit}
+
+run : List Proc -> <Co Proc>Unit -> Unit
+run (cons (proc p) ps) <yield -> k> = run (cons (proc {k unit}) ps) p!
+run (cons (proc p) ps) unit         = run ps p!
+run ps                <fork p -> k> = run (cons p ps) (k unit)
+run nil               <_>           = unit
+
+test : [Co (Proc [Console]), Console]Unit
+test! = print "M1 ";
+        fork (proc {print "A1 "; yield!; print "A2 "});
+        print "M2 ";
+        yield!;
+        fork (proc {print "B1 "; yield!; print "B2 "});
+        yield!;
+        print "M3 ";
+        yield!; yield!;
+        print "\n"
+
+t1 : [Console]Unit
+t1! = run nil test!
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+main : Unit
+main! = unit
