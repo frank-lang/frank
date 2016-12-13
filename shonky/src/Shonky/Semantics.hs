@@ -150,7 +150,7 @@ ioHandler comp@(Call "ouch" [VX [c]] ks) =
   do putChar c
      hFlush stdout
      ioHandler (consume (VA "unit" :&& VA "") (reverse ks))
-ioHandler c = error $ "Unhandled computation: " ++ show c
+ioHandler (Call c vs ks) = error $ "Unhandled command: " ++ c ++ concat (map (\v -> " " ++ ppVal v) vs)
 
 -- A helper to simplify strings (list of characters)
 -- this allows regular list append [x|xs] to function like [|`x``xs`|] but
