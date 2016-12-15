@@ -32,8 +32,11 @@ interface Abort = aborting : Zero
 
 abort : [Abort]X
 abort! = on aborting! {}
---- end of standard stuff ---
 
+catch : <Abort>X -> {X} -> X
+catch x               h = x
+catch <aborting -> k> h = h!
+--- end of standard stuff ---
 
 
 -- send a list of values
@@ -66,8 +69,7 @@ t2 : [Abort]String
 t2! = pipe sendDoBeDoBeDoNil! (pipe spacer! catter!)
 
 catchList : <Abort>List X -> List X
-catchList xs              = xs
-catchList <aborting -> k> = nil
+catchList <x> = catch x! {nil}
 
 t3 : String
 t3! = catchList t2!
