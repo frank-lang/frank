@@ -1,9 +1,9 @@
 # frankjnr
 
-Another implementation of the Frank programming language initially based on
-the paper ``Do be do be do'' to appear at POPL 2017:
-
-preprint available: https://arxiv.org/abs/1611.09259
+An implementation of the Frank programming language described in the
+paper ``Do be do be do'' by Sam Lindley, Conor McBride, and Craig
+McLaughlin, to appear at POPL 2017; preprint:
+https://arxiv.org/abs/1611.09259
 
 #### Installation procedure
 
@@ -34,8 +34,8 @@ To run a `frank` program `foo.fk`:
 frank foo.fk
 ````
 
-By default the entry point is the `main` function. Alternative entry
-points can be selected using the `--entry-point` option.
+By default the entry point is `main`. Alternative entry points can be
+selected using the `--entry-point` option.
 
 Some example `frank` programs can be found in `examples`. They should
 each be invoked with `--entry-point tXX` for an appropriate number
