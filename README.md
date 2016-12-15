@@ -23,5 +23,5 @@ stack install
 ```
 
 The above command builds the project locally (`./.stack-work/...`) and then
-installs it to the local bin path (executing `stack path --local-bin-path`
-will display the path).
+installs the executable `frank` to the local bin path (executing `stack path
+--local-bin-path` will display the path).
