@@ -193,8 +193,11 @@ apply (VF g _ pes) cs ls = tryRules g pes cs ls
 apply (VB x g) cs ls = case M.lookup x builtins of
   Just f -> consume (f g cs) ls
   Nothing -> error $ concat ["apply: ", x, " not a builtin"]
-apply (VA a) cs ls = command a (map (\ (Ret v) -> v) cs) [] ls
+apply (VA a) cs ls =
+  -- commands are not handlers, so the cs must all be values
+  command a (map (\ (Ret v) -> v) cs) [] ls
 apply (VC (Ret v)) [] ls = consume v ls
+apply (VC (Call a vs ks)) [] ls = command a vs ks ls
 apply (VK ks) [Ret v] ls = consume v (revapp ks ls)
 apply f cs ls = error $ concat ["apply: ", show f, show cs, show ls]
 
