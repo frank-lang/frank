@@ -55,6 +55,8 @@ ppVal (VA s)                           = "'" ++ s   -- TODO: error message here?
 ppVal (VI n)                           = show n
 ppVal (VX [c])                         = "'" ++ [c] ++ "'"
 ppVal v@(VA "cons" :&& (VX [_] :&& _)) = "\"" ++ ppStringVal v ++ "\""
+ppVal (VA "cons" :&& (v :&& w))        = "[" ++ ppVal v ++ ppListVal w ++ "]"
+ppVal (VA "nil" :&& _)                 = "[]"
 ppVal (VA k :&& v)                     = k ++ ppConsArgs v
 ppVal v                                = "[COMPLEX VALUE: " ++ show v ++ "]"
 
@@ -75,6 +77,12 @@ ppStringVal (v :&& VA "")                  = ppStringVal v
 ppStringVal (VA "cons" :&& (VX [c] :&& v)) = c : ppStringVal v
 ppStringVal (VA "nil")                     = ""
 ppStringVal v                              = "[BROKEN STRING: " ++ ppVal v ++ "]"
+
+ppListVal :: Val -> String
+ppListVal (v :&& VA "")             = ppListVal v
+ppListVal (VA "cons" :&& (v :&& w)) = ", " ++ ppVal v ++ ppListVal w
+ppListVal (VA "nil")                = ""
+ppListVal v                         = "[BROKEN LIST: " ++ ppVal v ++ "]"
 
 plus :: Env -> [Comp] -> Val
 plus g [a1,a2] = VI (f a1 + f a2)
@@ -142,7 +150,7 @@ ioHandler comp@(Call "ouch" [VX [c]] ks) =
   do putChar c
      hFlush stdout
      ioHandler (consume (VA "unit" :&& VA "") (reverse ks))
-ioHandler c = error $ "Unhandled computation: " ++ show c
+ioHandler (Call c vs ks) = error $ "Unhandled command: " ++ c ++ concat (map (\v -> " " ++ ppVal v) vs)
 
 -- A helper to simplify strings (list of characters)
 -- this allows regular list append [x|xs] to function like [|`x``xs`|] but
@@ -185,8 +193,11 @@ apply (VF g _ pes) cs ls = tryRules g pes cs ls
 apply (VB x g) cs ls = case M.lookup x builtins of
   Just f -> consume (f g cs) ls
   Nothing -> error $ concat ["apply: ", x, " not a builtin"]
-apply (VA a) cs ls = command a (map (\ (Ret v) -> v) cs) [] ls
+apply (VA a) cs ls =
+  -- commands are not handlers, so the cs must all be values
+  command a (map (\ (Ret v) -> v) cs) [] ls
 apply (VC (Ret v)) [] ls = consume v ls
+apply (VC (Call a vs ks)) [] ls = command a vs ks ls
 apply (VK ks) [Ret v] ls = consume v (revapp ks ls)
 apply f cs ls = error $ concat ["apply: ", show f, show cs, show ls]
 

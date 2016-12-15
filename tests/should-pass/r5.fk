@@ -1,0 +1,9 @@
+-- #desc Suspended computation datatype argument
+-- #return unit
+data Maybe X = just X | nothing
+
+foo : Maybe {Unit} -> Unit
+foo (just x) = x!
+
+main : Unit
+main! = foo (just {unit})

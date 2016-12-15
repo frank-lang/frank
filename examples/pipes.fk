@@ -1,0 +1,96 @@
+{--- Pipes: multihandlers ---}
+
+--- start of standard stuff ---
+data Zero =     -- empty type
+
+data Bool = true | false
+data Maybe X = nothing | just X
+
+append : List X -> List X -> List X
+append nil ys = ys
+append (cons x xs) ys = cons x (append xs ys)
+
+map : {X -> Y} -> List X -> List Y
+map f nil = nil
+map f (cons x xs) = cons (f x) (map f xs)
+
+print : String -> [Console]Unit
+print s = map ouch s; unit
+
+if : Bool -> {X} -> {X} -> X
+if true t f = t!
+if false t f = f!
+
+on : X -> {X -> Y} -> Y
+on x f = f x
+
+interface Send X = send : X -> Unit
+
+interface Receive X = receive : X
+
+interface Abort = aborting : Zero
+
+abort : [Abort]X
+abort! = on aborting! {}
+
+catch : <Abort>X -> {X} -> X
+catch x               h = x
+catch <aborting -> k> h = h!
+--- end of standard stuff ---
+
+
+-- send a list of values
+sends : List X -> [Send X]Unit
+sends xs = map send xs; unit
+
+-- receive and concatenate a nil-terminated list of lists
+catter : [Receive (List X)]List X
+catter! = on receive! { nil -> nil
+                      | xs  -> append xs catter!}
+
+pipe : <Send X>Unit -> <Receive X>Y -> [Abort]Y
+pipe <send x -> s> <receive -> r> = pipe (s unit) (r x)
+pipe <_>           y              = y
+pipe unit          <_>            = abort!
+
+doBeDoBeDoNil : List String
+doBeDoBeDoNil! = cons "do" (cons "be" (cons "do" (cons "be" (cons "do" (cons "" nil)))))
+
+sendDoBeDoBeDoNil : [Send String]Unit
+sendDoBeDoBeDoNil! = sends doBeDoBeDoNil!
+
+t1 : [Abort]String
+t1! = pipe sendDoBeDoBeDoNil! catter!
+
+spacer : [Send String, Receive String]Unit
+spacer! = send receive!; send " "; spacer!
+
+t2 : [Abort]String
+t2! = pipe sendDoBeDoBeDoNil! (pipe spacer! catter!)
+
+catchList : <Abort>List X -> List X
+catchList <x> = catch x! {nil}
+
+t3 : String
+t3! = catchList t2!
+
+t4 : String
+t4! = catchList (pipe (sends (cons "do" (cons "be" nil)))
+                      (pipe spacer! catter!))
+
+sendsPrint : List String -> [Console, Send String]Unit
+sendsPrint nil         = unit
+sendsPrint (cons s ss) = print "Sending: "; print s; ouch '\n'; send s; sendsPrint ss
+
+t5 : [Console]String
+t5! = catchList (pipe (sendsPrint doBeDoBeDoNil!) catter!)
+
+logSend : <Send String>X -> [Console, Send String]X
+logSend x             = x
+logSend <send s -> k> = print "Sending: "; print s; ouch '\n'; send s; logSend (k unit)
+
+t6 : [Console]String
+t6! = catchList (pipe (logSend sendDoBeDoBeDoNil!) catter!)
+
+main : Unit
+main! = unit

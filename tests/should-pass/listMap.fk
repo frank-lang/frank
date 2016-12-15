@@ -1,5 +1,5 @@
 -- #desc Map a pure (addition) function over a list
--- #return cons (cons 2 nil) (cons (cons 3 nil) (cons (cons 4 nil) nil))
+-- #return [[2], [3], [4]]
 interface State X = get : X
 	          | put : X -> Unit
 

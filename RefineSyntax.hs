@@ -250,10 +250,6 @@ refinePeg (MkPeg ab ty) = do ab' <- refineAb ab
                              ty' <- refineVType ty
                              return $ MkPeg ab' ty'
 
--- FIXME: Currently this function pads ability variables with the
--- distinguished ability variable. This is almost certainly wrong.
--- What is the correct behaviour? Is padding ever necessary? Wouldn't
--- it make more sense to pad with fresh flexible ability variables?
 refineDTAbs :: [Ab Raw] -> [Id] -> Refine ([Ab Raw])
 refineDTAbs abs es = return xs
   where xs = abs ++ map (\v -> MkAb v M.empty) (take n $ repeat varepi)

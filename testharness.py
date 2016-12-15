@@ -49,13 +49,14 @@ class TestHarnessLogger:
         ## Decorations
         banner = "----Test Harness Result Summary----\n"
         end = "".rjust(len(banner)-1,'#')
+        verbose_summary = '\n' + self.show_regressions() + end
         ## Display the summary information for failures/passes.
         return (end + '\n' +
                 banner +
                 self.show_desc(self.descf) +
                 '\n' +
                 self.show_desc(self.descp) +
-                end)
+                (verbose_summary if self.verbose else end))
 
     def show_desc(self,desc):
         res = ""
@@ -64,6 +65,12 @@ class TestHarnessLogger:
             x = v["t"] + v["r"]
             res += "{2:{0}}: {3:>{1}}\n".format(self.keyw, valw, k, x)
         return res
+
+    def show_regressions(self):
+        valw = self.field_width(lambda x:len(repr(sum(x[1].values()))))
+        k = "Regression Failures"
+        v = self.uf["r"]
+        return "{2:{0}}: {3:>{1}}\n".format(len(k), valw, k, v)
 
     def log(self,msg):
         print(msg)

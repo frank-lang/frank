@@ -49,6 +49,13 @@ find x = getContext >>= find'
         find' (es :< TermVar y ty) | x == y = return ty
         find' (es :< _) = find' es
 
+-- Find the first non-flexible type definition for the specified identifier.
+findFTVar :: Id -> Contextual (Maybe (VType Desugared))
+findFTVar x = getContext >>= find'
+  where find' BEmp = return Nothing
+        find' (es :< FlexMVar y (TyDefn ty)) | x == y = return $ Just ty
+        find' (es :< _) = find' es
+
 -- Run a contextual computation with an additonal term variable in scope
 inScope :: Operator -> VType Desugared -> Contextual a -> Contextual a
 inScope x ty m = do modify (:< TermVar x ty)
@@ -108,18 +115,28 @@ inferUse :: Use Desugared -> Contextual (VType Desugared)
 inferUse (MkOp x) = find x >>= (instantiate x)
 inferUse (MkApp f xs) =
   do ty <- find f >>= (instantiate f)
-     case ty of
-       MkSCTy (MkCType ps (MkPeg ab ty')) -> do amb <- getAmbient
-                                                unifyAb amb ab
-                                                checkArgs ps xs
-                                                return ty'
-       _ -> throwError $
-            "application:expected suspended computation"
+     discriminate ty
   where checkArgs :: [Port Desugared] -> [Tm Desugared] -> Contextual ()
         checkArgs ps xs = mapM_ (uncurry checkArg) (zip ps xs)
 
         checkArg :: Port Desugared -> Tm Desugared -> Contextual ()
         checkArg (MkPort adj ty) tm = inAmbient adj (checkTm tm ty)
+
+        discriminate :: VType Desugared -> Contextual (VType Desugared)
+        discriminate ty@(MkSCTy (MkCType ps (MkPeg ab ty'))) =
+          do amb <- getAmbient
+             unifyAb amb ab
+             checkArgs ps xs
+             return ty'
+        discriminate ty@(MkFTVar x) = do mty <- findFTVar x
+                                         case mty of
+                                           Nothing -> errTy ty
+                                           Just ty' -> discriminate ty'
+        discriminate ty = errTy ty
+
+        errTy ty = throwError $
+                   "application:expected suspended computation but got " ++
+                   (show $ ppVType ty)
 
 checkTm :: Tm Desugared -> VType Desugared -> Contextual ()
 checkTm (MkSC sc) ty = checkSComp sc ty
