@@ -53,7 +53,7 @@ arguments :: Mode [(String,String)]
 arguments =
   mode "frank" [] "Frank program" (flagArg (upd "file") "FILE")
   [flagNone ["output-shonky"] (("output-shonky",""):) "Output Shonky code"
-  ,flagReq ["entry-point"] (upd "entry-point") "EXPR" "Evaluate expression"
+  ,flagReq ["entry-point"] (upd "entry-point") "NAME" "Run computation NAME (default: main)"
   ,flagHelpSimple (("help",""):)]
   where upd msg x v = Right $ (msg,x):v
 

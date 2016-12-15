@@ -92,5 +92,6 @@ logSend <send s -> k> = print "Sending: "; print s; ouch '\n'; send s; logSend (
 t6 : [Console]String
 t6! = catchList (pipe (logSend sendDoBeDoBeDoNil!) catter!)
 
+-- just a stub: use --entry-point tX to do something interesting
 main : Unit
 main! = unit

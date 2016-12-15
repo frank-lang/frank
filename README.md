@@ -7,7 +7,7 @@ preprint available: https://arxiv.org/abs/1611.09259
 
 #### Installation procedure
 
-To install `frank` the maintained procedure is to use stack ([external
+The easiest way to install `frank` is to use stack ([external
 website](https://www.haskellstack.org),
 [github](https://github.com/commercialhaskell/stack)):
 
@@ -24,4 +24,34 @@ stack install
 
 The above command builds the project locally (`./.stack-work/...`) and then
 installs the executable `frank` to the local bin path (executing `stack path
---local-bin-path` will display the path).
+--local-bin` will display the path).
+
+#### Running a Frank program
+
+To run a `frank` program `foo.fk`:
+
+````bash
+frank foo.fk
+````
+
+By default the entry point is the `main` function. Alternative entry
+points can be selected using the `--entry-point` option.
+
+Some example `frank` programs can be found in `examples`. They should
+each be invoked with `--entry-point tXX` for an appropriate number
+`XX`. See the source code for details.
+
+Optionally a [shonky](https://github.com/pigworker/shonky) file can be
+output with the `--output-shonky` option.
+
+#### Limitations with respect to the paper
+
+ * Only top-level mutually recursive computation bindings are
+   supported
+
+ * Interface definitions cannot yet be parameterised by effects
+
+ * Explicit effect variables are not supported except in data type
+   definitions
+
+ * Coverage checking is not implemented

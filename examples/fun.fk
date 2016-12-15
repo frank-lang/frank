@@ -148,18 +148,6 @@ t11! = catch (head (cons 42 nil)) { -1 }
 t12 : [Console]Int
 t12! = catch (print "hello\n"; head nil) { -1 }
 
-
-
-
-
-
-
-
-
-
-
-
-
-
+-- just a stub: use --entry-point tXX to do something interesting
 main : Unit
 main! = unit

@@ -116,21 +116,6 @@ t9 : List (List Toss)
 t9! = allResults (drunkTosses 2)
 -- [[Heads, Heads], [Heads, Tails], [Tails, Heads], [Tails, Tails]]
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+-- just a stub: use --entry-point tX to do something interesting
 main : List (List Toss)
 main! = allResults (drunkTosses 2)
