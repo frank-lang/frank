@@ -8,6 +8,10 @@ module Syntax where
 import qualified Data.Map.Strict as M
 import Data.List
 
+import Data.IORef
+
+import System.IO.Unsafe
+
 import qualified Text.PrettyPrint as PP
 
 {-------------------}
@@ -283,6 +287,15 @@ type Doc = PP.Doc
 trimVar :: Id -> Id
 trimVar = takeWhile (/= '$')
 
+-- Set to True by the main entry point if relevant flag detected.
+debugMode :: IORef Bool
+{-# NOINLINE debugMode #-}
+debugMode = unsafePerformIO (newIORef False)
+
+inDebugMode :: Bool
+{-# NOINLINE inDebugMode #-}
+inDebugMode = unsafePerformIO (readIORef debugMode)
+
 ppVType :: VType a -> Doc
 ppVType (MkDTTy x abs xs) = text x <+> absRep <+> xsRep
   where absRep = foldl abToDoc PP.empty abs'
@@ -297,8 +310,8 @@ ppVType (MkSCTy (MkCType ps q)) = text "{" <> ports <> peg <> text "}"
 
     peg = ppPeg q
 ppVType (MkTVar x) = text x
-ppVType (MkRTVar x) = text x
-ppVType (MkFTVar x) = text x
+ppVType (MkRTVar x) = if inDebugMode then text x else text $ trimVar x
+ppVType (MkFTVar x) = if inDebugMode then text x else text $ trimVar x
 ppVType MkStringTy = text "String"
 ppVType MkIntTy = text "Int"
 ppVType MkCharTy = text "Char"
@@ -325,8 +338,8 @@ ppAb (MkAb v m) =
 ppAbMod :: AbMod a -> Doc
 ppAbMod MkEmpAb = text "@"
 ppAbMod (MkAbVar x) = text x
-ppAbMod (MkAbRVar x) = text x
-ppAbMod (MkAbFVar x) = text x
+ppAbMod (MkAbRVar x) = if inDebugMode then text x else text $ trimVar x
+ppAbMod (MkAbFVar x) = if inDebugMode then text x else text $ trimVar x
 
 ppItfMap :: ItfMap a -> Doc
 ppItfMap m = PP.hsep $ intersperse PP.comma $ map ppItfMapPair $ M.toList m

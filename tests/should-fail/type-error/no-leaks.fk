@@ -1,10 +1,11 @@
+-- #desc thunk inside data constructor potentially leaks effect
 interface Eff = bang : Unit
 
-data Bar = One {Int -> Int}
+data Bar = One {Int}
 
--- type error: Eff not declared in peg but f:{Int -> [Eff]Int} is applied
-apply : Bar -> Int -> [Eff]Int
-apply (One f) x = f x
+-- #return cannot unify abilities [£] and [£, Eff]
+exec : Bar [Eff] -> Int
+exec (One f) = f!
 
 main : [Eff]Int
-main! = apply (One {x -> x+1}) 0
+main! = exec (One {1})

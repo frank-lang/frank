@@ -3,12 +3,15 @@ module Main where
 import Parser
 import Compile
 import TypeCheck
+import Syntax
 import RefineSyntax
 import DesugarSyntax
 import System.Environment
 import qualified ExpectedTestOutput as ETO
 
 import Shonky.Semantics
+
+import Data.IORef
 
 import System.Console.CmdArgs.Explicit
 import System.Environment
@@ -53,7 +56,10 @@ arguments :: Mode [(String,String)]
 arguments =
   mode "frank" [] "Frank program" (flagArg (upd "file") "FILE")
   [flagNone ["output-shonky"] (("output-shonky",""):) "Output Shonky code"
-  ,flagReq ["entry-point"] (upd "entry-point") "NAME" "Run computation NAME (default: main)"
+  ,flagNone ["debug-output"] (("debug-output",""):)
+   "Enable output for debugging the Frank system"
+  ,flagReq ["entry-point"] (upd "entry-point") "NAME"
+   "Run computation NAME (default: main)"
   ,flagHelpSimple (("help",""):)]
   where upd msg x v = Right $ (msg,x):v
 
@@ -65,6 +71,7 @@ main = do
   hSetBuffering stdin NoBuffering
   hSetEcho stdin False
   args <- processArgs arguments
+  writeIORef debugMode (("debug-output","") `elem` args)
   if ("help","") `elem` args then
      print $ helpText [] HelpFormatDefault arguments
   else case lookup "file" args of
