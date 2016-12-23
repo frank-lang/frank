@@ -1,0 +1,15 @@
+-- #desc Issue with recursive call in suspended comp.
+-- #return unit
+
+interface Receive X = receive : X
+
+on : X -> {X -> Y} -> Y
+on x f = f x
+
+receivePassthrough : <Receive String>X -> [Receive String]X
+receivePassthrough x              = x
+receivePassthrough <receive -> r> =
+  on receive! { s -> receivePassthrough (r s) }
+
+main : Unit
+main! = unit
