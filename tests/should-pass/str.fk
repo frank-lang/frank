@@ -1,14 +1,15 @@
+-- #desc Pattern matching list of strings
+-- #return 1
 foo : List String -> Int
 foo (cons "ab" (cons "cd" nil)) = 0
 foo (cons "abcd" nil) = 1
 foo _ = 2
 
--- should return 1
 main : Int
 main! = foo (cons "abcd" nil)
 
 
 -- should display a nested list of strings
 --
--- main : List String
--- main! = cons "ab" (cons "cd" nil)
+-- t0 : List String
+-- t0! = cons "ab" (cons "cd" nil)
