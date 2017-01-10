@@ -22,8 +22,7 @@ newtype Contextual a = Contextual
 
 type IdCmdInfoMap = M.Map Id (Id,[VType Desugared],
                               [VType Desugared],VType Desugared)
-type CtrInfoMap = M.Map Id (Id,[AbMod Desugared],
-                            [VType Desugared],[VType Desugared])
+type CtrInfoMap = M.Map Id (Id,[TyArg Desugared],[VType Desugared])
 
 data TCState = MkTCState
   { ctx :: Context
@@ -57,7 +56,7 @@ freshMVar x = do n <- fresh
                  return s
 
 fmv :: VType Desugared -> S.Set Id
-fmv (MkDTTy _ abs xs) = S.union (foldMap fmvAb abs) (foldMap fmv xs)
+fmv (MkDTTy _ ts) = foldMap fmvTyArg ts
 fmv (MkSCTy cty) = fmvCType cty
 fmv (MkFTVar x) = S.singleton x
 fmv (MkRTVar x) = S.empty
@@ -67,6 +66,10 @@ fmv MkCharTy = S.empty
 
 fmvAb :: Ab Desugared -> S.Set Id
 fmvAb (MkAb v m) = S.union (fmvAbMod v) (foldMap (foldMap fmv) (M.elems m))
+
+fmvTyArg :: TyArg Desugared -> S.Set Id
+fmvTyArg (VArg t) = fmv t
+fmvTyArg (EArg ab) = fmvAb ab
 
 fmvAbMod :: AbMod Desugared -> S.Set Id
 fmvAbMod MkEmpAb = S.empty
@@ -126,19 +129,18 @@ purgeMarks = do s <- get
         skim 0 es = es
         skim n (es :< Mark) = skim (n-1) es
         skim n (es :< _) = skim n es
-        
+
 getCmd :: Id -> Contextual (Id,[VType Desugared],
                             [VType Desugared],VType Desugared)
 getCmd cmd = get >>= \s -> case M.lookup cmd (cmdMap s) of
   Nothing -> error $ "invariant broken: " ++ show cmd ++ " not a command"
   Just (itf, qs, xs, y) -> return (itf, qs, xs, y)
 
-getCtr :: Id -> Contextual (Id,[AbMod Desugared],
-                            [VType Desugared],[VType Desugared])
+getCtr :: Id -> Contextual (Id,[TyArg Desugared],[VType Desugared])
 getCtr k = get >>= \s -> case M.lookup k (ctrMap s) of
   Nothing -> throwError $
              "'" ++ k ++ "' is not a constructor"
-  Just (dt, es, ps, xs) -> return (dt, es, ps, xs)
+  Just (dt, ts, xs) -> return (dt, ts, xs)
 
 popEntry :: Contextual Entry
 popEntry = do es :< e <- getContext
@@ -157,9 +159,11 @@ initContextual (MkProg xs) =
      mapM h (getDefs xs)
      return (MkProg xs)
   where f :: DataT Desugared -> Contextual ()
-        f (MkDT dt es ps cs) = let ps' = map MkRTVar ps in
-          let es' = map MkAbRVar es in
-          mapM_ (\(MkCtr ctr xs) -> addCtr dt ctr es' ps' xs) cs
+        f (MkDT dt ps cs) =
+          let ts = map (\(x, k) -> case k of
+                                      VT -> VArg (MkRTVar x)
+                                      ET -> EArg (liftAbMod (MkAbRVar x))) ps in
+          mapM_ (\(MkCtr ctr xs) -> addCtr dt ctr ts xs) cs
 
         g :: Itf Desugared -> Contextual ()
         g (MkItf itf ps cs) = let ps' = map MkRTVar ps in
@@ -177,7 +181,7 @@ addCmd :: Id -> Id -> [VType Desugared] -> [VType Desugared] ->
 addCmd cmd itf ps xs q = get >>= \s ->
   put $ s { cmdMap = M.insert cmd (itf, ps, xs, q) (cmdMap s) }
 
-addCtr :: Id -> Id -> [AbMod Desugared] -> [VType Desugared] ->
+addCtr :: Id -> Id -> [TyArg Desugared] ->
           [VType Desugared] -> Contextual ()
-addCtr dt ctr es ps xs = get >>= \s ->
-  put $ s { ctrMap = M.insert ctr (dt,es,ps,xs) (ctrMap s) }
+addCtr dt ctr ts xs = get >>= \s ->
+  put $ s { ctrMap = M.insert ctr (dt,ts,xs) (ctrMap s) }

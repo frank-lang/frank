@@ -77,8 +77,8 @@ parseDataT = do reserved "data"
                 es <- many $ brackets $ parseEVar
                 ps <- many identifier
                 symbol "="
-                xs <- localIndentation Gt ctrlist
-                return $ MkDT name es ps xs
+                cs <- localIndentation Gt ctrlist
+                return $ MkDT name ([(x, ET) | x <- es] ++ [(x, VT) | x <- ps]) cs
 
 parseEVar :: MonadicParsing m => m Id
 parseEVar = do mx <- optional identifier
@@ -192,7 +192,7 @@ parseDTType :: MonadicParsing m => m (VType Raw)
 parseDTType = do x <- identifier
                  abs <- many parseDTAb
                  ps <- localIndentation Gt $ many parseVType'
-                 return $ MkDTTy x abs ps
+                 return $ MkDTTy x (map EArg abs ++ map VArg ps)
 
 parseRawTmSeq :: MonadicParsing m => m (Tm Raw)
 parseRawTmSeq = do tm1 <- parseRawTm

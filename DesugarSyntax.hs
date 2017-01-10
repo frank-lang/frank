@@ -31,6 +31,10 @@ freshRTVar :: Id -> Desugar (VType Desugared)
 freshRTVar x = do n <- fresh
                   return $ MkRTVar $ x ++ "$r" ++ (show n)
 
+freshRigid :: Id -> Desugar Id
+freshRigid x = do n <- fresh
+                  return $ x ++ "$r" ++ show n
+
 pullId :: VType Desugared -> Id
 pullId (MkRTVar id) = id
 pullId _ = error "pullId called on something other than a rigid tvar"
@@ -52,7 +56,7 @@ getAbModEnv = do s <- getDState
                  return $ abModEnv s
 
 
-initDState :: DState 
+initDState :: DState
 initDState = MkDState M.empty M.empty
 
 desugar :: Prog Refined -> Prog Desugared
@@ -68,14 +72,19 @@ desugarTopTm (MkItfTm itf) = MkItfTm <$> desugarItf itf
 desugarTopTm (MkDefTm def) = MkDefTm <$> desugarMHDef def
 
 desugarDataT :: DataT Refined -> Desugar (DataT Desugared)
-desugarDataT (MkDT dt es xs ctrs) =
-  do ts <- mapM freshRTVar xs
-     putEnv $ M.fromList (zip xs ts)
+desugarDataT (MkDT dt ps ctrs) =
+  do xs' <- mapM (freshRigid . fst) ps
+     putEnv $ M.fromList [(x, MkRTVar x') | ((x, VT), x') <- zip ps xs']
+     putAbModEnv $ M.fromList [(x, MkAbRVar x') | ((x, ET), x') <- zip ps xs']
+     let ps' = [(x', k) | ((_, k), x') <- zip ps xs']
+     -- ts <- mapM freshRTVar xs
+     -- putEnv $ M.fromList (zip xs ts)
+
      -- Shouldn't be adding to the env in the
      -- constructors, but this code does not
      -- enforce that invariant unfortunately.
-     ys <- mapM desugarCtr ctrs
-     return $ MkDT dt es (map pullId ts) ys
+     ctrs' <- mapM desugarCtr ctrs
+     return $ MkDT dt ps' ctrs'
 
 desugarItf :: Itf Refined -> Desugar (Itf Desugared)
 desugarItf (MkItf itf xs cmds) =
@@ -107,14 +116,17 @@ desugarVType (MkTVar x) =
                      putEnv $ M.insert x ty env
                      return ty
        Just ty -> return ty
-desugarVType (MkDTTy dt abs xs) = do abs' <- mapM desugarAb abs
-                                     xs' <- mapM desugarVType xs
-                                     return $ MkDTTy dt abs' xs'
+desugarVType (MkDTTy dt ts) = do ts' <- mapM desugarTyArg ts
+                                 return $ MkDTTy dt ts'
 desugarVType (MkSCTy ty) = MkSCTy <$> desugarCType ty
-desugarVType MkStringTy = return $ desugaredStrTy []
+desugarVType MkStringTy = return $ desugaredStrTy
 desugarVType MkIntTy = return $ MkIntTy
 desugarVType MkCharTy = return $ MkCharTy
-                             
+
+desugarTyArg :: TyArg Refined -> Desugar (TyArg Desugared)
+desugarTyArg (VArg t) = VArg <$> desugarVType t
+desugarTyArg (EArg ab) = EArg <$> desugarAb ab
+
 desugarCType :: CType Refined -> Desugar (CType Desugared)
 desugarCType (MkCType ports peg) =
   MkCType <$> mapM desugarPort ports <*> desugarPeg peg
@@ -173,10 +185,10 @@ desugarDCon (MkDataCon id xs) = MkDataCon id <$> mapM desugarTm xs
 -- Test program
 testProg :: Prog Refined
 testProg = MkProg $
-           [MkDataTm $ MkDT "TypeA" [] ["X", "Y"] [MkCtr "one" [MkTVar "X"]
-                                                  ,MkCtr "two" [MkTVar "X"
+           [MkDataTm $ MkDT "TypeA" [("X", VT), ("Y", VT)] [MkCtr "one" [MkTVar "X"]
+                                                           ,MkCtr "two" [MkTVar "X"
                                                                ,MkTVar "Y"]]
-           ,MkDataTm $ MkDT "TypeB" [] ["X"] [MkCtr "Just" [MkTVar "X"]]
+           ,MkDataTm $ MkDT "TypeB" [("X", VT)] [MkCtr "Just" [MkTVar "X"]]
            ,MkDefTm $ MkDef "k" (MkCType [MkPort (MkAdj M.empty) (MkTVar "X")
                                          ,MkPort (MkAdj M.empty) (MkTVar "Y")]
                                  (MkPeg (MkAb (MkAbVar "£") M.empty) (MkTVar "X"))) []]

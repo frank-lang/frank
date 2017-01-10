@@ -22,7 +22,7 @@ type EVarSet = S.Set Id
 
 -- Object-Int pair
 type IPair = (Id,Int)
-type DTMap = M.Map Id ([Id],[Id])
+type DTMap = M.Map Id ([(Id, Kind)])
 
 data TopLevelCtxt = Interface | Datatype | Handler deriving (Show, Eq)
 
@@ -152,10 +152,10 @@ addItf :: [IPair] -> Itf a -> Refine [IPair]
 addItf xs (MkItf x ys _) = addEntry xs x (length ys) "duplicate interface: "
 
 addDataT :: DTMap -> DataT a -> Refine DTMap
-addDataT m (MkDT x es ps _) = if M.member x m then
-                                 throwError ("duplicate datatype: " ++ x ++
-                                             " already defined.")
-                              else return $ M.insert x (es,ps) m
+addDataT m (MkDT x ps _) = if M.member x m then
+                             throwError ("duplicate datatype: " ++ x ++
+                                          " already defined.")
+                           else return $ M.insert x ps m
 
 addCtr :: [IPair] -> Ctr a -> Refine [IPair]
 addCtr xs (MkCtr x ts) = addEntry xs x (length ts) "duplicate constructor: "
@@ -201,21 +201,24 @@ existsMain [] = False
 existsMain (_ : xs) = error "invalid top term: expected multihandler"
 
 refineDataT :: DataT Raw -> Refine (TopTm Refined)
-refineDataT d@(MkDT dt es ps ctrs) =
-  if uniqueIds ps && uniqueIds es then
-     do putTMap (M.fromList $ zip ps (map MkTVar ps))
+refineDataT d@(MkDT dt ps ctrs) =
+  if uniqueIds (map fst ps) then
+     do let tvs = [x | (x, VT) <- ps]
+        let evs = [x | (x, ET) <- ps]
+        putTMap (M.fromList $ zip tvs (map MkTVar tvs))
         -- FIXME: this is the wrong test.
-        --   * We should account for empty abilities.
-        --   * If neccessary, we should add a "£" even if there are
+        --   * We should account for empty abilities in dtContainsCType.
+        --   * If neccessary, we could add a "£" even if there are
         --   other ability variables.
-        let es' = if dtContainsCType d && null es then ["£"] else es
+        let es' = if dtContainsCType d && null evs then ["£"] else evs
+        let ps' = if dtContainsCType d && null evs then ps ++ [("£", ET)] else ps
         putEVSet (S.fromList es')
         ctrs' <- mapM refineCtr ctrs
         m <- getRDTs
-        putRDTs $ M.insert dt (es',ps) m
+        putRDTs $ M.insert dt ps' m
         putTMap M.empty
         putEVSet S.empty
-        return $ MkDataTm $ MkDT dt es' ps ctrs'
+        return $ MkDataTm $ MkDT dt ps' ctrs'
   else throwError $ "duplicate parameter in datatype " ++ dt
 
 refineItf :: Itf Raw -> Refine (TopTm Refined)
@@ -250,14 +253,14 @@ refinePeg (MkPeg ab ty) = do ab' <- refineAb ab
                              ty' <- refineVType ty
                              return $ MkPeg ab' ty'
 
-refineDTAbs :: [Ab Raw] -> [Id] -> Refine ([Ab Raw])
-refineDTAbs abs es = return xs
-  where xs = abs ++ map (\v -> MkAb v M.empty) (take n $ repeat varepi)
+-- refineDTAbs :: [Ab Raw] -> [Id] -> Refine ([Ab Raw])
+-- refineDTAbs abs es = return xs
+--   where xs = abs ++ map (\v -> MkAb v M.empty) (take n $ repeat varepi)
 
-        n = length es - length abs
+--         n = length es - length abs
 
-        varepi :: AbMod Raw
-        varepi = MkAbVar "£"
+--         varepi :: AbMod Raw
+--         varepi = MkAbVar "£"
 
 refineAb :: Ab Raw -> Refine (Ab Refined)
 refineAb ab@(MkAb v m) =
@@ -302,14 +305,20 @@ refineAdj (MkAdj m) = do m' <- refineItfMap m
 
 refineVType :: VType Raw -> Refine (VType Refined)
 -- Check that dt is a datatype, otherwise it must have been a type variable.
-refineVType (MkDTTy x abs xs) =
+refineVType (MkDTTy x ts) =
   do dtm <- getRDTs
      case M.lookup x dtm of
-       Just (es,ps) -> do checkArgs x (length ps) (length xs)
-                          abs' <- refineDTAbs abs es
-                          abs'' <- mapM refineAb abs'
-                          xs' <- mapM refineVType xs
-                          return $ MkDTTy x abs'' xs'
+       Just ps ->
+         -- if there's exactly one extra effect parameter then
+         -- instantiate it to "£"
+         do let ts' = if length ps == length ts + 1 && (snd (ps !! length ts) == ET) then
+                        ts ++ [EArg (MkAb (MkAbVar "£") M.empty)]
+                      else
+                        ts
+            checkArgs x (length ps) (length ts')
+            -- abs' <- refineDTAbs abs es
+            ts'' <- mapM refineTyArg ts'
+            return $ MkDTTy x ts''
        Nothing -> do -- interfaces or datatypes explicitly declare their type
                      -- variables.
                    m <- getTMap
@@ -320,14 +329,24 @@ refineVType (MkSCTy ty) = refineCType ty >>= return . MkSCTy
 refineVType (MkTVar x) =
   do dtm <- getRDTs
      case M.lookup x dtm of
-       Just (es,ps) -> do checkArgs x (length ps) 0
-                          abs' <- refineDTAbs [] es
-                          abs'' <- mapM refineAb abs'
-                          return $ MkDTTy x abs'' []
+       Just ps ->
+         -- if the data type is parameterised by a single effect
+         -- variable then instantiate it to "£"
+         do let ts = case ps of
+                       [(_, ET)] -> [EArg (MkAb (MkAbVar "£") M.empty)]
+                       _ -> []
+            checkArgs x (length ps) (length ts)
+            -- abs' <- refineDTAbs [] es
+            ts' <- mapM refineTyArg ts
+            return $ MkDTTy x ts'
        Nothing -> return $ MkTVar x
 refineVType MkStringTy = return MkStringTy
 refineVType MkIntTy = return MkIntTy
 refineVType MkCharTy = return MkCharTy
+
+refineTyArg :: TyArg Raw -> Refine (TyArg Refined)
+refineTyArg (VArg t) = VArg <$> refineVType t
+refineTyArg (EArg ab) = EArg <$> refineAb ab
 
 refineMH :: [MHCls] -> MHSig -> Refine (TopTm Refined)
 refineMH xs (MkSig id ty) = do cs <- mapM refineMHCls ys
@@ -449,7 +468,7 @@ makeIntBinOp c = MkDef [c] (MkCType [MkPort (MkAdj M.empty) MkIntTy
                             (MkPeg (MkAb (MkAbVar "£") M.empty) MkIntTy)) []
 
 dtContainsCType :: DataT a -> Bool
-dtContainsCType (MkDT _ _ _ xs) = any ctrHasCTypeArg xs
+dtContainsCType (MkDT _ _ xs) = any ctrHasCTypeArg xs
 
 ctrHasCTypeArg :: Ctr a -> Bool
 ctrHasCTypeArg (MkCtr _ ts) = any isCType ts
@@ -461,17 +480,16 @@ isCType _ = False
 {-- The initial state for the refinement pass. -}
 
 builtinDataTs :: [DataT Refined]
-builtinDataTs = [MkDT "List" [] ["X"] [MkCtr "cons" [MkTVar "X"
-                                                    ,MkDTTy "List" []
-                                                     [MkTVar "X"]]
+builtinDataTs = [MkDT "List" [("X", VT)] [MkCtr "cons" [MkTVar "X"
+                                                       ,MkDTTy "List" [VArg (MkTVar "X")]]
                                       ,MkCtr "nil" []]
-                ,MkDT "Unit" [] [] [MkCtr "unit" []]]
+                ,MkDT "Unit" [] [MkCtr "unit" []]]
 
 
 builtinItfs :: [Itf Refined]
 builtinItfs = [MkItf "Console" [] [MkCmd "inch" [] MkCharTy
                                   ,MkCmd "ouch" [MkCharTy]
-                                                (MkDTTy "Unit" [] [])]]
+                                                (MkDTTy "Unit" [])]]
 
 builtinMHDefs :: [MHDef Refined]
 builtinMHDefs = map makeIntBinOp "+-"
@@ -482,7 +500,7 @@ builtinMHs = map add builtinMHDefs
 
 builtinDTs :: DTMap
 builtinDTs = foldl add M.empty builtinDataTs
-  where add m (MkDT id abs xs _) = M.insert id (abs,xs) m
+  where add m (MkDT id ps _) = M.insert id ps m
 
 builtinINames :: [IPair]
 builtinINames = map add builtinItfs

@@ -141,7 +141,7 @@ inferUse (MkApp f xs) =
 checkTm :: Tm Desugared -> VType Desugared -> Contextual ()
 checkTm (MkSC sc) ty = checkSComp sc ty
 checkTm MkLet _ = return ()
-checkTm (MkStr _) ty = unify (desugaredStrTy []) ty
+checkTm (MkStr _) ty = unify desugaredStrTy ty
 checkTm (MkInt _) ty = unify MkIntTy ty
 checkTm (MkChar _) ty = unify MkCharTy ty
 checkTm (MkTmSeq tm1 tm2) ty = do ftvar <- freshMVar "seq"
@@ -150,12 +150,11 @@ checkTm (MkTmSeq tm1 tm2) ty = do ftvar <- freshMVar "seq"
 checkTm (MkUse u) t = do s <- inferUse u
                          unify t s
 checkTm (MkDCon (MkDataCon k xs)) ty =
-  do (dt, es, qs, ts) <- getCtr k
+  do (dt, args, ts) <- getCtr k
      addMark
-     qs' <- mapM makeFlexible qs
-     es' <- mapM (makeFlexibleAb . liftAbMod) es
+     args' <- mapM makeFlexibleTyArg args
      ts' <- mapM makeFlexible ts
-     unify ty (MkDTTy dt es' qs')
+     unify ty (MkDTTy dt args')
      mapM_ (uncurry checkTm) (zip xs ts')
 
 checkSComp :: SComp Desugared -> VType Desugared -> Contextual ()
@@ -226,24 +225,23 @@ contType x adj y =
 checkVPat :: ValuePat -> VType Desugared -> Contextual [TermBinding]
 checkVPat (MkVarPat x) ty = return [(MkMono x, ty)]
 checkVPat (MkDataPat k xs) ty =
-  do (dt, es, qs, ts) <- getCtr k
+  do (dt, args, ts) <- getCtr k
      addMark
-     qs' <- mapM makeFlexible qs
-     es' <- mapM (makeFlexibleAb . liftAbMod) es
+     args' <- mapM makeFlexibleTyArg args
      ts' <- mapM makeFlexible ts
-     unify ty (MkDTTy dt es' qs')
+     unify ty (MkDTTy dt args')
      bs <- fmap concat $ mapM (uncurry checkVPat) (zip xs ts')
      return bs
 checkVPat (MkCharPat _) ty = unify ty MkCharTy >> return []
-checkVPat (MkStrPat _) ty = unify ty (desugaredStrTy []) >> return []
+checkVPat (MkStrPat _) ty = unify ty desugaredStrTy >> return []
 checkVPat (MkIntPat _) ty = unify ty MkIntTy >> return []
 -- checkVPat p ty = throwError $ "failed to match value pattern " ++
 --                  (show p) ++ " with type " ++ (show ty)
 
 -- Replace rigid type variables with flexible ones
 makeFlexible :: VType Desugared -> Contextual (VType Desugared)
-makeFlexible (MkDTTy id abs xs) =
-  MkDTTy <$> pure id <*> mapM makeFlexibleAb abs <*> mapM makeFlexible xs
+makeFlexible (MkDTTy id ts) =
+  MkDTTy id <$> mapM makeFlexibleTyArg ts
 makeFlexible (MkSCTy cty) = MkSCTy <$> makeFlexibleCType cty
 makeFlexible (MkRTVar x) = MkFTVar <$> (getContext >>= find')
   where find' BEmp = freshMVar x
@@ -264,6 +262,10 @@ makeFlexibleAb (MkAb v m) = case v of
         find' x (es :< FlexMVar y _) | trimVar x == trimVar y = return y
         find' x (es :< Mark) = freshMVar x
         find' x (es :< _) = find' x es
+
+makeFlexibleTyArg :: TyArg Desugared -> Contextual (TyArg Desugared)
+makeFlexibleTyArg (VArg t)  = VArg <$> makeFlexible t
+makeFlexibleTyArg (EArg ab) = EArg <$> makeFlexibleAb ab
 
 makeFlexibleAdj :: Adj Desugared -> Contextual (Adj Desugared)
 makeFlexibleAdj (MkAdj m) = MkAdj <$> mapM (mapM makeFlexible) m

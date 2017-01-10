@@ -115,9 +115,13 @@ data Clause a = MkCls [Pattern] (Tm a)
               deriving (Show, Eq)
 
 data SComp a = MkSComp [Clause a]
-           deriving (Show, Eq)
+             deriving (Show, Eq)
 
-data DataT a = MkDT Id [Id] [Id] [Ctr a]
+data Kind = VT   -- value type
+          | ET   -- effect type
+          deriving (Show, Eq)
+
+data DataT a = MkDT Id [(Id, Kind)] [Ctr a]
              deriving (Show, Eq)
 
 data Itf a = MkItf Id [Id] [Cmd a]
@@ -150,7 +154,7 @@ data Peg a = MkPeg (Ab a) (VType a)
            deriving (Show, Eq)
 
 data VType a where
-  MkDTTy :: Id -> [Ab a] -> [VType a] -> VType a
+  MkDTTy :: Id -> [TyArg a] -> VType a
   MkSCTy :: CType a -> VType a
   MkTVar :: NotDesugared a => Id -> VType a
   MkRTVar :: Id -> VType Desugared
@@ -171,7 +175,7 @@ data Adj a = MkAdj (ItfMap a)
 -- Abilities
 data Ab a = MkAb (AbMod a) (ItfMap a)
           deriving (Show, Eq)
-  
+
 data AbMod a where
   MkEmpAb :: AbMod a
   MkAbVar :: NotDesugared a => Id -> AbMod a
@@ -181,11 +185,18 @@ data AbMod a where
 deriving instance Show (AbMod a)
 deriving instance Eq (AbMod a)
 
+data TyArg a where
+  VArg :: VType a -> TyArg a
+  EArg :: Ab a    -> TyArg a
+
+deriving instance Show (TyArg a)
+deriving instance Eq (TyArg a)
+
 idAdj :: Adj a
 idAdj = MkAdj M.empty
 
-desugaredStrTy :: [Ab Desugared] -> VType Desugared
-desugaredStrTy abs = MkDTTy "List" abs [MkCharTy]
+desugaredStrTy :: VType Desugared
+desugaredStrTy = MkDTTy "List" [VArg MkCharTy]
 
 getItfs :: [TopTm a] -> [Itf a]
 getItfs xs = getItfs' xs []
@@ -209,10 +220,10 @@ getDataTs xs = getDataTs' xs []
         getDataTs' [] ys = ys
 
 getCtrs :: DataT a -> [Ctr a]
-getCtrs (MkDT _ _ _ xs) = xs
+getCtrs (MkDT _ _ xs) = xs
 
 collectDTNames :: [DataT a] -> [Id]
-collectDTNames ((MkDT dt _ _ _) : xs) = dt : (collectDTNames xs)
+collectDTNames ((MkDT dt _ _) : xs) = dt : (collectDTNames xs)
 collectDTNames [] = []
 
 getDefs :: NotRaw a => [TopTm a] -> [MHDef a]
@@ -284,11 +295,7 @@ trimVar :: Id -> Id
 trimVar = takeWhile (/= '$')
 
 ppVType :: VType a -> Doc
-ppVType (MkDTTy x abs xs) = text x <+> absRep <+> xsRep
-  where absRep = foldl abToDoc PP.empty abs'
-        abToDoc acc ab = ab <+> acc
-        abs' = map ppAb abs
-        xsRep = foldl (<+>) PP.empty $ map ppParenVType xs
+ppVType (MkDTTy x ts) = text x <+> foldl (<+>) PP.empty (map ppTyArg ts)
 ppVType (MkSCTy (MkCType ps q)) = text "{" <> ports <> peg <> text "}"
   where
     ports = case map ppPort ps of
@@ -303,8 +310,12 @@ ppVType MkStringTy = text "String"
 ppVType MkIntTy = text "Int"
 ppVType MkCharTy = text "Char"
 
+ppTyArg :: TyArg a -> Doc
+ppTyArg (VArg t) = ppParenVType t
+ppTyArg (EArg ab) = text "[" <> ppAb ab <> text "]"
+
 ppParenVType :: VType a -> Doc
-ppParenVType v@(MkDTTy _ _ _) = text "(" <+> ppVType v <+> text ")"
+ppParenVType v@(MkDTTy _ _) = text "(" <+> ppVType v <+> text ")"
 ppParenVType v = ppVType v
 
 ppPort :: Port a -> Doc
@@ -331,5 +342,5 @@ ppAbMod (MkAbFVar x) = text x
 ppItfMap :: ItfMap a -> Doc
 ppItfMap m = PP.hsep $ intersperse PP.comma $ map ppItfMapPair $ M.toList m
  where ppItfMapPair :: (Id, [VType a]) -> Doc
-       ppItfMapPair (x, vs) = 
+       ppItfMapPair (x, vs) =
          text x <+> (foldl (<+>) PP.empty $ map ppParenVType vs)
