@@ -205,19 +205,14 @@ refineDataT d@(MkDT dt ps ctrs) =
   if uniqueIds (map fst ps) then
      do let tvs = [x | (x, VT) <- ps]
         let evs = [x | (x, ET) <- ps]
-        putTMap (M.fromList $ zip tvs (map MkTVar tvs))
-        -- FIXME: this is the wrong test.
-        --   * We should account for empty abilities in dtContainsCType.
-        --   * If neccessary, we could add a "£" even if there are
-        --   other ability variables.
-        let es' = if dtContainsCType d && null evs then ["£"] else evs
-        let ps' = if dtContainsCType d && null evs then ps ++ [("£", ET)] else ps
-        putEVSet (S.fromList es')
-        ctrs' <- mapM refineCtr ctrs
+        let (evs', ps') = if not (any ((==) "£") evs) && polyDataT d then (evs ++ ["£"], ps ++ [("£", ET)]) else (evs, ps)
         m <- getRDTs
         putRDTs $ M.insert dt ps' m
-        putTMap M.empty
+        putTMap (M.fromList $ zip tvs (map MkTVar tvs))
+        putEVSet (S.fromList evs')
+        ctrs' <- mapM refineCtr ctrs
         putEVSet S.empty
+        putTMap M.empty
         return $ MkDataTm $ MkDT dt ps' ctrs'
   else throwError $ "duplicate parameter in datatype " ++ dt
 
@@ -252,15 +247,6 @@ refinePeg :: Peg Raw -> Refine (Peg Refined)
 refinePeg (MkPeg ab ty) = do ab' <- refineAb ab
                              ty' <- refineVType ty
                              return $ MkPeg ab' ty'
-
--- refineDTAbs :: [Ab Raw] -> [Id] -> Refine ([Ab Raw])
--- refineDTAbs abs es = return xs
---   where xs = abs ++ map (\v -> MkAb v M.empty) (take n $ repeat varepi)
-
---         n = length es - length abs
-
---         varepi :: AbMod Raw
---         varepi = MkAbVar "£"
 
 refineAb :: Ab Raw -> Refine (Ab Refined)
 refineAb ab@(MkAb v m) =
@@ -316,7 +302,6 @@ refineVType (MkDTTy x ts) =
                       else
                         ts
             checkArgs x (length ps) (length ts')
-            -- abs' <- refineDTAbs abs es
             ts'' <- mapM refineTyArg ts'
             return $ MkDTTy x ts''
        Nothing -> do -- interfaces or datatypes explicitly declare their type
@@ -336,7 +321,6 @@ refineVType (MkTVar x) =
                        [(_, ET)] -> [EArg (MkAb (MkAbVar "£") M.empty)]
                        _ -> []
             checkArgs x (length ps) (length ts)
-            -- abs' <- refineDTAbs [] es
             ts' <- mapM refineTyArg ts
             return $ MkDTTy x ts'
        Nothing -> return $ MkTVar x
@@ -467,15 +451,36 @@ makeIntBinOp c = MkDef [c] (MkCType [MkPort (MkAdj M.empty) MkIntTy
                                     ,MkPort (MkAdj M.empty) MkIntTy]
                             (MkPeg (MkAb (MkAbVar "£") M.empty) MkIntTy)) []
 
-dtContainsCType :: DataT a -> Bool
-dtContainsCType (MkDT _ _ xs) = any ctrHasCTypeArg xs
+-- Return true if the data type definition contains a computation type
+-- with an implicit effect variable "£".
+polyDataT :: DataT Raw -> Bool
+polyDataT (MkDT _ _ xs) = any polyCtr xs
+  where
+    polyCtr :: Ctr Raw -> Bool
+    polyCtr (MkCtr _ ts) = any polyVType ts
 
-ctrHasCTypeArg :: Ctr a -> Bool
-ctrHasCTypeArg (MkCtr _ ts) = any isCType ts
+    polyVType :: VType Raw -> Bool
+    polyVType (MkDTTy _ ts) = any polyTyArg ts
+    polyVType (MkSCTy _)    = True
+    polyVType (MkTVar _)    = False
+    polyVType MkStringTy    = False
+    polyVType MkIntTy       = False
+    polyVType MkCharTy      = False
 
-isCType :: VType a -> Bool
-isCType (MkSCTy _) = True
-isCType _ = False
+    polyAb :: Ab Raw -> Bool
+    polyAb (MkAb v m) = polyAbMod v || polyItfMap m
+
+    polyItfMap :: ItfMap Raw -> Bool
+    polyItfMap m = any (any polyVType) m
+
+    polyAbMod :: AbMod Raw -> Bool
+    polyAbMod MkEmpAb       = False
+    polyAbMod (MkAbVar "£") = True
+    polyAbMod (MkAbVar _)   = False
+
+    polyTyArg :: TyArg Raw -> Bool
+    polyTyArg (VArg t)  = polyVType t
+    polyTyArg (EArg ab) = polyAb ab
 
 {-- The initial state for the refinement pass. -}
 

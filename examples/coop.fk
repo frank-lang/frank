@@ -30,7 +30,7 @@ print s = map ouch s; unit
 interface Co X = fork : X -> Unit
                | yield : Unit
 
-data Process [E] = process {[E, Co (Process [E])]Unit}
+data Process = process {[Co Process]Unit}
 
 test : [Co (Process [Console]), Console]Unit
 test! = print "M1 ";
