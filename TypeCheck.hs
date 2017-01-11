@@ -3,7 +3,7 @@
 -- inference in Context'' for more details.
 {-# LANGUAGE FlexibleInstances,StandaloneDeriving,TypeSynonymInstances,
              MultiParamTypeClasses,GeneralizedNewtypeDeriving,
-             FlexibleContexts,GADTs,ScopedTypeVariables #-}
+             FlexibleContexts,GADTs #-}
 module TypeCheck where
 
 import Control.Monad
