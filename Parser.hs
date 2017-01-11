@@ -71,14 +71,17 @@ tterm = MkDataTm <$> parseDataT <|>
         MkClsTm <$> parseMHCls <|>
         MkItfTm <$> parseItf
 
+parseTyVar :: MonadicParsing m => m (Id, Kind)
+parseTyVar = (\x -> (x, ET)) <$> brackets parseEVar <|>
+             (\x -> (x, VT)) <$> identifier
+
 parseDataT :: MonadicParsing m => m (DataT Raw)
 parseDataT = do reserved "data"
                 name <- identifier
-                es <- many $ brackets $ parseEVar
-                ps <- many identifier
+                ps <- many $ parseTyVar
                 symbol "="
                 cs <- localIndentation Gt ctrlist
-                return $ MkDT name ([(x, ET) | x <- es] ++ [(x, VT) | x <- ps]) cs
+                return $ MkDT name ps cs
 
 parseEVar :: MonadicParsing m => m Id
 parseEVar = do mx <- optional identifier
@@ -187,12 +190,15 @@ parseVType' = parens parseVType <|>
               MkCharTy <$ reserved "Char" <|>
               MkTVar <$> identifier
 
+parseTyArg :: MonadicParsing m => m (TyArg Raw)
+parseTyArg = VArg <$> parseVType' <|>
+             EArg <$> parseDTAb
+
 -- Parse a potential datatype. Note it may actually be a type variable.
 parseDTType :: MonadicParsing m => m (VType Raw)
 parseDTType = do x <- identifier
-                 abs <- many parseDTAb
-                 ps <- localIndentation Gt $ many parseVType'
-                 return $ MkDTTy x (map EArg abs ++ map VArg ps)
+                 args <- localIndentation Gt $ many parseTyArg
+                 return $ MkDTTy x args
 
 parseRawTmSeq :: MonadicParsing m => m (Tm Raw)
 parseRawTmSeq = do tm1 <- parseRawTm
