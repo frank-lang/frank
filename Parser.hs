@@ -78,7 +78,7 @@ parseTyVar = (\x -> (x, ET)) <$> brackets parseEVar <|>
 parseDataT :: MonadicParsing m => m (DataT Raw)
 parseDataT = do reserved "data"
                 name <- identifier
-                ps <- many $ parseTyVar
+                ps <- many parseTyVar
                 symbol "="
                 cs <- localIndentation Gt ctrlist
                 return $ MkDT name ps cs
@@ -113,7 +113,7 @@ parseMHCls = do name <- identifier
 parseItf :: MonadicParsing m => m (Itf Raw)
 parseItf = do reserved "interface"
               name <- identifier
-              ps <- many identifier
+              ps <- many parseTyVar
               symbol "="
               xs <- localIndentation Gt $ sepBy1 parseCmd (symbol "|")
               return (MkItf name ps xs)
@@ -158,9 +158,9 @@ parseAdj = do mxs <- optional $ angles (sepBy parseAdj' (symbol ","))
                 Nothing -> return $ MkAdj M.empty
                 Just xs -> return $ MkAdj (M.fromList xs)
 
-parseAdj' :: MonadicParsing m => m (Id, [VType Raw])
+parseAdj' :: MonadicParsing m => m (Id, [TyArg Raw])
 parseAdj' = do x <- identifier
-               ts <- many parseVType
+               ts <- many parseTyArg
                return (x, ts)
 
 parseDTAb :: MonadicParsing m => m (Ab Raw)
@@ -173,9 +173,9 @@ parseAb = do mxs <- optional $ brackets (sepBy parseAb' (symbol ","))
                Nothing -> return $ MkAb (MkAbVar "£") M.empty
                Just xs -> return $ MkAb (MkAbVar "£") (M.fromList xs)
 
-parseAb' :: MonadicParsing m => m (Id, [VType Raw])
+parseAb' :: MonadicParsing m => m (Id, [TyArg Raw])
 parseAb' = do x <- identifier
-              ts <- many parseVType
+              ts <- many parseTyArg
               return (x, ts)
 
 parseVType :: MonadicParsing m => m (VType Raw)

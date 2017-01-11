@@ -22,11 +22,13 @@ type EVarSet = S.Set Id
 
 -- Object-Int pair
 type IPair = (Id,Int)
-type DTMap = M.Map Id ([(Id, Kind)])
+type DTMap = M.Map Id [(Id, Kind)]
+type IFMap = M.Map Id [(Id, Kind)]
 
-data TopLevelCtxt = Interface | Datatype | Handler deriving (Show, Eq)
+data TopLevelCtxt = Interface | Datatype | Handler
+  deriving (Show, Eq)
 
-data RState = MkRState { interfaces :: [IPair]
+data RState = MkRState { interfaces :: IFMap
                        , datatypes :: DTMap
                        , handlers :: [IPair]
                        , ctrs :: [IPair]
@@ -42,11 +44,11 @@ getRState = get
 putRState :: RState -> Refine ()
 putRState = put
 
-putRItfs :: [IPair] -> Refine ()
+putRItfs :: IFMap -> Refine ()
 putRItfs xs = do s <- getRState
                  putRState $ s { interfaces = xs }
 
-getRItfs :: Refine [IPair]
+getRItfs :: Refine IFMap
 getRItfs = do s <- getRState
               return $ interfaces s
 
@@ -148,8 +150,15 @@ addEntry xs x n prefix = if x `mem` xs then throwError (prefix ++ x ++
                                                         " already defined.")
                          else return $ (x,n) : xs
 
-addItf :: [IPair] -> Itf a -> Refine [IPair]
-addItf xs (MkItf x ys _) = addEntry xs x (length ys) "duplicate interface: "
+-- addItf :: [IPair] -> Itf a -> Refine [IPair]
+-- addItf xs (MkItf x ps _) = addEntry xs x (length ps) "duplicate interface: "
+
+addItf :: IFMap -> Itf a -> Refine DTMap
+addItf m (MkItf x ps _) = if M.member x m then
+                             throwError ("duplicate interface: " ++ x ++
+                                          " already defined.")
+                           else return $ M.insert x ps m
+
 
 addDataT :: DTMap -> DataT a -> Refine DTMap
 addDataT m (MkDT x ps _) = if M.member x m then
@@ -203,25 +212,33 @@ existsMain (_ : xs) = error "invalid top term: expected multihandler"
 refineDataT :: DataT Raw -> Refine (TopTm Refined)
 refineDataT d@(MkDT dt ps ctrs) =
   if uniqueIds (map fst ps) then
-     do let tvs = [x | (x, VT) <- ps]
-        let evs = [x | (x, ET) <- ps]
-        let (evs', ps') = if not (any ((==) "£") evs) && polyDataT d then (evs ++ ["£"], ps ++ [("£", ET)]) else (evs, ps)
-        m <- getRDTs
-        putRDTs $ M.insert dt ps' m
-        putTMap (M.fromList $ zip tvs (map MkTVar tvs))
-        putEVSet (S.fromList evs')
-        ctrs' <- mapM refineCtr ctrs
-        putEVSet S.empty
-        putTMap M.empty
-        return $ MkDataTm $ MkDT dt ps' ctrs'
+    do let tvs = [x | (x, VT) <- ps]
+       let evs = [x | (x, ET) <- ps]
+       let (evs', ps') = if not (any ((==) "£") evs) && polyDataT d then (evs ++ ["£"], ps ++ [("£", ET)]) else (evs, ps)
+       m <- getRDTs
+       putRDTs $ M.insert dt ps' m
+       putTMap (M.fromList $ zip tvs (map MkTVar tvs))
+       putEVSet (S.fromList evs')
+       ctrs' <- mapM refineCtr ctrs
+       putEVSet S.empty
+       putTMap M.empty
+       return $ MkDataTm $ MkDT dt ps' ctrs'
   else throwError $ "duplicate parameter in datatype " ++ dt
 
 refineItf :: Itf Raw -> Refine (TopTm Refined)
-refineItf (MkItf itf ps cmds) =
-  if uniqueIds ps then do putTMap (M.fromList $ zip ps (map MkTVar ps))
-                          cmds' <- mapM refineCmd cmds
-                          putTMap M.empty
-                          return $ MkItfTm $ MkItf itf ps cmds'
+refineItf i@(MkItf itf ps cmds) =
+  if uniqueIds (map fst ps) then
+    do let tvs = [x | (x, VT) <- ps]
+       let evs = [x | (x, ET) <- ps]
+       let (evs', ps') = if not (any ((==) "£") evs) && polyItf i then (evs ++ ["£"], ps ++ [("£", ET)]) else (evs, ps)
+       m <- getRItfs
+       putRItfs $ M.insert itf ps' m
+       putTMap (M.fromList $ zip tvs (map MkTVar tvs))
+       putEVSet (S.fromList evs')
+       cmds' <- mapM refineCmd cmds
+       putEVSet S.empty
+       putTMap M.empty
+       return $ MkItfTm $ MkItf itf ps' cmds'
   else throwError $ "duplicate parameter in interface " ++ itf
 
 refineCmd :: Cmd Raw -> Refine (Cmd Refined)
@@ -258,8 +275,8 @@ refineAb ab@(MkAb v m) =
                                     return $ MkAb (MkAbVar u) m'
      else throwError $ "ability has multiple effect variables " ++ (show es)
 
-getEVars :: [(Id,[VType Raw])] -> Refine [Id]
-getEVars ((x,ts) : ys) =
+getEVars :: [(Id,[TyArg Raw])] -> Refine [Id]
+getEVars ((x, ts) : ys) =
   do p <- getEVSet
      es <- getEVars ys
      if S.member x p then
@@ -272,14 +289,19 @@ getEVars [] = return []
 refineItfMap :: ItfMap Raw -> Refine (ItfMap Refined)
 refineItfMap m = do xs <- mapM (uncurry refineEntry) (M.toList m)
                     return $ M.fromList xs
-  where refineEntry :: Id -> [VType Raw] -> Refine (Id, [VType Refined])
-        refineEntry id xs =
+  where refineEntry :: Id -> [TyArg Raw] -> Refine (Id, [TyArg Refined])
+        refineEntry x ts =
           do itfs <- getRItfs
-             case id `findPair` itfs of
-               Just n -> do checkArgs id n (length xs)
-                            xs' <- mapM refineVType xs
-                            return (id, xs')
-               Nothing -> idError id "interface"
+             case M.lookup x itfs of
+               Just ps ->
+                 do let ts' = if length ps == length ts + 1 && (snd (ps !! length ts) == ET) then
+                                ts ++ [EArg (MkAb (MkAbVar "£") M.empty)]
+                              else
+                                ts
+                    checkArgs x (length ps) (length ts')
+                    ts'' <- mapM refineTyArg ts'
+                    return (x, ts'')
+               Nothing -> idError x "interface"
 
 refineAbMod :: AbMod Raw -> AbMod Refined
 refineAbMod MkEmpAb = MkEmpAb
@@ -455,32 +477,40 @@ makeIntBinOp c = MkDef [c] (MkCType [MkPort (MkAdj M.empty) MkIntTy
 -- with an implicit effect variable "£".
 polyDataT :: DataT Raw -> Bool
 polyDataT (MkDT _ _ xs) = any polyCtr xs
-  where
-    polyCtr :: Ctr Raw -> Bool
-    polyCtr (MkCtr _ ts) = any polyVType ts
 
-    polyVType :: VType Raw -> Bool
-    polyVType (MkDTTy _ ts) = any polyTyArg ts
-    polyVType (MkSCTy _)    = True
-    polyVType (MkTVar _)    = False
-    polyVType MkStringTy    = False
-    polyVType MkIntTy       = False
-    polyVType MkCharTy      = False
+-- Return true if the interface definition contains a computation type
+-- with an implicit effect variable "£".
+polyItf :: Itf Raw -> Bool
+polyItf (MkItf _ _ xs) = any polyCmd xs
 
-    polyAb :: Ab Raw -> Bool
-    polyAb (MkAb v m) = polyAbMod v || polyItfMap m
+polyCmd :: Cmd Raw -> Bool
+polyCmd (MkCmd _ ts t) = any polyVType ts || polyVType t
 
-    polyItfMap :: ItfMap Raw -> Bool
-    polyItfMap m = any (any polyVType) m
+polyCtr :: Ctr Raw -> Bool
+polyCtr (MkCtr _ ts) = any polyVType ts
 
-    polyAbMod :: AbMod Raw -> Bool
-    polyAbMod MkEmpAb       = False
-    polyAbMod (MkAbVar "£") = True
-    polyAbMod (MkAbVar _)   = False
+polyVType :: VType Raw -> Bool
+polyVType (MkDTTy _ ts) = any polyTyArg ts
+polyVType (MkSCTy _)    = True
+polyVType (MkTVar _)    = False
+polyVType MkStringTy    = False
+polyVType MkIntTy       = False
+polyVType MkCharTy      = False
 
-    polyTyArg :: TyArg Raw -> Bool
-    polyTyArg (VArg t)  = polyVType t
-    polyTyArg (EArg ab) = polyAb ab
+polyAb :: Ab Raw -> Bool
+polyAb (MkAb v m) = polyAbMod v || polyItfMap m
+
+polyItfMap :: ItfMap Raw -> Bool
+polyItfMap m = any (any polyTyArg) m
+
+polyAbMod :: AbMod Raw -> Bool
+polyAbMod MkEmpAb       = False
+polyAbMod (MkAbVar "£") = True
+polyAbMod (MkAbVar _)   = False
+
+polyTyArg :: TyArg Raw -> Bool
+polyTyArg (VArg t)  = polyVType t
+polyTyArg (EArg ab) = polyAb ab
 
 {-- The initial state for the refinement pass. -}
 
@@ -507,9 +537,9 @@ builtinDTs :: DTMap
 builtinDTs = foldl add M.empty builtinDataTs
   where add m (MkDT id ps _) = M.insert id ps m
 
-builtinINames :: [IPair]
-builtinINames = map add builtinItfs
-  where add (MkItf x xs _) = (x,length xs)
+builtinIFs :: IFMap
+builtinIFs = foldl add M.empty builtinItfs
+  where add m (MkItf id ps _) = M.insert id ps m
 
 builtinCtrs :: [IPair]
 builtinCtrs = map add $ concatMap getCtrs builtinDataTs
@@ -520,5 +550,5 @@ builtinCmds = map add $ concatMap getCmds builtinItfs
   where add (MkCmd id ts _) = (id,length ts)
 
 initRefine :: RState
-initRefine = MkRState builtinINames builtinDTs builtinMHs builtinCtrs
+initRefine = MkRState builtinIFs builtinDTs builtinMHs builtinCtrs
              builtinCmds (MkProg []) M.empty S.empty Nothing

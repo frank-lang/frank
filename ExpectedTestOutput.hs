@@ -10,13 +10,13 @@ expected = [
   -- tests/evalState.fk
   return $
   MkProg
-  [MkItfTm (MkItf "State" ["X"]
+  [MkItfTm (MkItf "State" [("X", VT)]
             [MkCmd "get" [] (MkDTTy "X" [EArg (MkAb MkEmpAb M.empty)])
             ,MkCmd "put" [MkDTTy "X" [EArg (MkAb MkEmpAb M.empty)]]
                           (MkDTTy "Unit" [EArg (MkAb MkEmpAb M.empty)])])
   ,MkSigTm (MkSig "evalState"
             (MkCType [ MkPort (MkAdj M.empty) (MkDTTy "X" [EArg (MkAb MkEmpAb M.empty)])
-                     , MkPort (MkAdj (M.fromList [("State",[MkDTTy "X" [EArg (MkAb MkEmpAb M.empty)]])]))
+                     , MkPort (MkAdj (M.fromList [("State", [VArg (MkDTTy "X" [EArg (MkAb MkEmpAb M.empty)])])]))
                        (MkDTTy "Y" [EArg (MkAb MkEmpAb M.empty)])]
              (MkPeg (MkAb (MkAbVar "£") M.empty) (MkDTTy "Y" [EArg (MkAb MkEmpAb M.empty)]))))
   ,MkClsTm (MkMHCls "evalState"

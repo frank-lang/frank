@@ -123,12 +123,12 @@ unifyAbError ab0 ab1 _ =
 unifyItfMap :: ItfMap Desugared -> ItfMap Desugared -> Contextual ()
 unifyItfMap m0 m1 = do mapM_ (unifyItfMap' m1) (M.toList m0)
                        mapM_ (unifyItfMap' m0) (M.toList m1)
-  where unifyItfMap' :: ItfMap Desugared -> (Id,[VType Desugared]) ->
+  where unifyItfMap' :: ItfMap Desugared -> (Id,[TyArg Desugared]) ->
                         Contextual ()
         unifyItfMap' m (itf,xs) = case M.lookup itf m of
           Nothing -> throwError $ "failed to unify abilities " ++
                      (show $ ppItfMap m0) ++ " and " ++ (show $ ppItfMap m1)
-          Just ys -> mapM_ (uncurry unify) (zip xs ys)
+          Just ys -> mapM_ (uncurry unifyTyArg) (zip xs ys)
 
 unifyAdj :: Adj Desugared -> Adj Desugared -> Contextual ()
 unifyAdj (MkAdj m0) (MkAdj m1) = unifyItfMap m0 m1
@@ -180,14 +180,14 @@ subst ty x (MkFTVar y) | x == y = ty
 subst _ _ ty = ty
 
 substAb :: VType Desugared -> Id -> Ab Desugared -> Ab Desugared
-substAb ty x (MkAb v m) = MkAb v (M.map (map (subst ty x)) m)
+substAb ty x (MkAb v m) = MkAb v (M.map (map (substTyArg ty x)) m)
 
 substTyArg :: VType Desugared -> Id -> TyArg Desugared -> TyArg Desugared
 substTyArg ty x (VArg t) = VArg (subst ty x t)
 substTyArg ty x (EArg ab) = EArg (substAb ty x ab)
 
 substAdj :: VType Desugared -> Id -> Adj Desugared -> Adj Desugared
-substAdj ty x (MkAdj m) = MkAdj (M.map (map (subst ty x)) m)
+substAdj ty x (MkAdj m) = MkAdj (M.map (map (substTyArg ty x)) m)
 
 substCType :: VType Desugared -> Id -> CType Desugared -> CType Desugared
 substCType ty x (MkCType ps peg) =
@@ -207,15 +207,15 @@ substEVar _ _ ty = ty
 
 substEVarAb :: Ab Desugared -> Id -> Ab Desugared -> Ab Desugared
 substEVarAb ab@(MkAb v m') x (MkAb (MkAbFVar y) m) | x == y =
-  MkAb v (M.union (M.map (map (substEVar ab x)) m) m')
-substEVarAb ab x (MkAb v m) = MkAb v (M.map (map (substEVar ab x)) m)
+  MkAb v (M.union (M.map (map (substEVarTyArg ab x)) m) m')
+substEVarAb ab x (MkAb v m) = MkAb v (M.map (map (substEVarTyArg ab x)) m)
 
 substEVarTyArg :: Ab Desugared -> Id -> TyArg Desugared -> TyArg Desugared
 substEVarTyArg ab x (VArg t)  = VArg (substEVar ab x t)
 substEVarTyArg ab x (EArg ab') = EArg (substEVarAb ab x ab')
 
 substEVarAdj :: Ab Desugared -> Id -> Adj Desugared -> Adj Desugared
-substEVarAdj ab x (MkAdj m) = MkAdj (M.map (map (substEVar ab x)) m)
+substEVarAdj ab x (MkAdj m) = MkAdj (M.map (map (substEVarTyArg ab x)) m)
 
 substEVarCType :: Ab Desugared -> Id -> CType Desugared -> CType Desugared
 substEVarCType ab x (MkCType ps peg) =

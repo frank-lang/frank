@@ -77,8 +77,6 @@ desugarDataT (MkDT dt ps ctrs) =
      putEnv $ M.fromList [(x, MkRTVar x') | ((x, VT), x') <- zip ps xs']
      putAbModEnv $ M.fromList [(x, MkAbRVar x') | ((x, ET), x') <- zip ps xs']
      let ps' = [(x', k) | ((_, k), x') <- zip ps xs']
-     -- ts <- mapM freshRTVar xs
-     -- putEnv $ M.fromList (zip xs ts)
 
      -- Shouldn't be adding to the env in the
      -- constructors, but this code does not
@@ -88,10 +86,10 @@ desugarDataT (MkDT dt ps ctrs) =
 
 desugarItf :: Itf Refined -> Desugar (Itf Desugared)
 desugarItf (MkItf itf xs cmds) =
-  do ts <- mapM freshRTVar xs
-     putEnv $ M.fromList (zip xs ts)
+  do ts <- mapM (freshRTVar . fst) xs
+     putEnv $ M.fromList (zip (map fst xs) ts)
      ys <- mapM desugarCmd cmds
-     return $ MkItf itf (map pullId ts) ys
+     return $ MkItf itf (zip (map pullId ts) (map snd xs)) ys
 
 desugarMHDef :: MHDef Refined -> Desugar (MHDef Desugared)
 desugarMHDef (MkDef hdr ty xs) =
@@ -139,7 +137,7 @@ desugarPeg (MkPeg ab ty) = MkPeg <$> desugarAb ab <*> desugarVType ty
 
 desugarAb :: Ab Refined -> Desugar (Ab Desugared)
 desugarAb (MkAb v m) = do v' <- desugarAbMod v
-                          m' <- mapM (mapM desugarVType) m
+                          m' <- mapM (mapM desugarTyArg) m
                           return $ MkAb v' m'
 
 desugarAbMod :: AbMod Refined -> Desugar (AbMod Desugared)
@@ -155,7 +153,7 @@ desugarAbMod (MkAbVar x) =
 
 
 desugarAdj :: Adj Refined -> Desugar (Adj Desugared)
-desugarAdj (MkAdj m) = MkAdj <$> mapM (mapM desugarVType) m
+desugarAdj (MkAdj m) = MkAdj <$> mapM (mapM desugarTyArg) m
 
 -- Clauses (and constituents) unaffected between Refined/Desugared phase
 desugarClause :: Clause Refined -> Desugar (Clause Desugared)

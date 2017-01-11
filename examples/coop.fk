@@ -19,70 +19,58 @@ print : String -> [Console]Unit
 print s = map ouch s; unit
 --- end of standard stuff ---
 
--- The current implementation doesn't support effect-parameterised
--- interfaces.
---
---   interface Co [E] = fork : {[E, Co [E]]Unit} -> Unit
---                    | yield : Unit
---
--- But we can simulate them by parameterising over an ordinary type.
+interface Co = fork : {[Co]Unit} -> Unit
+             | yield : Unit
 
-interface Co X = fork : X -> Unit
-               | yield : Unit
-
-data Process = process {[Co Process]Unit}
-
-test : [Co (Process [Console]), Console]Unit
+test : [Co [Console], Console]Unit
 test! = print "M1 ";
-        fork (process {print "A1 "; yield!; print "A2 "});
+        fork {print "A1 "; yield!; print "A2 "};
         print "M2 ";
         yield!;
-        fork (process {print "B1 "; yield!; print "B2 "});
+        fork {print "B1 "; yield!; print "B2 "};
         yield!;
         print "M3 ";
         yield!; yield!;
         print "\n"
 
-
 -- silly scheduler
 -- (always picks the most recent process to switch to)
-silly : List Process -> <Co Process>Unit -> Unit
-silly (cons (process p) ps) <yield -> k>  = silly (cons (process {k unit}) ps) p!
-silly (cons (process p) ps) unit          = silly ps p!
-silly ps                    <fork p -> k> = silly (cons p ps) (k unit)
-silly nil                   <_>           = unit
+silly : List {[Co]Unit} -> <Co>Unit -> Unit
+silly (cons p ps) <yield -> k>  = silly (cons {k unit} ps) p!
+silly (cons p ps) unit          = silly ps p!
+silly ps          <fork p -> k> = silly (cons p ps) (k unit)
+silly nil         <_>           = unit
 
 t1 : [Console]Unit
 t1! = silly nil test!
 
 -- fair scheduler (continuation before fork)
-fairkf : List Process -> List Process -> <Co Process>Unit -> Unit
-fairkf ps                    qs  <fork p -> k> = fairkf ps (cons p qs) (k unit)
-fairkf ps                    qs  <yield -> k>  = fairkf ps (cons (process {k unit}) qs) unit
-fairkf nil                   nil unit          = unit
-fairkf nil                   qs  unit          = fairkf (reverse qs) nil unit
-fairkf (cons (process p) ps) qs  unit          = fairkf ps qs p!
+fairkf : List {[Co]Unit} -> List {[Co]Unit} -> <Co>Unit -> Unit
+fairkf ps          qs  <fork p -> k> = fairkf ps (cons p qs) (k unit)
+fairkf ps          qs  <yield -> k>  = fairkf ps (cons {k unit} qs) unit
+fairkf nil         nil unit          = unit
+fairkf nil         qs  unit          = fairkf (reverse qs) nil unit
+fairkf (cons p ps) qs  unit          = fairkf ps qs p!
 
 t2 : [Console]Unit
 t2! = fairkf nil nil test!
 
 -- alternative fair scheduler (fork before continuation)
-fairfk : List Process -> List Process -> <Co Process>Unit -> Unit
-fairfk ps                    qs  <fork (process p) -> k> =
-                                                fairfk ps (cons (process {k unit}) qs) p!
-fairfk ps                    qs  <yield -> k> = fairfk ps (cons (process {k unit}) qs) unit
-fairfk nil                   nil unit         = unit
-fairfk nil                   qs  unit         = fairfk (reverse qs) nil unit
-fairfk (cons (process p) ps) qs  unit         = fairfk ps qs p!
+fairfk : List {[Co]Unit} -> List {[Co]Unit} -> <Co>Unit -> Unit
+fairfk ps          qs  <fork p -> k> = fairfk ps (cons {k unit} qs) p!
+fairfk ps          qs  <yield -> k>  = fairfk ps (cons {k unit} qs) unit
+fairfk nil         nil unit          = unit
+fairfk nil         qs  unit          = fairfk (reverse qs) nil unit
+fairfk (cons p ps) qs  unit          = fairfk ps qs p!
 
 t3 : [Console]Unit
 t3! = fairfk nil nil test!
 
 -- a handler that flips continuations with forked processes
-flip : <Co Process>Unit -> [Co Process]Unit
-flip <fork (process p) -> k> = fork (process {flip (k unit)}); flip p!
-flip <yield -> k>            = yield; flip (k unit)
-flip unit                    = unit
+flip : <Co>Unit -> [Co]Unit
+flip <fork p -> k> = fork {flip (k unit)}; flip p!
+flip <yield -> k>  = yield; flip (k unit)
+flip unit          = unit
 
 -- fairfk nil nil == (fairkf nil nil) o flip
 t4 : [Console]Unit

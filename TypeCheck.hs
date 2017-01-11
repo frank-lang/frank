@@ -3,7 +3,7 @@
 -- inference in Context'' for more details.
 {-# LANGUAGE FlexibleInstances,StandaloneDeriving,TypeSynonymInstances,
              MultiParamTypeClasses,GeneralizedNewtypeDeriving,
-             FlexibleContexts,GADTs #-}
+             FlexibleContexts,GADTs,ScopedTypeVariables #-}
 module TypeCheck where
 
 import Control.Monad
@@ -38,10 +38,10 @@ find (MkCmdId x) =
                   (show $ ppAb amb)
        Just ps ->
          do addMark
-            qs' <- mapM makeFlexible qs
+            qs' <- mapM makeFlexibleTyArg (qs :: [TyArg Desugared])
             ts' <- mapM makeFlexible ts
             y' <- makeFlexible y
-            mapM (uncurry unify) (zip ps qs')
+            mapM (uncurry unifyTyArg) (zip ps qs')
             return $ MkSCTy $
               MkCType (map (\x -> MkPort idAdj x) ts') (MkPeg amb y')
 find x = getContext >>= find'
@@ -75,12 +75,13 @@ inAmbient adj m = do amb <- getAmbient
                      putAmbient amb
                      return a
 
-lkpItf :: Id -> Ab Desugared -> Contextual (Maybe [VType Desugared])
-lkpItf itf (MkAb v m) = case M.lookup itf m of
-  Nothing -> lkpItfInAbMod itf v
-  Just xs -> return $ Just xs
+lkpItf :: Id -> Ab Desugared -> Contextual (Maybe [TyArg Desugared])
+lkpItf itf (MkAb v m) =
+  case M.lookup itf m of
+    Nothing -> lkpItfInAbMod itf v
+    Just xs -> return $ Just xs
 
-lkpItfInAbMod :: Id -> AbMod Desugared -> Contextual (Maybe [VType Desugared])
+lkpItfInAbMod :: Id -> AbMod Desugared -> Contextual (Maybe [TyArg Desugared])
 lkpItfInAbMod itf (MkAbFVar x) = getContext >>= find'
   where find' BEmp = return Nothing
         find' (es :< FlexMVar y (AbDefn ab)) | x == y = lkpItf itf ab
@@ -205,10 +206,10 @@ checkPat (MkCmdPat cmd xs g) (MkPort adj ty) =
                   "command " ++ cmd ++ " not found in adjustment " ++
                   (show $ ppAdj adj)
        Just ps -> do addMark -- localise the following type variables
-                     qs' <- mapM makeFlexible qs
+                     qs' <- mapM makeFlexibleTyArg qs
                      ts' <- mapM makeFlexible ts
                      y' <- makeFlexible y
-                     mapM (uncurry unify) (zip ps qs')
+                     mapM (uncurry unifyTyArg) (zip ps qs')
                      bs <- fmap concat $ mapM (uncurry checkVPat) (zip xs ts')
                      kty <- contType y' adj ty
                      return ((MkMono g,kty) : bs)
@@ -254,9 +255,9 @@ makeFlexible ty = return ty
 makeFlexibleAb :: Ab Desugared -> Contextual (Ab Desugared)
 makeFlexibleAb (MkAb v m) = case v of
   MkAbRVar x -> do v' <- MkAbFVar <$> (getContext >>= (find' x))
-                   m' <- mapM (mapM makeFlexible) m
+                   m' <- mapM (mapM makeFlexibleTyArg) m
                    return $ MkAb v' m'
-  _ -> do m' <- mapM (mapM makeFlexible) m
+  _ -> do m' <- mapM (mapM makeFlexibleTyArg) m
           return $ MkAb v m'
   where find' x BEmp = freshMVar x
         find' x (es :< FlexMVar y _) | trimVar x == trimVar y = return y
@@ -268,7 +269,7 @@ makeFlexibleTyArg (VArg t)  = VArg <$> makeFlexible t
 makeFlexibleTyArg (EArg ab) = EArg <$> makeFlexibleAb ab
 
 makeFlexibleAdj :: Adj Desugared -> Contextual (Adj Desugared)
-makeFlexibleAdj (MkAdj m) = MkAdj <$> mapM (mapM makeFlexible) m
+makeFlexibleAdj (MkAdj m) = MkAdj <$> mapM (mapM makeFlexibleTyArg) m
 
 makeFlexibleCType :: CType Desugared -> Contextual (CType Desugared)
 makeFlexibleCType (MkCType ps q) = MkCType <$>

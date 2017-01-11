@@ -112,46 +112,46 @@ deriving instance (Eq) (Tm a)
 
 -- A clause for a multihandler definition
 data Clause a = MkCls [Pattern] (Tm a)
-              deriving (Show, Eq)
+  deriving (Show, Eq)
 
 data SComp a = MkSComp [Clause a]
-             deriving (Show, Eq)
+  deriving (Show, Eq)
 
 data Kind = VT   -- value type
           | ET   -- effect type
-          deriving (Show, Eq)
+  deriving (Show, Eq)
 
 data DataT a = MkDT Id [(Id, Kind)] [Ctr a]
-             deriving (Show, Eq)
+  deriving (Show, Eq)
 
-data Itf a = MkItf Id [Id] [Cmd a]
-           deriving (Show, Eq)
+data Itf a = MkItf Id [(Id, Kind)] [Cmd a]
+  deriving (Show, Eq)
 
 data Ctr a = MkCtr Id [VType a]
-           deriving (Show, Eq)
+  deriving (Show, Eq)
 
 data Cmd a = MkCmd Id [VType a] (VType a)
-           deriving (Show, Eq)
+  deriving (Show, Eq)
 
 data Pattern = MkVPat ValuePat | MkCmdPat Id [ValuePat] Id | MkThkPat Id
-             deriving (Show, Eq)
+  deriving (Show, Eq)
 
 -- TODO: should we compile away string patterns into list of char patterns?
 data ValuePat = MkVarPat Id | MkDataPat Id [ValuePat] | MkIntPat Integer
               | MkCharPat Char | MkStrPat String
-              deriving (Show, Eq)
+  deriving (Show, Eq)
 
 type Id = String
 
 -- Type hierarchy
 data CType a = MkCType [Port a] (Peg a)
-           deriving (Show, Eq)
+  deriving (Show, Eq)
 
 data Port a = MkPort (Adj a) (VType a)
-          deriving (Show, Eq)
+  deriving (Show, Eq)
 
 data Peg a = MkPeg (Ab a) (VType a)
-           deriving (Show, Eq)
+  deriving (Show, Eq)
 
 data VType a where
   MkDTTy :: Id -> [TyArg a] -> VType a
@@ -166,15 +166,15 @@ data VType a where
 deriving instance (Show) (VType a)
 deriving instance (Eq) (VType a)
 
-type ItfMap a = M.Map Id [VType a]
+type ItfMap a = M.Map Id [TyArg a]
 
 -- Adjustments
 data Adj a = MkAdj (ItfMap a)
-           deriving (Show, Eq)
+  deriving (Show, Eq)
 
 -- Abilities
 data Ab a = MkAb (AbMod a) (ItfMap a)
-          deriving (Show, Eq)
+  deriving (Show, Eq)
 
 data AbMod a where
   MkEmpAb :: AbMod a
@@ -341,6 +341,6 @@ ppAbMod (MkAbFVar x) = text x
 
 ppItfMap :: ItfMap a -> Doc
 ppItfMap m = PP.hsep $ intersperse PP.comma $ map ppItfMapPair $ M.toList m
- where ppItfMapPair :: (Id, [VType a]) -> Doc
-       ppItfMapPair (x, vs) =
-         text x <+> (foldl (<+>) PP.empty $ map ppParenVType vs)
+ where ppItfMapPair :: (Id, [TyArg a]) -> Doc
+       ppItfMapPair (x, args) =
+         text x <+> (foldl (<+>) PP.empty $ map ppTyArg args)
