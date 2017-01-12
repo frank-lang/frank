@@ -118,7 +118,7 @@ data Tm a where
   MkRawId :: Id -> Tm Raw
   MkRawComb :: Id -> [Tm Raw] -> Tm Raw
   MkSC :: SComp a -> Tm a
-  MkLet :: Tm a    -- placeholder
+  MkLet :: Id -> Tm Raw -> Tm Raw -> Tm Raw
   MkStr :: String -> Tm a
   MkInt :: Integer -> Tm a
   MkChar :: Char -> Tm a

@@ -147,7 +147,7 @@ compileVPat (MkCharPat c) = return $ S.VPX [Left c]
 
 compileTm :: NotRaw a => Tm a -> Compile S.Exp
 compileTm (MkSC sc) = compileSComp sc
-compileTm MkLet = return $ S.EV "let"
+-- compileTm MkLet = return $ S.EV "let"
 compileTm (MkStr s :: Tm a) = compileDataCon (f s) where
   f :: String -> DataCon a
   f [] = MkDataCon "nil" []

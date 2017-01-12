@@ -164,7 +164,6 @@ desugarClause (MkCls ps tm) = do tm' <- desugarTm tm
 
 desugarTm :: Tm Refined -> Desugar (Tm Desugared)
 desugarTm (MkSC x) = MkSC <$> desugarSComp x
-desugarTm MkLet = return MkLet
 desugarTm (MkStr s) = return $ MkStr s
 desugarTm (MkInt n) = return $ MkInt n
 desugarTm (MkChar c) = return $ MkChar c

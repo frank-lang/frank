@@ -395,6 +395,10 @@ refineTm (MkRawComb id xs) =
                 Just n -> do checkArgs id n (length xs')
                              return $ MkUse $ MkApp (MkPoly id) xs'
                 Nothing -> return $ MkUse $ MkApp (MkMono id) xs'
+refineTm (MkLet x t1 t2) =
+  do s1 <- refineTm t1
+     s2 <- refineTm $ MkSC $ MkSComp [MkCls [MkVPat $ MkVarPat x] t2]
+     return $ MkUse $ MkApp (MkPoly "case") [s1, s2]
 refineTm (MkSC x) = do x' <- refineSComp x
                        return $ MkSC x'
 refineTm (MkStr x) = return $ MkStr x
@@ -527,7 +531,20 @@ builtinItfs = [MkItf "Console" [] [MkCmd "inch" [] MkCharTy
                                                 (MkDTTy "Unit" [])]]
 
 builtinMHDefs :: [MHDef Refined]
-builtinMHDefs = map makeIntBinOp "+-"
+builtinMHDefs = map makeIntBinOp "+-" ++ [caseDef]
+
+caseDef :: MHDef Refined
+caseDef = MkDef
+          "case"
+          (MkCType
+            [MkPort (MkAdj M.empty) (MkTVar "X")
+            ,MkPort (MkAdj M.empty) (MkSCTy (MkCType
+                                              [MkPort (MkAdj M.empty) (MkTVar "X")]
+                                              (MkPeg (MkAb (MkAbVar "£") M.empty) (MkTVar "Y"))))]
+            (MkPeg (MkAb (MkAbVar "£") M.empty) (MkTVar "Y")))
+          [MkCls
+            [MkVPat (MkVarPat "x"), MkVPat (MkVarPat "f")]
+            (MkUse (MkApp (MkMono "f") [MkUse (MkOp (MkMono "x"))]))]
 
 builtinMHs :: [IPair]
 builtinMHs = map add builtinMHDefs

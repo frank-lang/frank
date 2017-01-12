@@ -51,8 +51,9 @@ frankStyle = IdentifierStyle {
     _styleName = "Frank"
   , _styleStart = satisfy (\c -> isAlpha c || c == '_')
   , _styleLetter = satisfy (\c -> isAlphaNum c || c == '_' || c == '\'')
-  , _styleReserved = HashSet.fromList [ "data", "interface", "String", "Int"
-                                      , "Char"]
+  , _styleReserved = HashSet.fromList [ "data", "interface"
+                                      , "let", "in"
+                                      , "String", "Int", "Char"]
   , _styleHighlight = Hi.Identifier
   , _styleReservedHighlight = Hi.ReservedIdentifier }
 
@@ -220,7 +221,8 @@ parseRawTmSeq = do tm1 <- parseRawTm
                      Nothing -> return tm1
 
 parseRawTm :: MonadicParsing m => m (Tm Raw)
-parseRawTm = try parseRawOpTm <|>
+parseRawTm = parseLet <|>
+             try parseRawOpTm <|>
              parseRawTm'
 
 parseRawOpTm :: MonadicParsing m => m (Tm Raw)
@@ -248,6 +250,15 @@ parseNullaryComb :: MonadicParsing m => m (Tm Raw)
 parseNullaryComb = do x <- identifier
                       symbol "!"
                       return $ MkRawComb x []
+
+parseLet :: MonadicParsing m => m (Tm Raw)
+parseLet = do reserved "let"
+              x <- identifier
+              symbol "="
+              tm1 <- parseRawTm
+              reserved "in"
+              tm2 <- parseRawTm
+              return $ MkLet x tm1 tm2
 
 parseRawTm' :: MonadicParsing m => m (Tm Raw)
 parseRawTm' = parens parseRawTmSeq <|>

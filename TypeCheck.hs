@@ -148,7 +148,6 @@ inferUse (MkApp f xs) =
 
 checkTm :: Tm Desugared -> VType Desugared -> Contextual ()
 checkTm (MkSC sc) ty = checkSComp sc ty
-checkTm MkLet _ = return ()
 checkTm (MkStr _) ty = unify desugaredStrTy ty
 checkTm (MkInt _) ty = unify MkIntTy ty
 checkTm (MkChar _) ty = unify MkCharTy ty
