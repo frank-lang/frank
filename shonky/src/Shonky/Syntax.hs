@@ -51,7 +51,7 @@ pGap :: P ()
 pGap = () <$ many (pLike pChar isSpace)
 
 pId :: P String
-pId = do c <- pLike pChar (\c -> isAlpha c || c == '_')
+pId = do c <- pLike pChar (\c -> isAlpha c || c == '_' || c == '%')
          cs <- many (pLike pChar (\c -> isAlphaNum c || c == '\''))
          return (c : cs)
 

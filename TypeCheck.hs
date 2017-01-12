@@ -94,6 +94,13 @@ instantiate _ ty = return ty
 
 -- TODO: change output of check to Maybe String?
 
+-- infer the type of a use w.r.t. the given program
+inferEvalUse :: Prog Desugared -> Use Desugared ->
+                Either String (VType Desugared)
+inferEvalUse p use = runExcept $ evalFreshMT $ evalStateT comp initTCState
+  where comp = unCtx $ do _ <- initContextual p
+                          inferUse use
+
 -- Main typechecking function
 check :: Prog Desugared -> Either String (Prog Desugared)
 check p = runExcept $ evalFreshMT $ evalStateT (checkProg p) initTCState

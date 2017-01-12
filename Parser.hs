@@ -299,24 +299,29 @@ evalTokenIndentationParserT :: Monad m => FrankParser Token m a ->
                                IndentationState -> m a
 evalTokenIndentationParserT = evalIndentationParserT . runFrankParser
 
-runParse ev input
- = let indA = ev prog $ mkIndentationState 0 infIndentation True Ge
+runParse ev p input
+ = let indA = ev p $ mkIndentationState 0 infIndentation True Ge
    in case parseString indA mempty input of
     Failure err -> Left (show err)
     Success t -> Right t
 
-runParseFromFileEx ev fname =
-  let indA = ev prog $ mkIndentationState 0 infIndentation True Ge in
+runProgParse ev input = runParse ev prog input
+
+runParseFromFileEx ev p fname =
+  let indA = ev p $ mkIndentationState 0 infIndentation True Ge in
   do res <- parseFromFileEx indA fname
      case res of
        Failure err -> return $ Left (show err)
        Success t -> return $ Right t
 
+runProgParseFromFileEx ev fname = runParseFromFileEx ev prog fname
+
 --runCharParseFromFile = runParseFromFileEx evalCharIndentationParserT
-runTokenParseFromFile = runParseFromFileEx evalTokenIndentationParserT
+runTokenParseFromFile = runProgParseFromFileEx evalTokenIndentationParserT
 
 --runCharParse = runParse evalCharIndentationParserT
-runTokenParse = runParse evalTokenIndentationParserT
+runTokenParse p = runParse evalTokenIndentationParserT p
+runTokenProgParse = runProgParse evalTokenIndentationParserT
 
 input = [ "tests/evalState.fk"
         , "tests/listMap.fk"
