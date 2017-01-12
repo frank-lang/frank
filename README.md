@@ -49,7 +49,4 @@ output with the `--output-shonky` option.
  * Only top-level mutually recursive computation bindings are
    supported
 
- * Explicit effect variables are not supported except in data type and
-   interface definitions
-
  * Coverage checking is not implemented

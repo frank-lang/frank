@@ -362,7 +362,7 @@ ppAb (MkAb v m) =
   text "[" <> ppAbMod v <> PP.comma <+> ppItfMap m <> text "]"
 
 ppAbMod :: AbMod a -> Doc
-ppAbMod MkEmpAb = text "@"
+ppAbMod MkEmpAb = text "0"
 ppAbMod (MkAbVar x) = text x
 ppAbMod (MkAbRVar x) = if inDebugMode then text x else text $ trimVar x
 ppAbMod (MkAbFVar x) = if inDebugMode then text x else text $ trimVar x
