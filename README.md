@@ -49,9 +49,7 @@ output with the `--output-shonky` option.
  * Only top-level mutually recursive computation bindings are
    supported
 
- * Interface definitions cannot yet be parameterised by effects
-
- * Explicit effect variables are not supported except in data type
-   definitions
+ * Explicit effect variables are not supported except in data type and
+   interface definitions
 
  * Coverage checking is not implemented
