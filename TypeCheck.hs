@@ -38,7 +38,7 @@ find (MkCmdId x) =
                   (show $ ppAb amb)
        Just ps ->
          do addMark
-            qs' <- mapM makeFlexibleTyArg (qs :: [TyArg Desugared])
+            qs' <- mapM makeFlexibleTyArg qs
             ts' <- mapM makeFlexible ts
             y' <- makeFlexible y
             mapM (uncurry unifyTyArg) (zip ps qs')

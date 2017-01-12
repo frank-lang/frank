@@ -78,18 +78,20 @@ desugarDataT (MkDT dt ps ctrs) =
      putAbModEnv $ M.fromList [(x, MkAbRVar x') | ((x, ET), x') <- zip ps xs']
      let ps' = [(x', k) | ((_, k), x') <- zip ps xs']
 
-     -- Shouldn't be adding to the env in the
-     -- constructors, but this code does not
-     -- enforce that invariant unfortunately.
+     -- we know that the following will not modify the environments so
+     -- we do not need to backup and restore them
      ctrs' <- mapM desugarCtr ctrs
      return $ MkDT dt ps' ctrs'
 
 desugarItf :: Itf Refined -> Desugar (Itf Desugared)
-desugarItf (MkItf itf xs cmds) =
-  do ts <- mapM (freshRTVar . fst) xs
-     putEnv $ M.fromList (zip (map fst xs) ts)
-     ys <- mapM desugarCmd cmds
-     return $ MkItf itf (zip (map pullId ts) (map snd xs)) ys
+desugarItf (MkItf itf ps cmds) =
+  do xs' <- mapM (freshRigid . fst) ps
+     putEnv $ M.fromList [(x, MkRTVar x') | ((x, VT), x') <- zip ps xs']
+     putAbModEnv $ M.fromList [(x, MkAbRVar x') | ((x, ET), x') <- zip ps xs']
+     let ps' = [(x', k) | ((_, k), x') <- zip ps xs']
+
+     cmds' <- mapM desugarCmd cmds
+     return $ MkItf itf ps' cmds'
 
 desugarMHDef :: MHDef Refined -> Desugar (MHDef Desugared)
 desugarMHDef (MkDef hdr ty xs) =
