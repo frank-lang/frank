@@ -66,8 +66,23 @@ data MHCls = MkMHCls Id (Clause Raw)
 
 {---------------}
 {- Parts of the grammar specific to the refined syntax. -}
+
+-- FIXME: currently all top-level bindings are mutually
+-- recursive. This setup will break if we add non-recursive value
+-- bindings.
+--
+-- An obvious design is to group mutually recursive bindings using
+-- letrec, as specified in the paper.
+--
+-- Data and interface definitions can continue to be globally mutually
+-- recursive as they do not depend on values.
+
+-- a recursive multihandler definition
 data MHDef a = MkDef Id (CType a) [Clause a]
            deriving (Show, Eq)
+
+-- value bindings - not yet supported
+-- data VDef a = VDef Id (VType a) (Tm a)
 
 {- MH here = 'operator' in the paper. Operator here doesn't have a name
    in the paper. -}
