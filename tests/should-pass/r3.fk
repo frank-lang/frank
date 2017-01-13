@@ -6,5 +6,5 @@ iffy : Bool -> {X} -> {X} -> X
 iffy True t _  = t!
 iffy False _ f = f!
 
-main : Int
+main : []Int
 main! = iffy True {1} {2}

@@ -53,7 +53,7 @@ pipe <send x -> s> <receive -> r> = pipe (s unit) (r x)
 pipe <_>           y              = y
 pipe unit          <_>            = abort!
 
-doBeDoBeDoNil : List String
+doBeDoBeDoNil : []List String
 doBeDoBeDoNil! = cons "do" (cons "be" (cons "do" (cons "be" (cons "do" (cons "" nil)))))
 
 sendDoBeDoBeDoNil : [Send String]Unit
@@ -71,10 +71,10 @@ t2! = pipe sendDoBeDoBeDoNil! (pipe spacer! catter!)
 catchList : <Abort>List X -> List X
 catchList <x> = catch x! {nil}
 
-t3 : String
+t3 : []String
 t3! = catchList t2!
 
-t4 : String
+t4 : []String
 t4! = catchList (pipe (sends (cons "do" (cons "be" nil)))
                       (pipe spacer! catter!))
 
@@ -93,5 +93,5 @@ t6 : [Console]String
 t6! = catchList (pipe (logSend sendDoBeDoBeDoNil!) catter!)
 
 -- just a stub: use --entry-point tX to do something interesting
-main : Unit
+main : []Unit
 main! = unit

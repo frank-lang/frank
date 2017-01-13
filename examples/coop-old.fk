@@ -89,5 +89,5 @@ t4 : [Console]Unit
 t4! = fairkf nil nil (flip test!)
 
 -- just a stub: use --entry-point tX to do something interesting
-main : Unit
+main : []Unit
 main! = unit

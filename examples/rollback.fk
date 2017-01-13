@@ -75,5 +75,5 @@ t2 : [Console]String
 t2! = parse {nest "" 0}
 
 -- just a stub: use --entry-point tX to do something interesting
-main : Unit
+main : []Unit
 main! = unit

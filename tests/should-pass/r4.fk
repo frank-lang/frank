@@ -6,7 +6,7 @@ data Bar = One {Int}
 apply : Bar [Console] -> [Console]Int
 apply (One f) = f!
 
-foo : Bar [Console]
+foo : {Bar [Console]}
 foo! = One {42}
 
 main : [Console]Int

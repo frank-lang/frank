@@ -21,14 +21,14 @@ append : List X -> List X -> List X
 append nil ys         = ys
 append (cons x xs) ys = cons x (append xs ys)
 
-t1 : List Int
+t1 : []List Int
 t1! = append (cons 1 (cons 2 nil)) (cons 3 (cons 4 nil))
 
-map : {X -> Y} -> List X -> List Y
+map : {{X -> Y} -> List X -> List Y}
 map f nil         = nil
 map f (cons x xs) = cons (f x) (map f xs)
 
-t2 : List Int
+t2 : []List Int
 t2! = map {n -> n+1} (cons 1 (cons 2 (cons 3 nil)))
 
 -- (the Console interface is built in)
@@ -139,15 +139,15 @@ catch : <Abort>X -> {X} -> X
 catch x               h = x
 catch <aborting -> k> h = h!
 
-t10 : Int
+t10 : []Int
 t10! = catch (head nil) { -1 }
 
-t11 : Int
+t11 : []Int
 t11! = catch (head (cons 42 nil)) { -1 }
 
 t12 : [0|Console]Int
 t12! = catch (print "hello\n"; head nil) { -1 }
 
 -- just a stub: use --entry-point tXX to do something interesting
-main : Unit
+main : []Unit
 main! = unit

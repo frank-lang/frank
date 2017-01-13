@@ -7,5 +7,5 @@ map : {a -> b} -> List a -> List b
 map f nil = nil
 map f (cons x xs) = cons (f x) (map f xs)
 
-main : List (List Int)
+main : []List (List Int)
 main! = map {x -> cons (x+1) nil} (cons 1 (cons 2 (cons 3 nil)))

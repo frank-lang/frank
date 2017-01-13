@@ -15,5 +15,5 @@ minusTwoOnZero : Int -> Int
 minusTwoOnZero 0 = -2
 minusTwoOnZero n = 0
 
-main : Int
+main : []Int
 main! = fib 5

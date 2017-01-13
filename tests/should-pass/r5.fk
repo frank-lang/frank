@@ -5,5 +5,5 @@ data Maybe X = just X | nothing
 foo : Maybe {Unit} -> Unit
 foo (just x) = x!
 
-main : Unit
+main : []Unit
 main! = foo (just {unit})

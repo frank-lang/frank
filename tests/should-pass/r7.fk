@@ -11,5 +11,5 @@ receivePassthrough x              = x
 receivePassthrough <receive -> r> =
   on receive! { s -> receivePassthrough (r s) }
 
-main : Unit
+main : []Unit
 main! = unit

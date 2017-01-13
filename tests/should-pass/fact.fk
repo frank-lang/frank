@@ -9,5 +9,5 @@ fact : Int -> Int
 fact 0 = 1
 fact n = mult n (fact (n - 1))
 
-main : Int
+main : []Int
 main! = fact 5

@@ -13,5 +13,5 @@ evalState   x    <put x' -> k>  = evalState x' (k unit)
 evalState   x    <get    -> k>  = evalState x (k x)
 evalState   x         y         = y
 
-main : String
+main : []String
 main! = evalState "Hello" (put (append get! " World!"); get!)

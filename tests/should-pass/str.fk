@@ -5,7 +5,7 @@ foo (cons "ab" (cons "cd" nil)) = 0
 foo (cons "abcd" nil) = 1
 foo _ = 2
 
-main : Int
+main : []Int
 main! = foo (cons "abcd" nil)
 
 

@@ -101,8 +101,40 @@ parseCtr = do name <- identifier
 parseMHSig :: MonadicParsing m => m MHSig
 parseMHSig = do name <- identifier
                 symbol ":"
-                ty <- parseCType
+                ty <- parseSigType
                 return (MkSig name ty)
+
+-- As the outer braces are optional in top-level signatures we require
+-- that plain pegs must have explicit ability brackets.
+--
+-- The following collections of signatures are equivalent:
+--
+--   f : {A -> B -> C}  and  f : A -> B -> C
+--   x : {Int}  and  x : {[]Int}  and x : []Int
+--
+-- A signature of the form
+--
+--   x : Int
+--
+-- is not currently valid. Once we add support for top level values it
+-- will become valid, but will not mean the same thing as:
+--
+--   x : []Int
+parseSigType :: MonadicParsing m => m (CType Raw)
+parseSigType = (do symbol "{"
+                   ct <- parseCType
+                   symbol "}"
+                   rest <- optional (symbol "->" *> parseCType)
+                   return $
+                     case rest of
+                       Nothing -> ct
+                       Just (MkCType ports peg) ->
+                         MkCType ((MkPort idAdj (MkSCTy ct)) : ports) peg) <|>
+               (do ports <- some (try (parsePort <* symbol "->"))
+                   peg <- parsePeg
+                   return $ MkCType ports peg) <|>
+               (do peg <- parsePegExplicit
+                   return $ MkCType [] peg)
 
 parseMHCls :: MonadicParsing m => m MHCls
 parseMHCls = do name <- identifier
@@ -132,16 +164,9 @@ parseCmdType = do vs <- sepBy1 parseVType (symbol "->")
                   else return (init vs, last vs)
 
 parseCType :: MonadicParsing m => m (CType Raw)
-parseCType = do (ports, peg) <- parsePortsAndPeg
+parseCType = do ports <- many (try (parsePort <* symbol "->"))
+                peg <- parsePeg
                 return $ MkCType ports peg
-
-parsePortsAndPeg :: MonadicParsing m => m ([Port Raw], Peg Raw)
-parsePortsAndPeg = try (do port <- parsePort
-                           symbol "->" -- Might fail; previous parse was peg.
-                           (ports, peg) <- parsePortsAndPeg
-                           return (port : ports, peg)) <|>
-                       (do peg <- parsePeg
-                           return ([], peg))
 
 parsePort :: MonadicParsing m => m (Port Raw)
 parsePort = do adj <- parseAdj
@@ -152,6 +177,11 @@ parsePeg :: MonadicParsing m => m (Peg Raw)
 parsePeg = do ab <- parseAb
               ty <- parseVType
               return $ MkPeg ab ty
+
+parsePegExplicit :: MonadicParsing m => m (Peg Raw)
+parsePegExplicit = do ab <- brackets parseAbBody
+                      ty <- parseVType
+                      return $ MkPeg ab ty
 
 parseAdj :: MonadicParsing m => m (Adj Raw)
 parseAdj = do mxs <- optional $ angles (sepBy parseAdj' (symbol ","))
@@ -173,7 +203,7 @@ parseAbPrefix = try $ (MkEmpAb <$ symbol "0" <|>
 
 parseAbBody :: MonadicParsing m => m (Ab Raw)
 parseAbBody = do e <- optional parseAbPrefix
-                 xs <- sepBy parseAb' (symbol ",")
+                 xs <- sepBy parseItfInstance (symbol ",")
                  let mod = case e of
                              Nothing -> MkAbVar "£"
                              Just m  -> m
@@ -185,10 +215,10 @@ parseAb = do mxs <- optional $ brackets parseAbBody
                Nothing -> return $ MkAb (MkAbVar "£") M.empty
                Just ab -> return ab
 
-parseAb' :: MonadicParsing m => m (Id, [TyArg Raw])
-parseAb' = do x <- identifier
-              ts <- many parseTyArg
-              return (x, ts)
+parseItfInstance :: MonadicParsing m => m (Id, [TyArg Raw])
+parseItfInstance = do x <- identifier
+                      ts <- many parseTyArg
+                      return (x, ts)
 
 parseVType :: MonadicParsing m => m (VType Raw)
 parseVType = try parseDTType <|>
