@@ -197,17 +197,17 @@ parseAdj' = do x <- identifier
 parseDTAb :: MonadicParsing m => m (Ab Raw)
 parseDTAb = brackets parseAbBody
 
-parseAbPrefix :: MonadicParsing m => m (AbMod Raw)
-parseAbPrefix = try $ (MkEmpAb <$ symbol "0" <|>
-                       MkAbVar <$> identifier) <* symbol "|"
+parseItfInstances :: MonadicParsing m => m [(Id, [TyArg Raw])]
+parseItfInstances = sepBy parseItfInstance (symbol ",")
 
+-- 0 | 0|Interfaces | E|Interfaces | Interfaces
 parseAbBody :: MonadicParsing m => m (Ab Raw)
-parseAbBody = do e <- optional parseAbPrefix
-                 xs <- sepBy parseItfInstance (symbol ",")
-                 let mod = case e of
-                             Nothing -> MkAbVar "£"
-                             Just m  -> m
-                 return $ MkAb mod (M.fromList xs)
+parseAbBody = (do symbol "0"
+                  xs <- option [] (symbol "|" *> parseItfInstances)
+                  return $ MkAb MkEmpAb (M.fromList xs)) <|>
+              (do e <- option (MkAbVar "£") (try $ MkAbVar <$> identifier <* symbol "|")
+                  xs <- parseItfInstances
+                  return $ MkAb e (M.fromList xs))
 
 parseAb :: MonadicParsing m => m (Ab Raw)
 parseAb = do mxs <- optional $ brackets parseAbBody
