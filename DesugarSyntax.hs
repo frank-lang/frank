@@ -159,8 +159,9 @@ desugarAdj (MkAdj m) = MkAdj <$> mapM (mapM desugarTyArg) m
 
 -- Clauses (and constituents) unaffected between Refined/Desugared phase
 desugarClause :: Clause Refined -> Desugar (Clause Desugared)
-desugarClause (MkCls ps tm) = do tm' <- desugarTm tm
-                                 return $ MkCls ps tm'
+desugarClause (MkCls ps tm) = do ps' <- mapM desugarPattern ps
+                                 tm' <- desugarTm tm
+                                 return $ MkCls ps' tm'
 
 desugarTm :: Tm Refined -> Desugar (Tm Desugared)
 desugarTm (MkSC x) = MkSC <$> desugarSComp x
@@ -170,6 +171,20 @@ desugarTm (MkChar c) = return $ MkChar c
 desugarTm (MkTmSeq tm1 tm2) = MkTmSeq <$> desugarTm tm1 <*> desugarTm tm2
 desugarTm (MkUse u) = MkUse <$> desugarUse u
 desugarTm (MkDCon d) = MkDCon <$> desugarDCon d
+
+desugarPattern :: Pattern Refined -> Desugar (Pattern Desugared)
+desugarPattern (MkVPat v) = MkVPat <$> desugarVPat v
+desugarPattern (MkCmdPat c vs k) = do vs' <- mapM desugarVPat vs
+                                      return $ MkCmdPat c vs' k
+desugarPattern (MkThkPat x) = return $ MkThkPat x
+
+desugarVPat :: ValuePat Refined -> Desugar (ValuePat Desugared)
+desugarVPat (MkVarPat x) = return $ MkVarPat x
+desugarVPat (MkDataPat x xs) = MkDataPat x <$> mapM desugarVPat xs
+desugarVPat (MkIntPat i) = return $ MkIntPat i
+desugarVPat (MkCharPat c) = return $ MkCharPat c
+desugarVPat (MkStrPat s) = return $ MkStrPat s
+
 
 desugarSComp :: SComp Refined -> Desugar (SComp Desugared)
 desugarSComp (MkSComp xs) = MkSComp <$> mapM desugarClause xs

@@ -131,7 +131,7 @@ deriving instance (Show) (Tm a)
 deriving instance (Eq) (Tm a)
 
 -- A clause for a multihandler definition
-data Clause a = MkCls [Pattern] (Tm a)
+data Clause a = MkCls [Pattern a] (Tm a)
   deriving (Show, Eq)
 
 data SComp a = MkSComp [Clause a]
@@ -153,13 +153,24 @@ data Ctr a = MkCtr Id [VType a]
 data Cmd a = MkCmd Id [VType a] (VType a)
   deriving (Show, Eq)
 
-data Pattern = MkVPat ValuePat | MkCmdPat Id [ValuePat] Id | MkThkPat Id
-  deriving (Show, Eq)
+data Pattern a where
+  MkVPat :: ValuePat a -> Pattern a
+  MkCmdPat :: Id -> [ValuePat a] -> Id -> Pattern a
+  MkThkPat :: Id -> Pattern a
+    deriving (Show, Eq)
 
 -- TODO: should we compile away string patterns into list of char patterns?
-data ValuePat = MkVarPat Id | MkDataPat Id [ValuePat] | MkIntPat Integer
-              | MkCharPat Char | MkStrPat String
-  deriving (Show, Eq)
+data ValuePat a where
+  MkVarPat :: Id -> ValuePat a
+  MkDataPat :: Id -> [ValuePat a] -> ValuePat a
+  MkIntPat :: Integer -> ValuePat a
+  MkCharPat :: Char -> ValuePat a
+  MkStrPat :: String -> ValuePat a
+  MkConsPat :: ValuePat Raw -> ValuePat Raw -> ValuePat Raw
+  MkListPat :: [ValuePat Raw] -> ValuePat Raw
+
+deriving instance (Show) (ValuePat a)
+deriving instance (Eq) (ValuePat a)
 
 type Id = String
 

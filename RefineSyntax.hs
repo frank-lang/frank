@@ -424,7 +424,7 @@ refineClause (MkCls ps tm) = do ps' <- mapM refinePattern ps
                                 tm' <- refineTm tm
                                 return $ MkCls ps' tm'
 
-refinePattern :: Pattern -> Refine Pattern
+refinePattern :: Pattern Raw -> Refine (Pattern Refined)
 refinePattern (MkVPat p) = MkVPat <$> refineVPat p
 refinePattern (MkCmdPat x ps k) =
   do cmds <- getRCmds
@@ -433,15 +433,15 @@ refinePattern (MkCmdPat x ps k) =
                     ps' <- mapM refineVPat ps
                     return $ MkCmdPat x ps' k
        Nothing -> idError x "command"
-refinePattern p = return p
+refinePattern (MkThkPat x) = return $ MkThkPat x
 
-refineVPat :: ValuePat -> Refine ValuePat
-refineVPat p@(MkVarPat x) =
+refineVPat :: ValuePat Raw -> Refine (ValuePat Refined)
+refineVPat (MkVarPat x) =
   do ctrs <- getRCtrs
      case x `findPair` ctrs of
        Just n -> do checkArgs x n 0
                     return $ MkDataPat x []
-       Nothing -> return p
+       Nothing -> return $ MkVarPat x
 refineVPat (MkDataPat x xs) =
   do ctrs <- getRCtrs
      case x `findPair` ctrs of
@@ -449,7 +449,20 @@ refineVPat (MkDataPat x xs) =
                     xs' <- mapM refineVPat xs
                     return $ MkDataPat x xs'
        Nothing -> idError x "constructor"
-refineVPat p = return p
+refineVPat (MkIntPat i) = return $ MkIntPat i
+refineVPat (MkCharPat c) = return $ MkCharPat c
+refineVPat (MkStrPat s) = return $ MkStrPat s
+refineVPat (MkConsPat x xs) =
+  do x' <- refineVPat x
+     xs' <- refineVPat xs
+     return $ MkDataPat "cons" [x', xs']
+refineVPat (MkListPat ps) =
+  do ps' <- mapM refineVPat ps
+     return $
+       foldr
+         (\x y -> MkDataPat "cons" [x, y])
+         (MkDataPat "nil" [])
+         ps'
 
 checkArgs :: Id -> Int -> Int -> Refine ()
 checkArgs x exp act =

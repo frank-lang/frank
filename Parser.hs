@@ -318,36 +318,41 @@ parseRawClause = do ps <- choice [try parsePatterns, pure []]
              symbol "->"
              return $ ps
 
-parsePattern :: MonadicParsing m => m Pattern
+parsePattern :: MonadicParsing m => m (Pattern Raw)
 parsePattern = try parseCPat <|> MkVPat <$> parseVPat
 
-parseCPat :: MonadicParsing m => m Pattern
+parseCPat :: MonadicParsing m => m (Pattern Raw)
 parseCPat = between (symbol "<") (symbol ">") $
             try parseCmdPat <|> parseThunkPat
 
-parseThunkPat :: MonadicParsing m => m Pattern
+parseThunkPat :: MonadicParsing m => m (Pattern Raw)
 parseThunkPat = do x <- identifier
                    return (MkThkPat x)
 
-parseCmdPat :: MonadicParsing m => m Pattern
+parseCmdPat :: MonadicParsing m => m (Pattern Raw)
 parseCmdPat = do cmd <- identifier
                  ps <- many parseVPat
                  symbol "->"
                  g <- identifier
                  return (MkCmdPat cmd ps g)
 
-parseVPat :: MonadicParsing m => m ValuePat
+parseVPat :: MonadicParsing m => m (ValuePat Raw)
 parseVPat = parseDataTPat <|>
             (do x <- identifier
                 return $ MkVarPat x) <|>
             MkIntPat <$> try integer <|> -- try block for unary minus
             MkCharPat <$> charLiteral <|>
-            MkStrPat <$> stringLiteral
+            MkStrPat <$> stringLiteral <|>
+            MkListPat <$> brackets (sepBy parseVPat (symbol ","))
 
-parseDataTPat :: MonadicParsing m => m ValuePat
-parseDataTPat = parens $ do k <- identifier
-                            ps <- many parseVPat
-                            return $ MkDataPat k ps
+parseDataTPat :: MonadicParsing m => m (ValuePat Raw)
+parseDataTPat = parens $ (try (do p <- parseVPat
+                                  symbol "::"
+                                  q <- parseVPat
+                                  return $ MkConsPat p q)) <|>
+                         (do k <- identifier
+                             ps <- many parseVPat
+                             return $ MkDataPat k ps)
 
 parseRawSComp :: MonadicParsing m => m (SComp Raw)
 parseRawSComp = localIndentation Gt $ absoluteIndentation $

@@ -121,7 +121,7 @@ compileClause (MkCls ps tm) = do ps' <- mapM compilePattern ps
                                  e <- compileTm tm
                                  return (ps', e)
 
-compilePattern :: Pattern -> Compile S.Pat
+compilePattern :: NotRaw a => Pattern a -> Compile S.Pat
 compilePattern (MkVPat x) = S.PV <$> compileVPat x
 compilePattern (MkCmdPat cmd xs k) = do xs' <- mapM compileVPat xs
                                         return $ S.PC cmd xs' k
@@ -131,7 +131,7 @@ compilePattern (MkThkPat id) = return $ S.PT id
 -- character Shonky strings and Frank strings as a Shonky datatype
 -- with "cons" and "nil" constructors.
 
-compileVPat :: ValuePat -> Compile S.VPat
+compileVPat :: NotRaw a => ValuePat a -> Compile S.VPat
 compileVPat (MkVarPat id) = return $ S.VPV id
 compileVPat (MkDataPat id xs) =
   do case xs of
@@ -139,10 +139,10 @@ compileVPat (MkDataPat id xs) =
        xs -> do xs' <- mapM compileVPat xs
                 return $ foldr1 (S.:&:) $ (S.VPA id) : (xs' ++ [S.VPA ""])
 compileVPat (MkIntPat n) = return $ S.VPI n
-compileVPat (MkStrPat s) = compileVPat (f s) where
-  f :: String -> ValuePat
-  f []     = MkDataPat "nil" []
-  f (c:cs) = MkDataPat "cons" [MkCharPat c, f cs]
+compileVPat ((MkStrPat s) :: ValuePat a) = compileVPat (compileStrPat s) where
+  compileStrPat :: NotRaw a => String -> ValuePat a
+  compileStrPat []     = MkDataPat "nil" []
+  compileStrPat (c:cs) = MkDataPat "cons" [MkCharPat c, compileStrPat cs]
 compileVPat (MkCharPat c) = return $ S.VPX [Left c]
 
 compileTm :: NotRaw a => Tm a -> Compile S.Exp

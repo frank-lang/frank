@@ -202,7 +202,7 @@ checkCls (MkCls pats tm) ports (MkPeg ab ty)
                      purgeMarks
   | otherwise = throwError "number of patterns not equal to number of ports"
 
-checkPat :: Pattern -> Port Desugared -> Contextual [TermBinding]
+checkPat :: Pattern Desugared -> Port Desugared -> Contextual [TermBinding]
 checkPat (MkVPat vp) (MkPort _ ty) = checkVPat vp ty
 checkPat (MkCmdPat cmd xs g) (MkPort adj ty) =
   do (itf, qs, ts, y) <- getCmd cmd
@@ -229,7 +229,7 @@ contType x adj y =
   do amb <- getAmbient
      return $ MkSCTy $ MkCType [MkPort idAdj x] (MkPeg (plus amb adj) y)
 
-checkVPat :: ValuePat -> VType Desugared -> Contextual [TermBinding]
+checkVPat :: ValuePat Desugared -> VType Desugared -> Contextual [TermBinding]
 checkVPat (MkVarPat x) ty = return [(MkMono x, ty)]
 checkVPat (MkDataPat k xs) ty =
   do (dt, args, ts) <- getCtr k
