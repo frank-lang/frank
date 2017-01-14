@@ -261,7 +261,8 @@ parseRawOpTm = do uminus <- optional $ symbol "-"
                   let tm1' = case uminus of
                         Just _ -> MkRawComb "-" [MkInt 0,tm1]
                         Nothing -> tm1
-                  (do op <- choice $ map symbol ["+","-","*","/"]
+                  (do op' <- choice $ map symbol ["+","-","*","/","::"]
+                      let op = if op' == "::" then "cons" else op'
                       tm2 <- parseRawOperandTm
                       return $ MkRawComb op [tm1', tm2]) <|> return tm1'
 
@@ -287,7 +288,7 @@ parseLet = do reserved "let"
               symbol "="
               tm1 <- parseRawTm
               reserved "in"
-              tm2 <- parseRawTm
+              tm2 <- parseRawTmSeq
               return $ MkLet x tm1 tm2
 
 parseRawTm' :: MonadicParsing m => m (Tm Raw)
@@ -297,7 +298,11 @@ parseRawTm' = parens parseRawTmSeq <|>
               MkSC <$> parseRawSComp <|>
               MkStr <$> stringLiteral <|>
               MkInt <$> natural <|>
-              MkChar <$> charLiteral
+              MkChar <$> charLiteral <|>
+              MkList <$> listTm
+
+listTm :: MonadicParsing m => m [Tm Raw]
+listTm = brackets (sepBy parseRawTm (symbol ","))
 
 parseComb :: MonadicParsing m => m (Tm Raw)
 parseComb = do x <- identifier

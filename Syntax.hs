@@ -122,6 +122,7 @@ data Tm a where
   MkStr :: String -> Tm a
   MkInt :: Integer -> Tm a
   MkChar :: Char -> Tm a
+  MkList :: [Tm Raw] -> Tm Raw
   MkTmSeq :: Tm a -> Tm a -> Tm a
   MkUse :: NotRaw a => Use a -> Tm a
   MkDCon :: NotRaw a => DataCon a -> Tm a

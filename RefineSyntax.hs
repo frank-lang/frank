@@ -404,6 +404,13 @@ refineTm (MkSC x) = do x' <- refineSComp x
 refineTm (MkStr x) = return $ MkStr x
 refineTm (MkInt x) = return $ MkInt x
 refineTm (MkChar x) = return $ MkChar x
+refineTm (MkList ts) =
+  do ts' <- mapM refineTm ts
+     return $
+       foldr
+         (\x y -> MkDCon (MkDataCon "cons" [x, y]))
+         (MkDCon (MkDataCon "nil" []))
+         ts'
 refineTm (MkTmSeq t1 t2) = do t1' <- refineTm t1
                               t2' <- refineTm t2
                               return $ MkTmSeq t1' t2'
