@@ -89,7 +89,9 @@ unifyAb ab0@(MkAb v0 m0) ab1@(MkAb v1 m1) =
          unifyAb' ab0 (MkAb v1 m1'')
        (Nothing, Nothing) ->
          unifyAb' ab0 ab1
-  where unifyAb' (MkAb (MkAbFVar a0) m0) (MkAb (MkAbFVar a1) m1) =
+  where unifyAb' ab0@(MkAb v0 m0) ab1@(MkAb v1 m1) | v0 == v1 =
+          catchError (unifyItfMap m0 m1) (unifyAbError ab0 ab1)
+        unifyAb' (MkAb (MkAbFVar a0) m0) (MkAb (MkAbFVar a1) m1) =
           do unifyItfMap (M.intersection m0 m1) (M.intersection m1 m0)
              v <- MkAbFVar <$> freshMVar "£"
              solveForEVar a0 [] (MkAb v (M.difference m1 m0))
@@ -102,8 +104,6 @@ unifyAb ab0@(MkAb v0 m0) ab1@(MkAb v1 m1) =
           | M.null (M.difference m1 m0) =
             do unifyItfMap (M.intersection m0 m1) (M.intersection m1 m0)
                solveForEVar a1 [] (MkAb v (M.difference m0 m1))
-        unifyAb' ab0@(MkAb v0 m0) ab1@(MkAb v1 m1) | v0 == v1 =
-          catchError (unifyItfMap m0 m1) (unifyAbError ab0 ab1)
         unifyAb' ab0 ab1 =
           throwError $ "cannot unify abilities " ++ (show $ ppAb ab0) ++
           " and " ++ (show $ ppAb ab1)

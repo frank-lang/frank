@@ -53,11 +53,7 @@ roundRobin <yield -> k>  = pushProc {roundRobin (k unit)}; popProcs!
 roundRobin <fork p -> k> = pushProc {roundRobin p!}; roundRobin (k unit)
 roundRobin unit          = popProcs!
  
--- FIXME:  type checking goes into an infinite loop
--- if we try to generalise Proc to a type variable S
---
---zipQueue : {List S -> List S -> <Queue S>Unit -> Unit}
-zipQueue : {List Proc -> List Proc -> <Queue Proc>Unit -> Unit}
+zipQueue : {List S -> List S -> <Queue S>Unit -> Unit}
 zipQueue ps        qs <enqueue q -> k> = zipQueue ps (q :: qs) (k unit)
 zipQueue []        [] <dequeue -> k>   = zipQueue [] [] (k nothing)
 zipQueue []        qs <dequeue -> k>   = zipQueue (reverse qs) [] (k dequeue!)
