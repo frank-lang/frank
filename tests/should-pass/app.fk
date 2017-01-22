@@ -1,0 +1,5 @@
+app : {{X -> Y} -> X -> Y}
+app f x = f x
+
+main : {Int}
+main! = app {f -> f 42} {x -> x}

@@ -136,14 +136,28 @@ inferUse (MkApp f xs) =
              unifyAb amb ab
              checkArgs ps xs
              return ty'
-        discriminate ty@(MkFTVar x) = do mty <- findFTVar x
-                                         case mty of
-                                           Nothing -> errTy ty
-                                           Just ty' -> discriminate ty'
+        discriminate ty@(MkFTVar x) =
+          do mty <- findFTVar x
+             case mty of
+               Nothing ->
+                 -- TODO: check that this is correct
+                 do addMark
+                    ps <- mapM (\_ -> freshPort "X") xs
+                    q@(MkPeg ab ty')  <- freshPeg "E" "Y"
+                    unify ty (MkSCTy (MkCType ps q))
+                    amb <- getAmbient
+                    unifyAb amb ab
+                    return ty'
+                 --errTy ty
+               Just ty' -> discriminate ty'
         discriminate ty = errTy ty
 
+        -- TODO: tidy.
+        -- We shouldn't report an error here, but rather generate
+        -- appropriate fresh type variables as above.
         errTy ty = throwError $
-                   "application:expected suspended computation but got " ++
+                   "application (" ++ show (MkApp f xs) ++ 
+                   "): expected suspended computation but got " ++
                    (show $ ppVType ty)
 
 checkTm :: Tm Desugared -> VType Desugared -> Contextual ()
@@ -177,14 +191,14 @@ checkSComp (MkSComp xs) ty = mapM_ (checkCls' ty) xs
              unify ty (MkSCTy (MkCType ps q))
              purgeMarks
 
-        freshPort :: Id -> Contextual (Port Desugared)
-        freshPort x = do ty <- MkFTVar <$> freshMVar x
-                         return $ MkPort (MkAdj M.empty) ty
+freshPort :: Id -> Contextual (Port Desugared)
+freshPort x = do ty <- MkFTVar <$> freshMVar x
+                 return $ MkPort (MkAdj M.empty) ty
 
-        freshPeg :: Id -> Id -> Contextual (Peg Desugared)
-        freshPeg x y = do v <- MkAbFVar <$> freshMVar x
-                          ty <- MkFTVar <$> freshMVar y
-                          return $ MkPeg (MkAb v M.empty) ty
+freshPeg :: Id -> Id -> Contextual (Peg Desugared)
+freshPeg x y = do v <- MkAbFVar <$> freshMVar x
+                  ty <- MkFTVar <$> freshMVar y
+                  return $ MkPeg (MkAb v M.empty) ty
 
 checkCls :: Clause Desugared -> [Port Desugared] -> Peg Desugared ->
             Contextual ()

@@ -12,9 +12,6 @@ reverse' (cons x xs) ys = reverse' xs (cons x ys)
 reverse : List X -> List X
 reverse xs = reverse' xs nil
 
-on : X -> {X -> Y} -> Y
-on x f = f x
-
 print : String -> [Console]Unit
 print s = map ouch s; unit
 --- end of standard stuff ---
