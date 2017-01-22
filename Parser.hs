@@ -63,8 +63,9 @@ identifier = Tok.ident frankStyle
 reserved :: MonadicParsing m => String -> m ()
 reserved = Tok.reserve frankStyle
 
+-- the eof disallows gibberish at the end of the file!
 prog :: (Applicative m, MonadicParsing m) => m (Prog Raw)
-prog = MkProg <$ whiteSpace <*> many tterm
+prog = MkProg <$ whiteSpace <*> do tts <- many tterm; eof; return tts
 
 tterm :: MonadicParsing m => m (TopTm Raw)
 tterm = MkDataTm <$> parseDataT <|>
