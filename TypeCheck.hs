@@ -142,18 +142,17 @@ inferUse (MkApp f xs) =
                Nothing ->
                  -- TODO: check that this is correct
                  do addMark
-                    ps <- mapM (\_ -> freshPort "X") xs
-                    q@(MkPeg ab ty')  <- freshPeg "E" "Y"
-                    unify ty (MkSCTy (MkCType ps q))
                     amb <- getAmbient
-                    unifyAb amb ab
+                    ps <- mapM (\_ -> freshPort "X") xs
+                    q@(MkPeg ab ty')  <- freshPegWithAb amb "Y"
+                    unify ty (MkSCTy (MkCType ps q))
                     return ty'
-                 --errTy ty
+                 -- errTy ty
                Just ty' -> discriminate ty'
         discriminate ty = errTy ty
 
         -- TODO: tidy.
-        -- We shouldn't report an error here, but rather generate
+        -- We don't need to report an error here, but rather generate
         -- appropriate fresh type variables as above.
         errTy ty = throwError $
                    "application (" ++ show (MkApp f xs) ++ 
@@ -186,7 +185,7 @@ checkSComp (MkSComp xs) ty = mapM_ (checkCls' ty) xs
         checkCls' ty cls@(MkCls pats tm) =
           do pushMarkCtx
              ps <- mapM (\_ -> freshPort "X") pats
-             q <- freshPeg "e" "X"
+             q <- freshPeg "" "X"
              checkCls cls ps q
              unify ty (MkSCTy (MkCType ps q))
              purgeMarks
@@ -199,6 +198,10 @@ freshPeg :: Id -> Id -> Contextual (Peg Desugared)
 freshPeg x y = do v <- MkAbFVar <$> freshMVar x
                   ty <- MkFTVar <$> freshMVar y
                   return $ MkPeg (MkAb v M.empty) ty
+
+freshPegWithAb :: Ab Desugared -> Id -> Contextual (Peg Desugared)
+freshPegWithAb ab x = do ty <- MkFTVar <$> freshMVar x
+                         return $ MkPeg ab ty
 
 checkCls :: Clause Desugared -> [Port Desugared] -> Peg Desugared ->
             Contextual ()
