@@ -314,7 +314,7 @@ parseRawClause = do ps <- choice [try parsePatterns, pure []]
                     seq <- parseRawTmSeq
                     return $ MkCls ps seq
   where parsePatterns =
-          do ps <- sepBy1 (parseVPat >>= return . MkVPat) (symbol ",")
+          do ps <- choice [some parsePattern, symbol "!" >> return []]
              symbol "->"
              return $ ps
 
