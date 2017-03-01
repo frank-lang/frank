@@ -12,17 +12,17 @@ if b t e = on b { true  -> t!
                 | false -> e! }
 
 append : List X -> List X -> List X
-append nil         ys = ys
-append (cons x xs) ys = cons x (append xs ys)
+append []        ys = ys
+append (x :: xs) ys = x :: (append xs ys)
 
 concat : List (List X) -> List X
-concat nil           = nil
-concat (cons xs xss) = append xs (concat xss)
+concat []          = []
+concat (xs :: xss) = append xs (concat xss)
 
 interface Abort = aborting : Zero
 
 abort : [Abort]X
-abort! = on aborting! {}
+abort! = case aborting! {}
 
 data Bool = true | false
 
@@ -35,65 +35,67 @@ interface Choice = choice : Bool
 
 data Toss = Heads | Tails
 
-toss : [Choice]Toss
+toss : {[Choice]Toss}
 toss! = if choice! {Heads} {Tails}
 
-drunkToss : [Choice, Abort]Toss
-drunkToss! = if choice! toss abort
+drunkToss : {[Choice, Abort]Toss}
+drunkToss! = if choice! {toss!} {abort!}
 
-drunkTosses : Int -> [Choice, Abort]List Toss
-drunkTosses 0 = nil
-drunkTosses n = cons drunkToss! (drunkTosses (n-1))
+drunkTosses : {Int -> [Choice, Abort]List Toss}
+drunkTosses 0 = []
+drunkTosses n = drunkToss! :: (drunkTosses (n-1))
 
 
 
 --- handlers
 
-allChoices : <Choice>X -> List X
-allChoices x             = cons x nil
-allChoices <choice -> k> = append (allChoices (k true)) (allChoices (k false))
-
-trueChoice : <Choice>X -> X
+trueChoice : {<Choice>X -> X}
 trueChoice x             = x
 trueChoice <choice -> k> = trueChoice (k true)
+
+
+allChoices : {<Choice>X -> List X}
+allChoices x             = [x]
+allChoices <choice -> k> = append (allChoices (k true)) (allChoices (k false))
+
 
 maybeAbort : <Abort>X -> Maybe X
 maybeAbort x               = just x
 maybeAbort <aborting -> k> = nothing
 
 listAbort : <Abort>X -> List X
-listAbort x               = cons x nil
-listAbort <aborting -> k> = nil
+listAbort x               = [x]
+listAbort <aborting -> k> = []
 
 allResults : <Choice, Abort>X -> List X
-allResults x               = cons x nil
+allResults x               = [x]
 allResults <choice -> k>   = append (allResults (k true)) (allResults (k false))
-allResults <aborting -> k> = nil
+allResults <aborting -> k> = []
 
 
 --- tests
 
-t1 : Toss
+t1 : {Toss}
 t1! = trueChoice toss!
 -- Heads
 
-t2 : List Toss
+t2 : {List Toss}
 t2! = allChoices toss!
 -- [Heads, Tails]
 
-t3 : Maybe Unit
+t3 : {Maybe Unit}
 t3! = maybeAbort abort!
 -- nothing
 
-t4 : List Unit
+t4 : {List Unit}
 t4! = listAbort abort!
 -- []
 
-t5 : Maybe (List (List Toss))
+t5 : {Maybe (List (List Toss))}
 t5! = maybeAbort (allChoices (drunkTosses 2))
 -- nothing
 
-t6 : List (Maybe (List Toss))
+t6 : {List (Maybe (List Toss))}
 t6! = allChoices (maybeAbort (drunkTosses 2))
 -- [just ([Heads, Heads]), just ([Heads, Tails]), nothing,
 --  just ([Tails, Heads]), just ([Tails, Tails]), nothing, nothing]
@@ -104,18 +106,18 @@ t6! = allChoices (maybeAbort (drunkTosses 2))
 -- [TTTT                   TTTF                   TTF*
 --  TFTT                   TFTF                   TFF*     F***]
 
-t7 : List (List Toss)
+t7 : {List (List Toss)}
 t7! = concat (allChoices (listAbort (drunkTosses 2)))
 -- [[Heads, Heads], [Heads, Tails], [Tails, Heads], [Tails, Tails]]
 
-t8 : List (List Toss)
+t8 : {List (List Toss)}
 t8! = concat (listAbort (allChoices (drunkTosses 2)))
 -- []
 
-t9 : List (List Toss)
+t9 : {List (List Toss)}
 t9! = allResults (drunkTosses 2)
 -- [[Heads, Heads], [Heads, Tails], [Tails, Heads], [Tails, Tails]]
 
 -- just a stub: use --entry-point tX to do something interesting
-main : List (List Toss)
+main : {List (List Toss)}
 main! = allResults (drunkTosses 2)

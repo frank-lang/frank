@@ -52,7 +52,7 @@ roundRobin : {<Co [Queue Proc]>Unit -> [Queue Proc]Unit}
 roundRobin <yield -> k>  = pushProc {roundRobin (k unit)}; popProcs!
 roundRobin <fork p -> k> = pushProc {roundRobin p!}; roundRobin (k unit)
 roundRobin unit          = popProcs!
- 
+
 zipQueue : {List S -> List S -> <Queue S>Unit -> Unit}
 zipQueue ps        qs <enqueue q -> k> = zipQueue ps (q :: qs) (k unit)
 zipQueue []        [] <dequeue -> k>   = zipQueue [] [] (k nothing)
@@ -63,4 +63,3 @@ zipQueue ps        qs unit             = unit
 main : {[Console]Unit}
 main! = zipQueue [] [] (roundRobin test!)
 
- 

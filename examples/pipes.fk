@@ -7,12 +7,12 @@ data Bool = true | false
 data Maybe X = nothing | just X
 
 append : List X -> List X -> List X
-append nil ys = ys
-append (cons x xs) ys = cons x (append xs ys)
+append []        ys = ys
+append (x :: xs) ys = x :: append xs ys
 
 map : {X -> Y} -> List X -> List Y
-map f nil = nil
-map f (cons x xs) = cons (f x) (map f xs)
+map f []        = []
+map f (x :: xs) = f x :: map f xs
 
 print : String -> [Console]Unit
 print s = map ouch s; unit
@@ -40,26 +40,26 @@ catch <aborting -> k> h = h!
 
 
 -- send a list of values
-sends : List X -> [Send X]Unit
+sends : {List X -> [Send X]Unit}
 sends xs = map send xs; unit
 
 -- receive and concatenate a nil-terminated list of lists
-catter : [Receive (List X)]List X
-catter! = on receive! { nil -> nil
-                      | xs  -> append xs catter!}
+catter : {[Receive (List X)]List X}
+catter! = case receive! { []  -> []
+                        | xs  -> append xs catter!}
 
-pipe : <Send X>Unit -> <Receive X>Y -> [Abort]Y
+pipe : {<Send X>Unit -> <Receive X>Y -> [Abort]Y}
 pipe <send x -> s> <receive -> r> = pipe (s unit) (r x)
 pipe <_>           y              = y
-pipe unit          <_>            = abort!
+pipe unit          <receive -> r> = abort!
 
-doBeDoBeDoNil : []List String
-doBeDoBeDoNil! = cons "do" (cons "be" (cons "do" (cons "be" (cons "do" (cons "" nil)))))
+doBeDoBeDoNil : {[]List String}
+doBeDoBeDoNil! = ["do", "be", "do", "be", "do", ""]
 
-sendDoBeDoBeDoNil : [Send String]Unit
+sendDoBeDoBeDoNil : {[Send String]Unit}
 sendDoBeDoBeDoNil! = sends doBeDoBeDoNil!
 
-t1 : [Abort]String
+t1 : {[Abort]String}
 t1! = pipe sendDoBeDoBeDoNil! catter!
 
 spacer : [Send String, Receive String]Unit
@@ -69,29 +69,29 @@ t2 : [Abort]String
 t2! = pipe sendDoBeDoBeDoNil! (pipe spacer! catter!)
 
 catchList : <Abort>List X -> List X
-catchList <x> = catch x! {nil}
+catchList <x> = catch x! {[]}
 
-t3 : []String
+t3 : {[]String}
 t3! = catchList t2!
 
-t4 : []String
-t4! = catchList (pipe (sends (cons "do" (cons "be" nil)))
+t4 : {[]String}
+t4! = catchList (pipe (sends ["do", "be", []])
                       (pipe spacer! catter!))
 
-sendsPrint : List String -> [Console, Send String]Unit
-sendsPrint nil         = unit
-sendsPrint (cons s ss) = print "Sending: "; print s; ouch '\n'; send s; sendsPrint ss
+sendsPrint : {List String -> [Console, Send String]Unit}
+sendsPrint []        = unit
+sendsPrint (s :: ss) = print "Sending: "; print s; ouch '\n'; send s; sendsPrint ss
 
-t5 : [Console]String
+t5 : {[Console]String}
 t5! = catchList (pipe (sendsPrint doBeDoBeDoNil!) catter!)
 
 logSend : <Send String>X -> [Console, Send String]X
 logSend x             = x
 logSend <send s -> k> = print "Sending: "; print s; ouch '\n'; send s; logSend (k unit)
 
-t6 : [Console]String
+t6 : {[Console]String}
 t6! = catchList (pipe (logSend sendDoBeDoBeDoNil!) catter!)
 
 -- just a stub: use --entry-point tX to do something interesting
-main : []Unit
+main : {[]Unit}
 main! = unit

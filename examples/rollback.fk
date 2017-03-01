@@ -5,11 +5,11 @@ data Zero =     -- empty type
 
 data Maybe X = nothing | just X
 
-map : {X -> Y} -> List X -> List Y
-map f nil         = nil
-map f (cons x xs) = cons (f x) (map f xs)
+map : {{X -> Y} -> List X -> List Y}
+map f []        = []
+map f (x :: xs) = f x :: (map f xs)
 
-on : X -> {X -> Y} -> Y
+on : {X -> {X -> Y} -> Y}
 on x f = f x
 
 interface Abort = aborting : Zero
@@ -24,10 +24,10 @@ data Log [] X = start {[]X}
               | inched (Log [] X) {Char -> []X}
 	      | ouched (Log [] X)
 
-input :  Log [LookAhead, Abort, Console] X ->
+input : {Log [LookAhead, Abort, Console] X ->
          Maybe Char ->
          <LookAhead, Abort>X ->
-         [Console]X
+         [Console]X}
 input _ _        x             = x
 input l (just c) <peek -> k>   = input l (just c) (k c)
 input l (just c) <accept -> k> = ouch c; input (ouched l) nothing (k unit)
@@ -44,13 +44,12 @@ input l _        <aborting -> k> = rollback l
 --           <LookAhead, Abort, -Console>X ->
 --           [Console]X
 
-rollback : Log [LookAhead, Abort, Console] X ->
-           [Console]X
+rollback : {Log [LookAhead, Abort, Console] X -> [Console]X}
 rollback (start p)    = parse p
 rollback (ouched l)   = map ouch "\b \b"; rollback l
 rollback (inched l k) = input l nothing (k peek!)
 
-parse : {[LookAhead, Abort, Console]X} -> [Console]X
+parse : {{[LookAhead, Abort, Console]X} -> [Console]X}
 parse p = input (start p) nothing p!
 
 -- a basic parser that counts a sequence of zeros
@@ -59,7 +58,7 @@ zeros n = on peek! { '0' -> accept!; zeros (n+1)
                    | ' ' -> accept!; n
                    | c   -> abort!}
 
-t1 : [Console]Int
+t1 : {[Console]Int}
 t1! = parse {zeros 0}
 
 -- another parser that tracks bracket nesting
@@ -71,9 +70,9 @@ nest s n = on peek! { '('  -> accept!; nest s (n+1)
                     | ')'  -> accept!; nest s (n-1)
                     | c    -> accept!; nest (cons c s) n }
 
-t2 : [Console]String
+t2 : {[Console]String}
 t2! = parse {nest "" 0}
 
 -- just a stub: use --entry-point tX to do something interesting
-main : []Unit
+main : {[]Unit}
 main! = unit
