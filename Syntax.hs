@@ -175,24 +175,24 @@ deriving instance (Eq) (ValuePat a)
 type Id = String
 
 -- Type hierarchy
-data CType a = MkCType [Port a] (Peg a)
+data CType a = MkCType [Port a] (Peg a)      -- computation types
   deriving (Show, Eq)
 
-data Port a = MkPort (Adj a) (VType a)
+data Port a = MkPort (Adj a) (VType a)       -- ports
   deriving (Show, Eq)
 
-data Peg a = MkPeg (Ab a) (VType a)
+data Peg a = MkPeg (Ab a) (VType a)          -- pegs
   deriving (Show, Eq)
 
-data VType a where
-  MkDTTy :: Id -> [TyArg a] -> VType a
-  MkSCTy :: CType a -> VType a
-  MkTVar :: NotDesugared a => Id -> VType a
-  MkRTVar :: Id -> VType Desugared
-  MkFTVar :: Id -> VType Desugared
-  MkStringTy :: NotDesugared a => VType a
-  MkIntTy :: VType a
-  MkCharTy :: VType a
+data VType a where                           -- value types
+  MkDTTy :: Id -> [TyArg a] -> VType a       --   data types
+  MkSCTy :: CType a -> VType a               --   suspended computation types
+  MkTVar :: NotDesugared a => Id -> VType a  --   can be refined to MkDTTy
+  MkRTVar :: Id -> VType Desugared           --   rigid type variable (bound)
+  MkFTVar :: Id -> VType Desugared           --   flexible type variable (free)
+  MkStringTy :: NotDesugared a => VType a    --   string type
+  MkIntTy :: VType a                         --   int type
+  MkCharTy :: VType a                        --   char type
 
 deriving instance (Show) (VType a)
 deriving instance (Eq) (VType a)
@@ -207,11 +207,12 @@ data Adj a = MkAdj (ItfMap a)
 data Ab a = MkAb (AbMod a) (ItfMap a)
   deriving (Show, Eq)
 
+--     Ability modifiers
 data AbMod a where
-  MkEmpAb :: AbMod a
-  MkAbVar :: NotDesugared a => Id -> AbMod a
-  MkAbRVar :: Id -> AbMod Desugared
-  MkAbFVar :: Id -> AbMod Desugared
+  MkEmpAb :: AbMod a                         -- empty
+  MkAbVar :: NotDesugared a => Id -> AbMod a -- ?
+  MkAbRVar :: Id -> AbMod Desugared          -- rigid effect variable
+  MkAbFVar :: Id -> AbMod Desugared          -- flexible effect variable
 
 deriving instance Show (AbMod a)
 deriving instance Eq (AbMod a)

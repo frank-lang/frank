@@ -22,6 +22,7 @@ type EVarSet = S.Set Id
 
 -- Object-Int pair
 type IPair = (Id,Int)
+-- data type id is mapped to rigid data type (RDT) variables (for polymorphic data types)
 type DTMap = M.Map Id [(Id, Kind)]
 type IFMap = M.Map Id [(Id, Kind)]
 
@@ -56,6 +57,7 @@ putRDTs :: DTMap -> Refine ()
 putRDTs m = do s <- getRState
                putRState $ s { datatypes = m }
 
+-- get rigid data types
 getRDTs :: Refine DTMap
 getRDTs = do s <- getRState
              return $ datatypes s
@@ -212,24 +214,30 @@ existsMain (_ : xs) = error "invalid top term: expected multihandler"
 refineDataT :: DataT Raw -> Refine (TopTm Refined)
 refineDataT d@(MkDT dt ps ctrs) =
   if uniqueIds (map fst ps) then
-    do let tvs = [x | (x, VT) <- ps]
-       let evs = [x | (x, ET) <- ps]
+    do let tvs = [x | (x, VT) <- ps] -- type variables
+       let evs = [x | (x, ET) <- ps] -- effect variables
+       -- if the data type is polymorphic, then we add £ to ambient and introduce it as an effect variable
        let (evs', ps') = if not (any ((==) "£") evs) && polyDataT d then (evs ++ ["£"], ps ++ [("£", ET)]) else (evs, ps)
+       -- update rigid data types (= RState.interfaces) of d
        m <- getRDTs
        putRDTs $ M.insert dt ps' m
-       putTMap (M.fromList $ zip tvs (map MkTVar tvs))
-       putEVSet (S.fromList evs')
+       -- refine constructors
+       putTMap (M.fromList $ zip tvs (map MkTVar tvs)) -- temporary type variables
+       putEVSet (S.fromList evs') -- temporary effect variables
        ctrs' <- mapM refineCtr ctrs
-       putEVSet S.empty
-       putTMap M.empty
+       putEVSet S.empty -- reset context
+       putTMap M.empty -- reset context
+       -- all done
        return $ MkDataTm $ MkDT dt ps' ctrs'
   else throwError $ "duplicate parameter in datatype " ++ dt
 
 refineItf :: Itf Raw -> Refine (TopTm Refined)
-refineItf i@(MkItf itf ps cmds) =
+refineItf i@(MkItf itf  ps             cmds) =
+--                 name type variables commands
   if uniqueIds (map fst ps) then
-    do let tvs = [x | (x, VT) <- ps]
-       let evs = [x | (x, ET) <- ps]
+    do let tvs = [x | (x, VT) <- ps] -- type variables (really: value type variables)
+       let evs = [x | (x, ET) <- ps] -- effect type variables
+       -- add £ in case there are value type variables
        let (evs', ps') = if not (any ((==) "£") evs) && polyItf i then (evs ++ ["£"], ps ++ [("£", ET)]) else (evs, ps)
        m <- getRItfs
        putRItfs $ M.insert itf ps' m
