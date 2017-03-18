@@ -7,6 +7,7 @@ import Control.Monad.State
 import Control.Monad.Identity
 import Control.Monad.Except
 
+-- this monad will supply fresh and is really a state monad transformer
 newtype FreshMT m a = Fresh { unFresh :: StateT Integer m a }
                       deriving (Functor, Applicative, Monad,
                                 MonadState Integer)

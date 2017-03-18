@@ -22,20 +22,21 @@ type EVarSet = S.Set Id
 
 -- Object-Int pair
 type IPair = (Id,Int)
+-- data type id is mapped to rigid data type (RDT) variables (for polymorphic data types)
 type DTMap = M.Map Id [(Id, Kind)]
 type IFMap = M.Map Id [(Id, Kind)]
 
 data TopLevelCtxt = Interface | Datatype | Handler
   deriving (Show, Eq)
 
-data RState = MkRState { interfaces :: IFMap
-                       , datatypes :: DTMap
-                       , handlers :: [IPair]
-                       , ctrs :: [IPair]
-                       , cmds :: [IPair]
-                       , program :: Prog Refined
-                       , tmap :: TVarMap
-                       , evmap :: EVarSet
+data RState = MkRState { interfaces :: IFMap     -- Id -> [(Id, Kind)]       store type & effect variables of each interface
+                       , datatypes :: DTMap      -- Id -> [(Id, Kind)]       store type & effect variables of each data type
+                       , handlers :: [IPair]     -- handler Id -> # of arguments
+                       , ctrs :: [IPair]         -- constructor Id -> # of arguments
+                       , cmds :: [IPair]         -- command Id -> # of arguments
+                       , program :: Prog Refined -- LC: what is this for?
+                       , tmap :: TVarMap         -- type var Id ->   VType Raw     type vars of current context
+                       , evmap :: EVarSet        -- effect var Id                  effect vars of current context
                        , tlctxt :: Maybe TopLevelCtxt }
 
 getRState :: Refine RState
@@ -56,6 +57,7 @@ putRDTs :: DTMap -> Refine ()
 putRDTs m = do s <- getRState
                putRState $ s { datatypes = m }
 
+-- get rigid data types
 getRDTs :: Refine DTMap
 getRDTs = do s <- getRState
              return $ datatypes s
@@ -116,7 +118,7 @@ findPair x ((y,n) : xs) = if x == y then Just n else findPair x xs
 findPair _ _ = Nothing
 
 collectCmds :: [Cmd a] -> [Id]
-collectCmds ((MkCmd cmd _ _) : xs) = cmd : (collectCmds xs)
+collectCmds ((MkCmd cmd _ _ _) : xs) = cmd : (collectCmds xs)
 collectCmds [] = []
 
 collectCtrs :: [Ctr a] -> [Id]
@@ -170,8 +172,9 @@ addCtr :: [IPair] -> Ctr a -> Refine [IPair]
 addCtr xs (MkCtr x ts) = addEntry xs x (length ts) "duplicate constructor: "
 
 addCmd :: [IPair] -> Cmd a -> Refine [IPair]
-addCmd xs (MkCmd x ts _) = addEntry xs x (length ts) "duplicate command: "
+addCmd xs (MkCmd x _ ts _) = addEntry xs x (length ts) "duplicate command: "
 
+-- takes map handler-id -> #-of-ports and adds another handler entry
 addMH :: [IPair] -> MHSig -> Refine [IPair]
 addMH xs (MkSig x (MkCType ps p)) =
   addEntry xs x (length ps) "duplicate multihandler: "
@@ -186,6 +189,9 @@ isHdrCtxt _ = False
 refine :: Prog Raw -> Either String (Prog Refined)
 refine prog = evalState (runExceptT (refine' prog)) initRefine
 
+-- explicit refinements:
+-- + check if main function exists
+-- + built-in data types, interfaces, operators are added
 refine' :: Prog Raw -> Refine (Prog Refined)
 refine' (MkProg xs) = do initialiseRState xs
                          let (sigs, defs, dts, itfs) = splitTopTm xs
@@ -209,42 +215,94 @@ existsMain ((MkDefTm (MkDef id _ _)) : xs) = id == "main" || existsMain xs
 existsMain [] = False
 existsMain (_ : xs) = error "invalid top term: expected multihandler"
 
+-- explicit refinements:
+-- + data type has unique effect & type variables
+-- + polym. data type gets £ effect variable
 refineDataT :: DataT Raw -> Refine (TopTm Refined)
-refineDataT d@(MkDT dt ps ctrs) =
+refineDataT d@(MkDT dt ps           ctrs) =
+--          data dt p_1 ... p_m = ctr_1 | ... | ctr_n
   if uniqueIds (map fst ps) then
-    do let tvs = [x | (x, VT) <- ps]
-       let evs = [x | (x, ET) <- ps]
-       let (evs', ps') = if not (any ((==) "£") evs) && polyDataT d then (evs ++ ["£"], ps ++ [("£", ET)]) else (evs, ps)
+    do let tvs = [x | (x, VT) <- ps] -- val ty vars
+       let evs = [x | (x, ET) <- ps] -- eff ty vars
+       -- add [£] if any constructor's arg. ty is either
+       -- 1) a susp. comp. ty (implicit [£])
+       -- 2) a data type parameterised (instantiated) with [£]
+       let (evs', ps') = if not (any ((==) "£") evs) && polyDataT d then
+                            (evs ++ ["£"], ps ++ [("£", ET)])
+                         else (evs, ps)
+       -- add new rigid data type
        m <- getRDTs
        putRDTs $ M.insert dt ps' m
-       putTMap (M.fromList $ zip tvs (map MkTVar tvs))
-       putEVSet (S.fromList evs')
+       -- refine constructors
+       putTMap (M.fromList $ zip tvs (map MkTVar tvs)) -- temp. val ty vars
+       putEVSet (S.fromList evs')                      -- temp. eff ty vars
        ctrs' <- mapM refineCtr ctrs
-       putEVSet S.empty
-       putTMap M.empty
+       putEVSet S.empty                                -- reset
+       putTMap M.empty                                 -- reset
        return $ MkDataTm $ MkDT dt ps' ctrs'
   else throwError $ "duplicate parameter in datatype " ++ dt
 
+-- explicit refinements:
+-- + interface has unique effect & type variables
+-- + polym. interface gets £ effect variable
 refineItf :: Itf Raw -> Refine (TopTm Refined)
-refineItf i@(MkItf itf ps cmds) =
+refineItf i@(MkItf itf ps      cmds) =
+--        interface itf p_1 ... p_m = cmd_1 | ... | cmd_n
   if uniqueIds (map fst ps) then
-    do let tvs = [x | (x, VT) <- ps]
-       let evs = [x | (x, ET) <- ps]
-       let (evs', ps') = if not (any ((==) "£") evs) && polyItf i then (evs ++ ["£"], ps ++ [("£", ET)]) else (evs, ps)
+    do let tvs = [x | (x, VT) <- ps] -- val ty vars
+       let evs = [x | (x, ET) <- ps] -- eff ty vars
+       -- add [£] if any command's arg. ty is either
+       -- 1) a susp. comp. ty (implicit [£])
+       -- 2) a data type parameterised (instantiated) with [£]
+       let (evs', ps') = if not (any ((==) "£") evs) && polyItf i then
+                            (evs ++ ["£"], ps ++ [("£", ET)])
+                         else (evs, ps)
+       -- add new rigid interface
        m <- getRItfs
        putRItfs $ M.insert itf ps' m
-       putTMap (M.fromList $ zip tvs (map MkTVar tvs))
-       putEVSet (S.fromList evs')
+       -- refine commands
+       putTMap (M.fromList $ zip tvs (map MkTVar tvs)) -- temp. val ty vars
+       putEVSet (S.fromList evs')                      -- temp. eff ty vars
        cmds' <- mapM refineCmd cmds
-       putEVSet S.empty
-       putTMap M.empty
+       putEVSet S.empty                                -- reset
+       putTMap M.empty                                 -- reset
        return $ MkItfTm $ MkItf itf ps' cmds'
   else throwError $ "duplicate parameter in interface " ++ itf
 
+-- explicit refinements:
+-- + command has unique effect & type variables
 refineCmd :: Cmd Raw -> Refine (Cmd Refined)
-refineCmd (MkCmd id xs y) = do xs' <- mapM refineVType xs
-                               y' <- refineVType y
-                               return $ MkCmd id xs' y'
+refineCmd c@(MkCmd id ps xs y) =
+--        id : forall p_1 ... p_m, x_1 -> ... -> x_n -> y
+  if uniqueIds (map fst ps) then
+    do tmap <- getTMap
+       evset <- getEVSet
+       -- check that none of this cmd's ty vars coincide with the itf's ones
+       if uniqueIds (map fst ps ++ map fst (M.toList tmap) ++ S.toList evset) then
+         do
+           let tvs = [x | (x, VT) <- ps] -- val ty vars
+           let evs = [x | (x, ET) <- ps] -- eff ty vars
+           -- add [£] if any arg. ty is either
+           -- 1) a susp. comp. ty (implicit [£])
+           -- 2) a data type parameterised (instantiated) with [£]
+           let (evs', ps') = if not (any ((==) "£") evs) && polyCmd c then
+                                (evs ++ ["£"], ps ++ [("£", ET)])
+                             else (evs, ps)
+           -- refine argument types and result type
+           -- add temp. val, eff ty vars
+           putTMap (M.union tmap (M.fromList $ zip tvs (map MkTVar tvs)))
+           putEVSet (S.union evset (S.fromList evs))
+           -- refine
+           xs' <- mapM refineVType xs
+           y' <- refineVType y
+           -- reset temp val, eff ty vars
+           putTMap tmap
+           putEVSet evset
+           return $ MkCmd id ps xs' y'
+       else throwError $ "a type parameter of command " ++ id ++
+                         "already occurs as interface type parameter"
+  else throwError $ "duplicate parameter in command " ++ id
+
 
 refineCtr :: Ctr Raw -> Refine (Ctr Refined)
 refineCtr (MkCtr id xs) = do xs' <- mapM refineVType xs
@@ -311,34 +369,36 @@ refineAdj :: Adj Raw -> Refine (Adj Refined)
 refineAdj (MkAdj m) = do m' <- refineItfMap m
                          return $ MkAdj m'
 
+-- explicit refinements:
+-- + val ty refers only to introduced val tys
 refineVType :: VType Raw -> Refine (VType Refined)
--- Check that dt is a datatype, otherwise it must have been a type variable.
-refineVType (MkDTTy x ts) =
+refineVType (MkDTTy x  ts) =
+--           x t_1 ... t_n
+--       or  x t_1 ... t_n t_{n+1}
   do dtm <- getRDTs
      case M.lookup x dtm of
        Just ps ->
-         -- if there's exactly one extra effect parameter then
-         -- instantiate it to "£"
-         do let ts' = if length ps == length ts + 1 && (snd (ps !! length ts) == ET) then
+--       data x p_1 ... p_{n+1}     (p_i being either eff or val ty var)
+         do -- If not specified yet, set t_{n+1} := [£]
+            let ts' = if length ps == length ts + 1 && (snd (ps !! length ts) == ET) then
                         ts ++ [EArg (MkAb (MkAbVar "£") M.empty)]
                       else
                         ts
             checkArgs x (length ps) (length ts')
             ts'' <- mapM refineTyArg ts'
             return $ MkDTTy x ts''
-       Nothing -> do -- interfaces or datatypes explicitly declare their type
-                     -- variables.
-                   m <- getTMap
-                   ctx <- getTopLevelCtxt
-                   if isHdrCtxt ctx || M.member x m then return $ MkTVar x
-                   else idError x "type variable"
+       Nothing -> do m <- getTMap
+                     ctx <- getTopLevelCtxt
+                     if isHdrCtxt ctx ||     -- Handlers use implicit polym.
+                        M.member x m then    -- x can be in val ty contexts
+                          return $ MkTVar x
+                     else idError x "type variable"
 refineVType (MkSCTy ty) = refineCType ty >>= return . MkSCTy
 refineVType (MkTVar x) =
   do dtm <- getRDTs
      case M.lookup x dtm of
        Just ps ->
-         -- if the data type is parameterised by a single effect
-         -- variable then instantiate it to "£"
+         -- if the data type is parameterised by a single eff var then instantiate it to "£"
          do let ts = case ps of
                        [(_, ET)] -> [EArg (MkAb (MkAbVar "£") M.empty)]
                        _ -> []
@@ -363,6 +423,14 @@ refineMH xs (MkSig id ty) = do cs <- mapM refineMHCls ys
 refineMHCls :: MHCls -> Refine (Clause Refined)
 refineMHCls (MkMHCls _ cls) = refineClause cls
 
+-- explicit refinements:
+-- + id "x" is refined to 1) MkDataCon:              0-ary constructor if matching
+--                        2) MkUse . MkOp . MkCmdId: command operator if matching
+--                        3) MkUse . MkOp . MkPoly:  poly multihandler operator if it exists
+--                        4) MkUse . MkOp . MkMono:  mono multihandler
+-- + applications (MkRawComb) are refined same way as ids
+-- + let x = e1 in e2    -->   case e1 {x -> e2}
+-- + [x, y, z]           -->   x cons (y cons (z cons nil))
 refineTm :: Tm Raw -> Refine (Tm Refined)
 refineTm (MkRawId id) =
   do ctrs <- getRCtrs
@@ -374,10 +442,12 @@ refineTm (MkRawId id) =
         Nothing ->
           case id `findPair` cmds of
             Just n -> return $ MkUse $ MkOp $ MkCmdId id
+            -- LC: Do we need to check if command's arity is 0?
             Nothing ->
               case id `findPair` hdrs of
-                Just n -> return $ MkUse $ MkOp $ MkPoly id
-                Nothing -> return $ MkUse $ MkOp $ MkMono id
+                Just n -> return $ MkUse $ MkOp $ MkPoly id  -- polytypic (n=0 means: takes unit (!) argument)
+                -- LC: Same here, check for handler's arity = 0?
+                Nothing -> return $ MkUse $ MkOp $ MkMono id -- monotypic: must be local variable
 refineTm (MkRawComb id xs) =
   do xs' <- mapM refineTm xs
      ctrs <- getRCtrs
@@ -424,6 +494,8 @@ refineClause (MkCls ps tm) = do ps' <- mapM refinePattern ps
                                 tm' <- refineTm tm
                                 return $ MkCls ps' tm'
 
+-- explicit refinements:
+-- + command patterns (e.g. <send x -> k>) must refer to existing command and match # of args
 refinePattern :: Pattern Raw -> Refine (Pattern Refined)
 refinePattern (MkVPat p) = MkVPat <$> refineVPat p
 refinePattern (MkCmdPat x ps k) =
@@ -435,6 +507,10 @@ refinePattern (MkCmdPat x ps k) =
        Nothing -> idError x "command"
 refinePattern (MkThkPat x) = return $ MkThkPat x
 
+-- explicit refinements:
+-- + variable patterns, e.g. "x", are refined to constructors if "x" is 0-ary constructor
+-- + data patterns have to be fully instantiated constructors
+-- + cons (%::%) and list patterns ([%, %, %]) become data patterns (cons expressions)
 refineVPat :: ValuePat Raw -> Refine (ValuePat Refined)
 refineVPat (MkVarPat x) =
   do ctrs <- getRCtrs
@@ -508,7 +584,7 @@ polyItf :: Itf Raw -> Bool
 polyItf (MkItf _ _ xs) = any polyCmd xs
 
 polyCmd :: Cmd Raw -> Bool
-polyCmd (MkCmd _ ts t) = any polyVType ts || polyVType t
+polyCmd (MkCmd _ _ ts t) = any polyVType ts || polyVType t
 
 polyCtr :: Ctr Raw -> Bool
 polyCtr (MkCtr _ ts) = any polyVType ts
@@ -546,9 +622,9 @@ builtinDataTs = [MkDT "List" [("X", VT)] [MkCtr "cons" [MkTVar "X"
 
 
 builtinItfs :: [Itf Refined]
-builtinItfs = [MkItf "Console" [] [MkCmd "inch" [] MkCharTy
-                                  ,MkCmd "ouch" [MkCharTy]
-                                                (MkDTTy "Unit" [])]]
+builtinItfs = [MkItf "Console" [] [MkCmd "inch" [] [] MkCharTy
+                                  ,MkCmd "ouch" [] [MkCharTy]
+                                                   (MkDTTy "Unit" [])]]
 
 builtinMHDefs :: [MHDef Refined]
 builtinMHDefs = map makeIntBinOp "+-" ++ [caseDef]
@@ -584,7 +660,7 @@ builtinCtrs = map add $ concatMap getCtrs builtinDataTs
 
 builtinCmds :: [IPair]
 builtinCmds = map add $ concatMap getCmds builtinItfs
-  where add (MkCmd id ts _) = (id,length ts)
+  where add (MkCmd id _ ts _) = (id,length ts)
 
 initRefine :: RState
 initRefine = MkRState builtinIFs builtinDTs builtinMHs builtinCtrs

@@ -66,48 +66,87 @@ desugar (MkProg xs) = MkProg $ evalFresh m
           do putEnv $ M.empty -- purge mappings from previous context.
              desugarTopTm tm
 
+-- no explicit refinements
 desugarTopTm :: TopTm Refined -> Desugar (TopTm Desugared)
 desugarTopTm (MkDataTm dt) = MkDataTm <$> desugarDataT dt
 desugarTopTm (MkItfTm itf) = MkItfTm <$> desugarItf itf
 desugarTopTm (MkDefTm def) = MkDefTm <$> desugarMHDef def
 
+-- explicit refinements:
+-- + type variables get fresh ids
 desugarDataT :: DataT Refined -> Desugar (DataT Desugared)
-desugarDataT (MkDT dt ps ctrs) =
-  do xs' <- mapM (freshRigid . fst) ps
+desugarDataT (MkDT dt ps                ctrs) =
+--                 id val & eff ty vars constructors
+  do -- generate fresh ids for ty vars
+     xs' <- mapM (freshRigid . fst) ps
+     -- map old value type variables to fresh ones
      putEnv $ M.fromList [(x, MkRTVar x') | ((x, VT), x') <- zip ps xs']
+     -- map old effect type variables to fresh ones
      putAbModEnv $ M.fromList [(x, MkAbRVar x') | ((x, ET), x') <- zip ps xs']
+     -- [(new var name, val or eff)]
      let ps' = [(x', k) | ((_, k), x') <- zip ps xs']
 
-     -- we know that the following will not modify the environments so
-     -- we do not need to backup and restore them
+     -- the following will only use but not modify the DState
      ctrs' <- mapM desugarCtr ctrs
+     -- ps' contains new fresh names
      return $ MkDT dt ps' ctrs'
 
+-- explicit refinements:
+-- + type variables get fresh ids
 desugarItf :: Itf Refined -> Desugar (Itf Desugared)
 desugarItf (MkItf itf ps cmds) =
-  do xs' <- mapM (freshRigid . fst) ps
-     putEnv $ M.fromList [(x, MkRTVar x') | ((x, VT), x') <- zip ps xs']
-     putAbModEnv $ M.fromList [(x, MkAbRVar x') | ((x, ET), x') <- zip ps xs']
+  do -- generate fresh ids for type variables
+     xs' <- mapM (freshRigid . fst) ps
+     let env' = M.fromList [(x, MkRTVar x') | ((x, VT), x') <- zip ps xs']       -- map old value type variables to fresh ones
+     let abModEnv' = M.fromList [(x, MkAbRVar x') | ((x, ET), x') <- zip ps xs'] -- map old effect type variables to fresh ones
+     -- [(new var name, val or eff)]
      let ps' = [(x', k) | ((_, k), x') <- zip ps xs']
 
-     cmds' <- mapM desugarCmd cmds
+     -- before desugaring each cmd, we need to reset the env
+     cmds' <- mapM (\c -> do putEnv env'
+                             putAbModEnv abModEnv'
+                             desugarCmd c)
+                   cmds
+     -- reset afterwards, too
+     putEnv env'
+     putAbModEnv abModEnv'
+
      return $ MkItf itf ps' cmds'
 
+-- no explicit refinements
 desugarMHDef :: MHDef Refined -> Desugar (MHDef Desugared)
 desugarMHDef (MkDef hdr ty xs) =
   do ty' <- desugarCType ty
      xs' <- mapM desugarClause xs
      return $ MkDef hdr ty' xs'
 
+-- explicit refinements:
+-- + type variables get fresh ids
 desugarCmd :: Cmd Refined -> Desugar (Cmd Desugared)
-desugarCmd (MkCmd cmd xs y) = do xs' <- mapM desugarVType xs
-                                 y' <- desugarVType y
-                                 return $ MkCmd cmd xs' y'
+desugarCmd (MkCmd cmd  ps                 xs       y) =
+--                id   val & eff ty vars  arg tys  return ty
+  do -- generate fresh ids for type variables
+     ps' <- mapM (freshRigid . fst) ps
+     -- map old value type variables to fresh ones
+     putEnv $ M.fromList [(p, MkRTVar p') | ((p, VT), p') <- zip ps ps']
+     -- map old effect type variables to fresh ones
+     putAbModEnv $ M.fromList [(p, MkAbRVar p') | ((p, ET), p') <- zip ps ps']
+     -- [(new var name, val or eff)]
+     let ps'' = [(p', k) | ((_, k), p') <- zip ps ps']
 
+     xs' <- mapM desugarVType xs
+     y' <- desugarVType y
+     return $ MkCmd cmd ps'' xs' y'
+
+-- no explicit refinements
 desugarCtr :: Ctr Refined -> Desugar (Ctr Desugared)
 desugarCtr (MkCtr ctr xs) = do xs' <- mapM desugarVType xs
                                return $ MkCtr ctr xs'
 
+-- explicit refinements:
+-- + replace val ty vars by corresponding MkRTVar's of env,
+--   generate new fresh one and add if not in env yet
+-- + replace 'String' by 'List Char'
 desugarVType :: VType Refined -> Desugar (VType Desugared)
 desugarVType (MkTVar x) =
   do env <- getEnv
@@ -119,29 +158,38 @@ desugarVType (MkTVar x) =
 desugarVType (MkDTTy dt ts) = do ts' <- mapM desugarTyArg ts
                                  return $ MkDTTy dt ts'
 desugarVType (MkSCTy ty) = MkSCTy <$> desugarCType ty
+-- replace 'String' by 'List Char'
 desugarVType MkStringTy = return $ desugaredStrTy
 desugarVType MkIntTy = return $ MkIntTy
 desugarVType MkCharTy = return $ MkCharTy
 
+-- nothing happens on this level
 desugarTyArg :: TyArg Refined -> Desugar (TyArg Desugared)
 desugarTyArg (VArg t) = VArg <$> desugarVType t
 desugarTyArg (EArg ab) = EArg <$> desugarAb ab
 
+-- nothing happens on this level
 desugarCType :: CType Refined -> Desugar (CType Desugared)
 desugarCType (MkCType ports peg) =
   MkCType <$> mapM desugarPort ports <*> desugarPeg peg
 
+-- nothing happens on this level
 desugarPort :: Port Refined -> Desugar (Port Desugared)
 desugarPort (MkPort adj ty) = MkPort <$> desugarAdj adj <*> desugarVType ty
 
+-- nothing happens on this level
 desugarPeg :: Peg Refined -> Desugar (Peg Desugared)
 desugarPeg (MkPeg ab ty) = MkPeg <$> desugarAb ab <*> desugarVType ty
 
+-- nothing happens on this level
 desugarAb :: Ab Refined -> Desugar (Ab Desugared)
 desugarAb (MkAb v m) = do v' <- desugarAbMod v
                           m' <- mapM (mapM desugarTyArg) m
                           return $ MkAb v' m'
 
+-- explicit desugaring:
+-- + replace effect type variables by corresponding MkAbRVar's of abModEnv,
+--   generate new fresh one and add if not in env yet
 desugarAbMod :: AbMod Refined -> Desugar (AbMod Desugared)
 desugarAbMod MkEmpAb = return MkEmpAb
 desugarAbMod (MkAbVar x) =
@@ -153,11 +201,11 @@ desugarAbMod (MkAbVar x) =
                      return var
        Just var -> return var
 
-
+-- nothing happens on this level
 desugarAdj :: Adj Refined -> Desugar (Adj Desugared)
 desugarAdj (MkAdj m) = MkAdj <$> mapM (mapM desugarTyArg) m
 
--- Clauses (and constituents) unaffected between Refined/Desugared phase
+-- no explicit desugaring: clauses (and constituents) unaffected between Refine/Desugar phase
 desugarClause :: Clause Refined -> Desugar (Clause Desugared)
 desugarClause (MkCls ps tm) = do ps' <- mapM desugarPattern ps
                                  tm' <- desugarTm tm
@@ -206,4 +254,3 @@ testProg = MkProg $
            ,MkDefTm $ MkDef "k" (MkCType [MkPort (MkAdj M.empty) (MkTVar "X")
                                          ,MkPort (MkAdj M.empty) (MkTVar "Y")]
                                  (MkPeg (MkAb (MkAbVar "£") M.empty) (MkTVar "X"))) []]
-

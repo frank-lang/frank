@@ -1,0 +1,299 @@
+{--- Drunk coin tossing: basic effect handlers ---}
+
+--- start of standard stuff ---
+data Maybe X = nothing | just X
+data Zero =     -- empty type
+
+on : X -> {X -> Y} -> Y
+on x f = f x
+
+if : Bool -> {X} -> {X} -> X
+if b t e = on b { true  -> t!
+                | false -> e! }
+
+append : List X -> List X -> List X
+append []        ys = ys
+append (x :: xs) ys = x :: (append xs ys)
+
+concat : List (List X) -> List X
+concat []          = []
+concat (xs :: xss) = append xs (concat xss)
+
+interface Abort = aborting : Zero
+
+abort : [Abort]X
+abort! = case aborting! {}
+
+data Bool = true | false
+
+interface Choice = choice : Bool
+--- end of standard stuff ---
+
+
+
+--- the drunken tosser
+
+data Toss = Heads | Tails
+
+toss : {[Choice]Toss}
+toss! = if choice! {Heads} {Tails}
+
+drunkToss : {[Choice, Abort]Toss}
+drunkToss! = if choice! {toss!} {abort!}
+
+drunkTosses : {Int -> [Choice, Abort]List Toss}
+drunkTosses 0 = []
+drunkTosses n = drunkToss! :: (drunkTosses (n-1))
+
+
+
+--- handlers
+
+trueChoice : {<Choice>X -> X}
+trueChoice x             = x
+trueChoice <choice -> k> = trueChoice (k true)
+
+
+allChoices : {<Choice>X -> List X}
+allChoices x             = [x]
+allChoices <choice -> k> = append (allChoices (k true)) (allChoices (k false))
+
+
+maybeAbort : <Abort>X -> Maybe X
+maybeAbort x               = just x
+maybeAbort <aborting -> k> = nothing
+
+listAbort : <Abort>X -> List X
+listAbort x               = [x]
+listAbort <aborting -> k> = []
+
+allResults : <Choice, Abort>X -> List X
+allResults x               = [x]
+allResults <choice -> k>   = append (allResults (k true)) (allResults (k false))
+allResults <aborting -> k> = []
+
+
+--- tests
+
+t1 : {Toss}
+t1! = trueChoice toss!
+-- Heads
+
+t2 : {List Toss}
+t2! = allChoices toss!
+-- [Heads, Tails]
+
+t3 : {Maybe Unit}
+t3! = maybeAbort abort!
+-- nothing
+
+t4 : {List Unit}
+t4! = listAbort abort!
+-- []
+
+t5 : {Maybe (List (List Toss))}
+t5! = maybeAbort (allChoices (drunkTosses 2))
+-- nothing
+
+t6 : {List (Maybe (List Toss))}
+t6! = allChoices (maybeAbort (drunkTosses 2))
+-- [just ([Heads, Heads]), just ([Heads, Tails]), nothing,
+--  just ([Tails, Heads]), just ([Tails, Tails]), nothing, nothing]
+--
+-- Question: Where do the `nothing's come from?
+-- Answer: (head, drop), (tail, drop), (drop, *)
+--
+-- [TTTT                   TTTF                   TTF*
+--  TFTT                   TFTF                   TFF*     F***]
+
+t7 : {List (List Toss)}
+t7! = concat (allChoices (listAbort (drunkTosses 2)))
+-- [[Heads, Heads], [Heads, Tails], [Tails, Heads], [Tails, Tails]]
+
+t8 : {List (List Toss)}
+t8! = concat (listAbort (allChoices (drunkTosses 2)))
+-- []
+
+t9 : {List (List Toss)}
+t9! = allResults (drunkTosses 2)
+-- [[Heads, Heads], [Heads, Tails], [Tails, Heads], [Tails, Tails]]
+
+
+
+interface MyAbort = myAborting : Zero
+
+myAbort: [MyAbort] X
+myAbort! = case myAborting! {}
+
+plus: Int -> Int -> Int
+plus m n = m + n
+
+data Pair X Y = pair X Y
+
+data PossiblyEffectful X [E] = pure X
+                             | effectful {[E]X}
+
+harmlessNumber : {PossiblyEffectful Int [Abort]}
+harmlessNumber! = pure 3
+
+explosiveNumber : {PossiblyEffectful Int [Abort]}
+explosiveNumber! = effectful abort
+
+defuser : {PossiblyEffectful Int [Abort]} -> {[Abort]Int}
+defuser e = case e! { (pure n) -> {n}
+                    | (effectful e') -> e'}
+
+plus': Pair Int Int -> Int
+plus' (pair m n) = m + n
+
+abortingThree: {[Abort]Int}
+abortingThree! = abort!
+
+myAbortingOne: {[MyAbort]Int}
+myAbortingOne! = myAbort!
+
+explosivePair: {Pair {[Abort]Int} {[MyAbort]Int}}
+explosivePair! = pair abortingThree myAbortingOne
+
+plainBool : {Bool}
+plainBool! = false
+
+tryTheGoodStuff: Pair {[Abort]Int} {[MyAbort]Int} -> Bool
+tryTheGoodStuff (pair a b) = a;b;plainBool!
+
+unFunction: Int -> Int
+unFunction n = 3
+
+binFunction : Int -> {Int -> Int}
+binFunction m = unFunction
+
+--unFunction : Int -> Int
+--unFunction m = binFunction m
+
+interface EffectfulState X [E] = get : {[E]X}
+	  	     	       | set : X -> Unit
+
+interface MyState X = myget : X
+                    | myset : X -> Unit
+
+miniProg : [MyState Int] Int
+miniProg! = myset 3; myget!
+			       
+littleProg : [EffectfulState Int [Abort]] Int
+littleProg! = set 3; get!; 3
+
+--interface ListOps = unaryOp : forall X [E], List {[E]X} -> List {[E]X}
+
+
+
+--interface Abort = abort: forall X, X
+--interface PolyChoice = choice : forall X, X -> X -> X
+
+interface TestA = testA: Unit
+interface TestB = testB: Unit
+
+slob : {[TestA,TestB]Int}
+slob! = testA!; testB!; 3
+
+slobHandler : <TestA,TestB>Int -> Bool
+slobHandler <testA -> k> = slobHandler k!
+slobHandler <testB -> k> = slobHandler k!
+slobHandler _            = true
+
+slobA : <TestA>Int -> Bool
+slobA <testA -> k> = slobA k!
+slobA _            = true
+
+slobB : <TestB>Bool -> Bool
+slobB <testB -> k> = slobB k!
+slobB _            = true
+
+combi : {Bool}
+combi! = slobB (slobA slob!)
+
+
+
+
+interface Out = out: String -> Unit
+interface Debug = debug: String -> Unit
+
+tinyProg: {[Out]Unit}
+tinyProg! = out "hey"
+
+someProg: {[Out,Debug]Unit}
+someProg! = out "out-msg"; debug "debug-msg"
+
+collectOut: <Out>X -> List String
+collectOut x            = []
+collectOut <out s -> k> = s :: (collectOut (k unit))
+
+collectDebug: <Debug>X -> List String
+collectDebug x            = []
+collectDebug <debug s -> k> = s :: (collectDebug (k unit))
+
+
+
+
+--interface Mem = ref: forall X, X -> Ref X
+--              | deref: forall X, Ref X -> X
+--	      | update: forall X, Ref X -> X -> Unit
+
+
+
+
+
+
+
+-- Define effects
+interface IO X = send: X -> Unit
+               | receive: X
+
+-- Cause effects
+doubler : {[IO Int]Unit}
+doubler! = case receive! { 0 -> unit
+                              | n -> send (n+n); doubler! }
+
+-- Handle effects
+runStreamProgram : <IO X>Unit -> List X -> List X
+runStreamProgram <send x -> k>   xs      = x :: (runStreamProgram (k unit) xs)
+runStreamProgram <receive -> k>  (x::xr) = runStreamProgram (k x) xr
+runStreamProgram _               _       = []
+
+-- Test run
+--main : {List Int}
+--main! = runStreamProgram doubler! [1, 2, 3, 0]  -- results in [2, 4, 6]
+
+
+
+
+-- Why does this not work???
+data Box X [E]  = empty
+                | safe X
+		| unsafe {[E]X}
+
+--unpack : Box X [Abort] -> X -> X
+--unpack empty    alt = alt
+--unpack (safe x) alt = x
+--unpack (unsafe x') alt = defuse x' alt
+
+--defuse : <Abort>X -> X -> X
+--defuse <aborting -> k> alt = alt
+--defuse x               alt = x
+
+-- Test run
+--main : {String}
+--main! = unpack (safe "Hello") "failmsg"
+
+
+
+
+
+data Apple = Gala | Boskop
+data Basket = FruitBasket Apple
+
+
+
+
+-- Test run
+main : {Apple}
+main! = Gala

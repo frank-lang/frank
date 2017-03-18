@@ -1,0 +1,13 @@
+
+
+-- nondetGreeting: {[MChoice String]String}
+-- nondetGreeting! = choose {"Morning!"} {"Night!"}
+
+interface MonoChoice X = choose : {X} -> {X} -> X
+
+pickLeft: {<MonoChoice Y>X -> X}
+pickLeft <choose a b -> k> = pickLeft (k (a unit))
+pickLeft a = a
+
+main: {String}
+main! = "Hey"

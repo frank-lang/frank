@@ -1,0 +1,12 @@
+interface PChoice = choose: forall X, {X} -> {X} -> X
+
+nondetGreeting: {[PChoice]String}
+nondetGreeting! = choose {"Morning!"} {"Night!"}
+
+determiniser: <PChoice>X -> Y
+determiniser <choose a b -> k> = k (a!)
+determiniser a = a
+
+
+main: {String}
+main! = "hey"

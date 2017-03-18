@@ -87,7 +87,9 @@ data MHDef a = MkDef Id (CType a) [Clause a]
 {- MH here = 'operator' in the paper. Operator here doesn't have a name
    in the paper. -}
 
-data Operator = MkMono Id | MkPoly Id | MkCmdId Id
+data Operator = MkMono Id  -- monotypic (just variable)
+              | MkPoly Id  -- polytpic  (handler expecting arguments, at least a unit (!))
+              | MkCmdId Id
               deriving (Show, Eq)
 
 data Use a = MkOp Operator | MkApp Operator [Tm a]
@@ -116,7 +118,7 @@ deriving instance (Eq) (TopTm a)
 
 data Tm a where
   MkRawId :: Id -> Tm Raw
-  MkRawComb :: Id -> [Tm Raw] -> Tm Raw
+  MkRawComb :: Id -> [Tm Raw] -> Tm Raw  -- application (at least 1, could also be unit application "com!")
   MkSC :: SComp a -> Tm a
   MkLet :: Id -> Tm Raw -> Tm Raw -> Tm Raw
   MkStr :: String -> Tm a
@@ -150,7 +152,8 @@ data Itf a = MkItf Id [(Id, Kind)] [Cmd a]
 data Ctr a = MkCtr Id [VType a]
   deriving (Show, Eq)
 
-data Cmd a = MkCmd Id [VType a] (VType a)
+data Cmd a = MkCmd Id  [(Id, Kind)] [VType a] (VType a)
+--                 id  ty vars      arg tys   result ty
   deriving (Show, Eq)
 
 data Pattern a where
@@ -175,43 +178,44 @@ deriving instance (Eq) (ValuePat a)
 type Id = String
 
 -- Type hierarchy
-data CType a = MkCType [Port a] (Peg a)
+data CType a = MkCType [Port a] (Peg a)      -- computation types
   deriving (Show, Eq)
 
-data Port a = MkPort (Adj a) (VType a)
+data Port a = MkPort (Adj a) (VType a)       -- ports
   deriving (Show, Eq)
 
-data Peg a = MkPeg (Ab a) (VType a)
+data Peg a = MkPeg (Ab a) (VType a)          -- pegs
   deriving (Show, Eq)
 
-data VType a where
-  MkDTTy :: Id -> [TyArg a] -> VType a
-  MkSCTy :: CType a -> VType a
-  MkTVar :: NotDesugared a => Id -> VType a
-  MkRTVar :: Id -> VType Desugared
-  MkFTVar :: Id -> VType Desugared
-  MkStringTy :: NotDesugared a => VType a
-  MkIntTy :: VType a
-  MkCharTy :: VType a
+data VType a where                           -- value types
+  MkDTTy :: Id -> [TyArg a] -> VType a       --   data types (instant. type constr.)  may be refined to MkTVar
+  MkSCTy :: CType a -> VType a               --   suspended computation types
+  MkTVar :: NotDesugared a => Id -> VType a  --                                       may be refined to MkDTTy
+  MkRTVar :: Id -> VType Desugared           --   rigid type variable (bound)
+  MkFTVar :: Id -> VType Desugared           --   flexible type variable (free)
+  MkStringTy :: NotDesugared a => VType a    --   string type
+  MkIntTy :: VType a                         --   int type
+  MkCharTy :: VType a                        --   char type
 
 deriving instance (Show) (VType a)
 deriving instance (Eq) (VType a)
 
-type ItfMap a = M.Map Id [TyArg a]
+type ItfMap a = M.Map Id [TyArg a]           -- interface-id  ->  list of ty arg's  (each entry an instantiation)
 
--- Adjustments
-data Adj a = MkAdj (ItfMap a)
+-- Adjustments (set of instantiated interfaces)
+data Adj a = MkAdj (ItfMap a)                -- interface-id  ->  list of ty arg's
   deriving (Show, Eq)
 
 -- Abilities
-data Ab a = MkAb (AbMod a) (ItfMap a)
+data Ab a = MkAb (AbMod a) (ItfMap a)        -- interface-id  ->  list of ty arg's
   deriving (Show, Eq)
 
+-- Ability modes
 data AbMod a where
-  MkEmpAb :: AbMod a
-  MkAbVar :: NotDesugared a => Id -> AbMod a
-  MkAbRVar :: Id -> AbMod Desugared
-  MkAbFVar :: Id -> AbMod Desugared
+  MkEmpAb :: AbMod a                         -- empty            (closed ability)
+  MkAbVar :: NotDesugared a => Id -> AbMod a -- non-desugared effect variable
+  MkAbRVar :: Id -> AbMod Desugared          -- rigid eff var    (open ability)
+  MkAbFVar :: Id -> AbMod Desugared          -- flexible eff var (open ability)
 
 deriving instance Show (AbMod a)
 deriving instance Eq (AbMod a)

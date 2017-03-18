@@ -155,14 +155,24 @@ parseItf = do reserved "interface"
 parseCmd :: MonadicParsing m => m (Cmd Raw)
 parseCmd = do cmd <- identifier
               symbol ":"
-              (xs,y) <- parseCmdType
-              return (MkCmd cmd xs y)
+              (ps,xs,y) <- parseCmdType
+              return (MkCmd cmd ps xs y)
 
--- only value arguments and result type
-parseCmdType :: MonadicParsing m => m ([VType Raw], VType Raw)
-parseCmdType = do vs <- sepBy1 parseVType (symbol "->")
-                  if length vs == 1 then return ([],head vs)
-                  else return (init vs, last vs)
+-- type vars, input types, output type
+parseCmdType :: MonadicParsing m => m ([(Id, Kind)], [VType Raw], VType Raw)
+parseCmdType = do maybePs <- optional parseQuantifiedTVs -- polymorphic commands
+                  let ps = case maybePs of Just tvs -> tvs
+                                           Nothing -> []
+                  vs <- sepBy1 parseVType (symbol "->")
+                  if length vs == 1 then return (ps, [],head vs)
+                  else return (ps, init vs, last vs)
+
+-- allow polymorphic commands of the form "mycommand : forall X [E], X -> {[E]X}"
+parseQuantifiedTVs :: MonadicParsing m => m [(Id,Kind)]
+parseQuantifiedTVs = do reserved "forall"
+                        ps <- some parseTyVar
+                        symbol ","
+                        return ps
 
 parseCType :: MonadicParsing m => m (CType Raw)
 parseCType = do ports <- many (try (parsePort <* symbol "->"))
@@ -203,9 +213,11 @@ parseItfInstances = sepBy parseItfInstance (symbol ",")
 
 -- 0 | 0|Interfaces | E|Interfaces | Interfaces
 parseAbBody :: MonadicParsing m => m (Ab Raw)
-parseAbBody = (do symbol "0"
+parseAbBody = -- closed ability: [0] or [0 | i_1, ... i_n]
+              (do symbol "0"
                   xs <- option [] (symbol "|" *> parseItfInstances)
                   return $ MkAb MkEmpAb (M.fromList xs)) <|>
+              -- open ability:   [i_1, ..., i_n] (implicitly e := £) or [e | i_1, ..., i_n]
               (do e <- option (MkAbVar "£") (try $ MkAbVar <$> identifier <* symbol "|")
                   xs <- parseItfInstances
                   return $ MkAb e (M.fromList xs))
@@ -251,11 +263,14 @@ parseRawTmSeq = do tm1 <- parseRawTm
                                   return $ MkTmSeq tm1 tm2
                      Nothing -> return tm1
 
+-- parse term of 1st syntactic category
 parseRawTm :: MonadicParsing m => m (Tm Raw)
 parseRawTm = parseLet <|>
              try parseRawOpTm <|>
              parseRawTm'
 
+-- parse term of 2nd syntactic category
+-- parse binary operation or term comb t_1 ... t_n
 parseRawOpTm :: MonadicParsing m => m (Tm Raw)
 parseRawOpTm = do uminus <- optional $ symbol "-"
                   tm1 <- parseRawOperandTm
@@ -265,25 +280,25 @@ parseRawOpTm = do uminus <- optional $ symbol "-"
                   (do op' <- choice $ map symbol ["+","-","*","/","::"]
                       let op = if op' == "::" then "cons" else op'
                       tm2 <- parseRawOperandTm
-                      return $ MkRawComb op [tm1', tm2]) <|> return tm1'
+                      return $ MkRawComb op [tm1', tm2])    <|> return tm1'
 
 parseRawOperandTm :: MonadicParsing m => m (Tm Raw)
-parseRawOperandTm = try parseComb <|>
-                    parens parseRawOpTm <|>
-                    try parseNullaryComb <|>
-                    parseId <|>
-                    MkInt <$> natural
+parseRawOperandTm = try parseComb <|>        -- x t_1 ... t_n
+                    parens parseRawOpTm <|>  -- (t)
+                    try parseNullaryComb <|> -- t!
+                    parseId <|>              -- x
+                    MkInt <$> natural        -- 42
 
 parseId :: MonadicParsing m => m (Tm Raw)
 parseId = do x <- identifier
              return $ MkRawId x
 
-parseNullaryComb :: MonadicParsing m => m (Tm Raw)
+parseNullaryComb :: MonadicParsing m => m (Tm Raw) -- x!
 parseNullaryComb = do x <- identifier
                       symbol "!"
                       return $ MkRawComb x []
 
-parseLet :: MonadicParsing m => m (Tm Raw)
+parseLet :: MonadicParsing m => m (Tm Raw) -- let x = s in t
 parseLet = do reserved "let"
               x <- identifier
               symbol "="
@@ -292,20 +307,21 @@ parseLet = do reserved "let"
               tm2 <- parseRawTmSeq
               return $ MkLet x tm1 tm2
 
+-- parse any term except let-expression or binary operation
 parseRawTm' :: MonadicParsing m => m (Tm Raw)
-parseRawTm' = parens parseRawTmSeq <|>
-              try parseNullaryComb <|>
-              parseId <|>
-              MkSC <$> parseRawSComp <|>
-              MkStr <$> stringLiteral <|>
-              MkInt <$> natural <|>
-              MkChar <$> charLiteral <|>
-              MkList <$> listTm
+parseRawTm' = parens parseRawTmSeq <|>     -- t_1 ; ... ; t_n
+              try parseNullaryComb <|>     -- x!
+              parseId <|>                  -- x
+              MkSC <$> parseRawSComp <|>   -- { p_1 -> t_1 | ... | p_n -> t_n }
+              MkStr <$> stringLiteral <|>  -- "string"
+              MkInt <$> natural <|>        -- 42
+              MkChar <$> charLiteral <|>   -- 'c'
+              MkList <$> listTm            -- [t_1, ..., t_n]
 
-listTm :: MonadicParsing m => m [Tm Raw]
+listTm :: MonadicParsing m => m [Tm Raw]          -- [t_1, ..., t_n]
 listTm = brackets (sepBy parseRawTm (symbol ","))
 
-parseComb :: MonadicParsing m => m (Tm Raw)
+parseComb :: MonadicParsing m => m (Tm Raw) -- x
 parseComb = do x <- identifier
                args <- choice [some parseRawTm', symbol "!" >> pure []]
                return $ MkRawComb x args
