@@ -16,7 +16,6 @@ executable frank
   other-modules: BwdFwd
                , Compile
                , DesugarSyntax
-               , ExpectedTestOutput
                , FreshNames
                , Parser
                , RefineSyntax
