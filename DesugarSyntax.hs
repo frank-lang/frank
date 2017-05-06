@@ -190,7 +190,7 @@ desugarSComp :: SComp Refined -> Desugar (SComp Desugared)
 desugarSComp (MkSComp xs) = MkSComp <$> mapM desugarClause xs
 
 desugarUse :: Use Refined -> Desugar (Use Desugared)
-desugarUse (MkApp op xs) = MkApp op <$> mapM desugarTm xs
+desugarUse (MkApp use xs) = MkApp <$> desugarUse use <*> mapM desugarTm xs
 desugarUse (MkOp op) = return $ MkOp op
 
 desugarDCon :: DataCon Refined -> Desugar (DataCon Desugared)
@@ -199,11 +199,13 @@ desugarDCon (MkDataCon id xs) = MkDataCon id <$> mapM desugarTm xs
 -- Test program
 testProg :: Prog Refined
 testProg = MkProg $
-           [MkDataTm $ MkDT "TypeA" [("X", VT), ("Y", VT)] [MkCtr "one" [MkTVar "X"]
-                                                           ,MkCtr "two" [MkTVar "X"
-                                                               ,MkTVar "Y"]]
+           [MkDataTm $ MkDT "TypeA" [("X", VT), ("Y", VT)]
+            [MkCtr "one" [MkTVar "X"]
+            ,MkCtr "two" [MkTVar "X"
+                         ,MkTVar "Y"]]
            ,MkDataTm $ MkDT "TypeB" [("X", VT)] [MkCtr "Just" [MkTVar "X"]]
-           ,MkDefTm $ MkDef "k" (MkCType [MkPort (MkAdj M.empty) (MkTVar "X")
-                                         ,MkPort (MkAdj M.empty) (MkTVar "Y")]
-                                 (MkPeg (MkAb (MkAbVar "£") M.empty) (MkTVar "X"))) []]
+           ,MkDefTm $ MkDef "k"
+            (MkCType [MkPort (MkAdj M.empty) (MkTVar "X")
+                     ,MkPort (MkAdj M.empty) (MkTVar "Y")]
+             (MkPeg (MkAb (MkAbVar "£") M.empty) (MkTVar "X"))) []]
 

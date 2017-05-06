@@ -26,7 +26,6 @@ import Test.Tasty (TestTree, testGroup)
 import Test.Tasty.HUnit (testCase, assertEqual, assertFailure, Assertion)
 
 import Syntax
-import qualified ExpectedTestOutput as ETO
 
 newtype FrankParser t m a =
   FrankParser { runFrankParser :: IndentationParserT t m a }
@@ -258,27 +257,28 @@ parseRawTm = parseLet <|>
 
 parseRawOpTm :: MonadicParsing m => m (Tm Raw)
 parseRawOpTm = do uminus <- optional $ symbol "-"
-                  tm1 <- parseRawOperandTm
-                  let tm1' = case uminus of
-                        Just _ -> MkRawComb "-" [MkInt 0,tm1]
-                        Nothing -> tm1
+                  t1 <- parseRawOperandTm
+                  let t1' = case uminus of
+                        Just _ -> MkUse $ MkRawComb (MkRawId "-") [MkInt 0,t1]
+                        Nothing -> t1
                   (do op' <- choice $ map symbol ["+","-","*","/","::"]
                       let op = if op' == "::" then "cons" else op'
-                      tm2 <- parseRawOperandTm
-                      return $ MkRawComb op [tm1', tm2]) <|> return tm1'
+                      t2 <- parseRawOperandTm
+                      return $ MkUse $ MkRawComb (MkRawId op) [t1',t2])
+                    <|> return t1'
 
 parseRawOperandTm :: MonadicParsing m => m (Tm Raw)
-parseRawOperandTm = try parseComb <|>
+parseRawOperandTm = MkUse <$> try parseComb <|>
                     parens parseRawOpTm <|>
-                    parseId <|>
+                    MkUse <$> parseId <|>
                     MkInt <$> natural
 
-parseId :: MonadicParsing m => m (Tm Raw)
+parseId :: MonadicParsing m => m (Use Raw)
 parseId = do x <- identifier
              return $ MkRawId x
 
-parseNullaryComb :: MonadicParsing m => m (Tm Raw)
-parseNullaryComb = do x <- identifier
+parseNullaryComb :: MonadicParsing m => m (Use Raw)
+parseNullaryComb = do x <- choice [parseId, parens parseComb]
                       symbol "!"
                       return $ MkRawComb x []
 
@@ -292,9 +292,9 @@ parseLet = do reserved "let"
               return $ MkLet x tm1 tm2
 
 parseRawTm' :: MonadicParsing m => m (Tm Raw)
-parseRawTm' = parens parseRawTmSeq <|>
-              try parseNullaryComb <|>
-              parseId <|>
+parseRawTm' = MkUse <$> try parseNullaryComb <|>
+              parens parseRawTmSeq <|>
+              MkUse <$> parseId <|>
               MkSC <$> parseRawSComp <|>
               MkStr <$> stringLiteral <|>
               MkInt <$> natural <|>
@@ -304,8 +304,8 @@ parseRawTm' = parens parseRawTmSeq <|>
 listTm :: MonadicParsing m => m [Tm Raw]
 listTm = brackets (sepBy parseRawTm (symbol ","))
 
-parseComb :: MonadicParsing m => m (Tm Raw)
-parseComb = do x <- identifier
+parseComb :: MonadicParsing m => m (Use Raw)
+parseComb = do x <- choice [parseId, parens parseComb]
                args <- choice [some parseRawTm', symbol "!" >> pure []]
                return $ MkRawComb x args
 
@@ -385,6 +385,8 @@ runParseFromFileEx ev p fname =
 runProgParseFromFileEx ev fname = runParseFromFileEx ev prog fname
 
 --runCharParseFromFile = runParseFromFileEx evalCharIndentationParserT
+runTokenParseFromFile :: (MonadIO m, Applicative m, MonadicParsing m) =>
+                         String -> m (Either String (Prog Raw))
 runTokenParseFromFile = runProgParseFromFileEx evalTokenIndentationParserT
 
 --runCharParse = runParse evalCharIndentationParserT
@@ -398,7 +400,7 @@ input = [ "tests/evalState.fk"
         , "tests/paper.fk"]
 
 --outputc = map runCharParseFromFile input
-outputt = map runTokenParseFromFile input
+--outputt = map runTokenParseFromFile input
 
 assertParsedOk :: (Show err, Show a, Eq a) => IO (Either err a) -> IO a
                   -> Assertion
@@ -410,16 +412,3 @@ assertParsedOk actual expected =
        Left err -> do y <- expected
                       assertFailure ("parse failed with " ++ show err
                                      ++ ", expected " ++ show y)
-
-allTests :: TestTree
-allTests =
-  testGroup "Frank (trifecta)"
-  [
-    -- TODO: Look into why adding comments have broken char parsing
-    -- testGroup "char parsing" $
-    -- map (uncurry testCase) $
-    -- zip input $ map (uncurry assertParsedOk) (zip outputc ETO.expected),
-    testGroup "token parsing" $
-    map (uncurry testCase) $
-    zip input $ map (uncurry assertParsedOk) (zip outputt ETO.expected)
-  ]

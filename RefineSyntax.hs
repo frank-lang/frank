@@ -294,7 +294,8 @@ refineItfMap m = do xs <- mapM (uncurry refineEntry) (M.toList m)
           do itfs <- getRItfs
              case M.lookup x itfs of
                Just ps ->
-                 do let ts' = if length ps == length ts + 1 && (snd (ps !! length ts) == ET) then
+                 do let ts' = if length ps == length ts + 1 &&
+                                 (snd (ps !! length ts) == ET) then
                                 ts ++ [EArg (MkAb (MkAbVar "£") M.empty)]
                               else
                                 ts
@@ -363,42 +364,50 @@ refineMH xs (MkSig id ty) = do cs <- mapM refineMHCls ys
 refineMHCls :: MHCls -> Refine (Clause Refined)
 refineMHCls (MkMHCls _ cls) = refineClause cls
 
-refineTm :: Tm Raw -> Refine (Tm Refined)
-refineTm (MkRawId id) =
+refineUse :: Use Raw -> Refine (Either (Use Refined) (Tm Refined))
+refineUse (MkRawId id) =
   do ctrs <- getRCtrs
      cmds <- getRCmds
      hdrs <- getRMHs
      case id `findPair` ctrs of
         Just n -> do checkArgs id n 0
-                     return $ MkDCon $ MkDataCon id []
+                     return $ Right $ MkDCon $ MkDataCon id []
         Nothing ->
           case id `findPair` cmds of
-            Just n -> return $ MkUse $ MkOp $ MkCmdId id
+            Just n -> return $ Left $ MkOp $ MkCmdId id
             Nothing ->
               case id `findPair` hdrs of
-                Just n -> return $ MkUse $ MkOp $ MkPoly id
-                Nothing -> return $ MkUse $ MkOp $ MkMono id
-refineTm (MkRawComb id xs) =
+                Just n -> return $ Left $ MkOp $ MkPoly id
+                Nothing -> return $ Left $ MkOp $ MkMono id
+refineUse (MkRawComb (MkRawId id) xs) =
   do xs' <- mapM refineTm xs
      ctrs <- getRCtrs
      cmds <- getRCmds
      hdrs <- getRMHs
      case id `findPair` ctrs of
         Just n -> do checkArgs id n (length xs')
-                     return $ MkDCon $ MkDataCon id xs'
+                     return $ Right $ MkDCon $ MkDataCon id xs'
         Nothing ->
           case id `findPair` cmds of
             Just n -> do checkArgs id n (length xs')
-                         return $ MkUse $ MkApp (MkCmdId id) xs'
+                         return $ Left $ MkApp (MkOp $ MkCmdId id) xs'
             Nothing ->
               case id `findPair` hdrs of
                 Just n -> do checkArgs id n (length xs')
-                             return $ MkUse $ MkApp (MkPoly id) xs'
-                Nothing -> return $ MkUse $ MkApp (MkMono id) xs'
+                             return $ Left $ MkApp (MkOp $ MkPoly id) xs'
+                Nothing -> return $ Left $ MkApp (MkOp $ MkMono id) xs'
+refineUse (MkRawComb x xs) =
+  do x' <- refineUse x
+     case x' of
+       Left use -> do xs' <- mapM refineTm xs
+                      return $ Left $ MkApp use xs'
+       Right _ -> throwError ("expected use but got term: " ++ show x')
+
+refineTm :: Tm Raw -> Refine (Tm Refined)
 refineTm (MkLet x t1 t2) =
   do s1 <- refineTm t1
      s2 <- refineTm $ MkSC $ MkSComp [MkCls [MkVPat $ MkVarPat x] t2]
-     return $ MkUse $ MkApp (MkPoly "case") [s1, s2]
+     return $ MkUse $ MkApp (MkOp $ MkPoly "case") [s1, s2]
 refineTm (MkSC x) = do x' <- refineSComp x
                        return $ MkSC x'
 refineTm (MkStr x) = return $ MkStr x
@@ -414,6 +423,10 @@ refineTm (MkList ts) =
 refineTm (MkTmSeq t1 t2) = do t1' <- refineTm t1
                               t2' <- refineTm t2
                               return $ MkTmSeq t1' t2'
+refineTm (MkUse u) = do u' <- refineUse u
+                        case u' of
+                          Left use -> return $ MkUse use
+                          Right tm -> return tm
 
 refineSComp :: SComp Raw -> Refine (SComp Refined)
 refineSComp (MkSComp xs) = do xs' <- mapM refineClause xs
@@ -558,13 +571,13 @@ caseDef = MkDef
           "case"
           (MkCType
             [MkPort (MkAdj M.empty) (MkTVar "X")
-            ,MkPort (MkAdj M.empty) (MkSCTy (MkCType
-                                              [MkPort (MkAdj M.empty) (MkTVar "X")]
-                                              (MkPeg (MkAb (MkAbVar "£") M.empty) (MkTVar "Y"))))]
+            ,MkPort (MkAdj M.empty)
+             (MkSCTy (MkCType [MkPort (MkAdj M.empty) (MkTVar "X")]
+                      (MkPeg (MkAb (MkAbVar "£") M.empty) (MkTVar "Y"))))]
             (MkPeg (MkAb (MkAbVar "£") M.empty) (MkTVar "Y")))
           [MkCls
             [MkVPat (MkVarPat "x"), MkVPat (MkVarPat "f")]
-            (MkUse (MkApp (MkMono "f") [MkUse (MkOp (MkMono "x"))]))]
+            (MkUse (MkApp (MkOp $ MkMono "f") [MkUse (MkOp (MkMono "x"))]))]
 
 builtinMHs :: [IPair]
 builtinMHs = map add builtinMHDefs

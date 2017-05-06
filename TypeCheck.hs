@@ -122,7 +122,7 @@ checkMHDef (MkDef id ty@(MkCType ps q) cs) =
 inferUse :: Use Desugared -> Contextual (VType Desugared)
 inferUse (MkOp x) = find x >>= (instantiate x)
 inferUse (MkApp f xs) =
-  do ty <- find f >>= (instantiate f)
+  do ty <- inferUse f
      discriminate ty
   where checkArgs :: [Port Desugared] -> [Tm Desugared] -> Contextual ()
         checkArgs ps xs = mapM_ (uncurry checkArg) (zip ps xs)

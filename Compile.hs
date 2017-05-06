@@ -160,7 +160,7 @@ compileTm (MkDCon d) = compileDataCon d
 
 compileUse :: NotRaw a => Use a -> Compile S.Exp
 compileUse (MkOp op) = compileOp op
-compileUse (MkApp op xs) = (S.:$) <$> compileOp op <*> mapM compileTm xs
+compileUse (MkApp use xs) = (S.:$) <$> compileUse use <*> mapM compileTm xs
 
 compileDataCon :: NotRaw a => DataCon a -> Compile S.Exp
 compileDataCon (MkDataCon id xs) = do xs' <- mapM compileTm xs

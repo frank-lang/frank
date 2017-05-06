@@ -1,0 +1,21 @@
+interface Cow = moo : {[Cow]Unit}
+
+app : {{X} -> X}
+app f = f!
+
+cow : {[Cow]Unit}
+cow! = (moo!)!
+
+id : X -> X
+id x = x
+
+--- nested argument application
+naa : {[Cow]Unit}
+naa! = id (moo!)!
+
+-- nested use and argument application
+coo_moo_moo : {[Cow]Unit}
+coo_moo_moo! = (id id) (id moo!)!
+
+main : {Unit}
+main! = unit
