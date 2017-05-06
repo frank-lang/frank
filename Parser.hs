@@ -270,7 +270,6 @@ parseRawOpTm = do uminus <- optional $ symbol "-"
 parseRawOperandTm :: MonadicParsing m => m (Tm Raw)
 parseRawOperandTm = try parseComb <|>
                     parens parseRawOpTm <|>
-                    try parseNullaryComb <|>
                     parseId <|>
                     MkInt <$> natural
 
