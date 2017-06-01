@@ -1,0 +1,11 @@
+-- #desc Command not contained in interfaces within port adjustment
+-- #return command write not found in adjustment <Send X>
+interface Send X = send : X -> Int
+
+interface Write X = write : Unit -> X
+
+f : <Send X>Int -> Int
+f   <write x -> k> = 0
+
+main : {Int}
+main! = 0

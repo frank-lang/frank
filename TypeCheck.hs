@@ -121,10 +121,14 @@ checkMHDef (MkDef id ty@(MkCType ps q) cs) =
 -- Functions below implement the typing rules described in the paper.
 inferUse :: Use Desugared -> Contextual (VType Desugared)
 inferUse (MkOp x) = find x >>= (instantiate x)
-inferUse (MkApp f xs) =
+inferUse app@(MkApp f xs) =
   do ty <- inferUse f
      discriminate ty
-  where checkArgs :: [Port Desugared] -> [Tm Desugared] -> Contextual ()
+  where appAbError :: String -> Contextual ()
+        appAbError msg | inDebugMode = throwError (msg ++ " in " ++ show app)
+        appAbError msg = throwError msg
+
+        checkArgs :: [Port Desugared] -> [Tm Desugared] -> Contextual ()
         checkArgs ps xs = mapM_ (uncurry checkArg) (zip ps xs)
 
         checkArg :: Port Desugared -> Tm Desugared -> Contextual ()
@@ -133,7 +137,7 @@ inferUse (MkApp f xs) =
         discriminate :: VType Desugared -> Contextual (VType Desugared)
         discriminate ty@(MkSCTy (MkCType ps (MkPeg ab ty'))) =
           do amb <- getAmbient
-             unifyAb amb ab
+             catchError (unifyAb amb ab) appAbError
              checkArgs ps xs
              return ty'
         discriminate ty@(MkFTVar x) =

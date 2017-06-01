@@ -22,9 +22,9 @@ state   x         y         = y
 -- first, define an evil state handler which quits on get, smuggling out the
 -- continuation as data.
 
-data A = MkA | MkAA | MkRec A
+data Payload = MkA | MkAA | MkRec Payload
 
-smuggle : {<State A>X -> [0]Either {A -> [0|State A]X} X}
+smuggle : {<State Payload>X -> [0]Either {Payload -> [0|State Payload]X} X}
 smuggle <get -> k> = left k -- k's peg type says this is ok (Sig = empty, so
 	     	     	    -- it doesn't matter whose candidate rule)
 smuggle <put s -> k> = smuggle (k unit)
@@ -37,7 +37,9 @@ catch <aborting -> _> h = h!
 
 -- here's a thing which post-processes a smuggle, running the smuggled
 -- continuation with the regular state handler
-juggle : A -> Either {A -> [0|State A]X} X -> X
+-- NB: If we have open pegs we get an error here because the first parameter
+-- to Either does not unify with {Payload -> [e|Abort,State Payload]X}
+juggle : {Payload -> Either {Payload -> [0|State Payload]X} X -> X}
 juggle a (right x) = x
 juggle a (left k) = state a (k a)
 
@@ -55,5 +57,5 @@ and the ambient.
 -}
 
 -- #return cannot unify abilities [0, Abort] and [0]
-main : {[0]A}
+main : {[0]Payload}
 main! = juggle MkAA (catch (smuggle (get! ; abort!)) {right MkA})
