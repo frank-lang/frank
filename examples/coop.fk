@@ -1,25 +1,32 @@
-{--- Cooperative concurrency ---}
-
 --- start of standard stuff ---
-map : {X -> Y} -> List X -> List Y
-map f nil         = nil
-map f (cons x xs) = cons (f x) (map f xs)
+data Maybe X = just X | nothing
+data Bool = true | false
 
-reverse' : List X -> List X -> List X
-reverse' nil         ys = ys
-reverse' (cons x xs) ys = reverse' xs (cons x ys)
+map : {{X -> Y} -> List X -> List Y}
+map f []        = []
+map f (x :: xs) = f x :: map f xs
 
-reverse : List X -> List X
-reverse xs = reverse' xs nil
+reverse' : {List X -> List X -> List X}
+reverse' []        ys = ys
+reverse' (x :: xs) ys = reverse' xs (x :: ys)
 
-print : String -> [Console]Unit
+reverse : {List X -> List X}
+reverse xs = reverse' xs []
+
+print : {String -> [Console]Unit}
 print s = map ouch s; unit
 --- end of standard stuff ---
 
+
+
+{--- Cooperative concurrency ---}
+
+-- cooperative concurrency interface
 interface Co = fork : {[Co]Unit} -> Unit
              | yield : Unit
 
-test : [Co [Console], Console]Unit
+-- example abstract concurrent computation
+test : {[Co [Console], Console]Unit}
 test! = print "M1 ";
         fork {print "A1 "; yield!; print "A2 "};
         print "M2 ";
@@ -27,52 +34,65 @@ test! = print "M1 ";
         fork {print "B1 "; yield!; print "B2 "};
         yield!;
         print "M3 ";
-        yield!; yield!;
+        yield!;
         print "\n"
 
--- silly scheduler
--- (always picks the most recent process to switch to)
-silly : List {[Co]Unit} -> <Co>Unit -> Unit
-silly (cons p ps) <yield -> k>  = silly (cons {k unit} ps) p!
-silly (cons p ps) unit          = silly ps p!
-silly ps          <fork p -> k> = silly (cons p ps) (k unit)
-silly nil         <_>           = unit
+-- queue interface
+interface Queue S = enqueue : S -> Unit
+                  | dequeue : Maybe S
 
-t1 : [Console]Unit
-t1! = silly nil test!
+-- process queue computations
+data Proc = proc {[Queue Proc]Unit}
 
--- fair scheduler (continuation before fork)
-fairkf : List {[Co]Unit} -> List {[Co]Unit} -> <Co>Unit -> Unit
-fairkf ps          qs  <fork p -> k> = fairkf ps (cons p qs) (k unit)
-fairkf ps          qs  <yield -> k>  = fairkf ps (cons {k unit} qs) unit
-fairkf nil         nil unit          = unit
-fairkf nil         qs  unit          = fairkf (reverse qs) nil unit
-fairkf (cons p ps) qs  unit          = fairkf ps qs p!
+enqProc : {[Queue Proc]Unit} -> [Queue Proc]Unit
+enqProc p = enqueue (proc p)
 
-t2 : [Console]Unit
-t2! = fairkf nil nil test!
+-- return true if the process queue is empty
+deqAndRun : {[Queue Proc]Bool}
+deqAndRun! = case dequeue! { (just (proc x)) -> x!; false
+                           | nothing         ->     true }
 
--- alternative fair scheduler (fork before continuation)
-fairfk : List {[Co]Unit} -> List {[Co]Unit} -> <Co>Unit -> Unit
-fairfk ps          qs  <fork p -> k> = fairfk ps (cons {k unit} qs) p!
-fairfk ps          qs  <yield -> k>  = fairfk ps (cons {k unit} qs) unit
-fairfk nil         nil unit          = unit
-fairfk nil         qs  unit          = fairfk (reverse qs) nil unit
-fairfk (cons p ps) qs  unit          = fairfk ps qs p!
+runNext : {[Queue Proc]Unit}
+runNext! = deqAndRun!; unit
 
-t3 : [Console]Unit
-t3! = fairfk nil nil test!
+runAll : {[Queue Proc]Unit}
+runAll! = case deqAndRun! { false -> runAll!
+                          | true  -> unit }
 
--- a handler that flips continuations with forked processes
-flip : <Co>Unit -> [Co]Unit
-flip <fork p -> k> = fork {flip (k unit)}; flip p!
-flip <yield -> k>  = yield; flip (k unit)
-flip unit          = unit
+-- implementations of cooperative concurrency
 
--- fairfk nil nil == (fairkf nil nil) o flip
-t4 : [Console]Unit
-t4! = fairkf nil nil (flip test!)
+-- defer forked processes
+scheduleBF : {<Co [Queue Proc]>Unit -> [Queue Proc]Unit}
+scheduleBF <yield -> k>  = enqProc {scheduleBF (k unit)};
+                           runNext!
+scheduleBF <fork p -> k> = enqProc {scheduleBF p!};
+                           scheduleBF (k unit)
+scheduleBF unit          = runAll!
 
--- just a stub: use --entry-point tX to do something interesting
-main : []Unit
-main! = unit
+-- eagerly run forked processes
+scheduleDF : {<Co [Queue Proc]>Unit -> [Queue Proc]Unit}
+scheduleDF <yield -> k>  = enqProc {scheduleDF (k unit)};
+                           runNext!
+scheduleDF <fork p -> k> = enqProc {scheduleDF (k unit)};
+                           scheduleDF p!
+scheduleDF unit          = runAll!
+
+
+-- queue implementation using a zipper
+
+zq : {List S -> List S -> <Queue S>Unit -> Unit}
+zq front        back <enqueue x -> k> = zq front (x :: back) (k unit)
+zq []           []   <dequeue -> k>   = zq [] [] (k nothing)
+zq []           back <dequeue -> k>   = zq (reverse back) [] (k dequeue!)
+zq (x :: front) back <dequeue -> k>   = zq front back (k (just x))
+zq front        back unit             = unit
+
+zipQueue : {{[Queue S]Unit} -> Unit}
+zipQueue m = zq [] [] m!
+
+
+
+main : {[Console]Unit}
+main! = print "BF: "; zipQueue {scheduleBF test!};
+        print "DF: "; zipQueue {scheduleDF test!}
+

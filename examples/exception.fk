@@ -1,0 +1,47 @@
+--- start of standard stuff ---
+print : {String -> [Console]Unit}
+print s = map ouch s; unit
+
+map : {{X -> Y} -> List X -> List Y}
+map f []        = []
+map f (x :: xs) = f x :: map f xs
+
+data Zero =
+--- end of standard stuff ---
+
+--- exceptions
+interface Abort = aborting : Zero
+
+abort : {[Abort]X}
+abort! = case aborting! { }
+  -- Zero is uninhabited, so no clauses are needed
+
+-- we can't take the head of an empty list
+head : {List X -> [Abort]X}
+head []        = abort!
+head (x :: xs) = x
+
+-- a generic exception handler
+catch : {<Abort>X -> {X} -> X}
+catch x               h = x
+catch <aborting -> k> h = h!
+
+t1 : {[]Int}
+t1! = catch (head []) { -1 }
+
+t2 : {[]Int}
+t2! = catch (head [42]) { -1 }
+
+t3 : {[Console]Int}
+t3! = catch (print "hello\n"; head []) { -1 }
+
+t4 : {[Abort]X}
+t4! = catch (abort!) {abort!}
+
+
+
+
+
+
+main : {Unit}
+main! = unit
