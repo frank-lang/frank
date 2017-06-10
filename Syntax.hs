@@ -320,7 +320,11 @@ getOpName (MkCmdId x) = x
 
 (<+>) = (PP.<+>)
 (<>) = (PP.<>)
+($$) = (PP.$$)
 text = PP.text
+sep = PP.sep
+nest = PP.nest
+vcat = PP.vcat
 
 type Doc = PP.Doc
 
@@ -338,15 +342,48 @@ inDebugMode :: Bool
 {-# NOINLINE inDebugMode #-}
 inDebugMode = unsafePerformIO (readIORef debugMode)
 
-ppVType :: VType a -> Doc
-ppVType (MkDTTy x ts) = text x <+> foldl (<+>) PP.empty (map ppTyArg ts)
-ppVType (MkSCTy (MkCType ps q)) = text "{" <> ports <> peg <> text "}"
+ppProg :: Prog a -> Doc
+ppProg (MkProg tts) = vcat (map ((text "" $$) . ppTopTm) tts)
+
+ppTopTm :: TopTm a -> Doc
+ppTopTm (MkDataTm dt) = ppDataT dt
+ppTopTm (MkItfTm itf) = text $ show itf
+ppTopTm (MkSigTm sig) = text $ show sig
+ppTopTm (MkClsTm cls) = text $ show cls
+ppTopTm (MkDefTm def) = ppMHDef def
+
+ppDataT :: DataT a -> Doc
+ppDataT (MkDT id ty_vars ctrs) = text "data" <+>
+                                 text id <+>
+                                 sep (map (text . show) ty_vars) <+>
+                                 text "=" <+>
+                                 sep (map (text . show) ctrs)
+
+ppMHDef :: MHDef a -> Doc
+ppMHDef (MkDef id cty cls) = text id <+> text ":" <+>
+                             ppCType cty $$
+                             sep (map (ppClause id) cls)
+
+ppClause :: Id -> Clause a -> Doc
+ppClause id (MkCls ps tm) = text id <+>
+                            (vcat . map ppPattern) ps <+> text "=" $$
+                            (nest 3 . text . show) tm
+
+ppPattern :: Pattern a -> Doc
+ppPattern = text . show
+
+ppCType :: CType a -> Doc
+ppCType (MkCType ps q) = text "{" <> ports <> peg <> text "}"
   where
     ports = case map ppPort ps of
       [] -> PP.empty
       xs -> foldl (\acc x -> x <+> text "-> " <> acc) PP.empty (reverse xs)
 
     peg = ppPeg q
+
+ppVType :: VType a -> Doc
+ppVType (MkDTTy x ts) = text x <+> foldl (<+>) PP.empty (map ppTyArg ts)
+ppVType (MkSCTy cty) = ppCType cty
 ppVType (MkTVar x) = text x
 ppVType (MkRTVar x) = if inDebugMode then text x else text $ trimVar x
 ppVType (MkFTVar x) = if inDebugMode then text x else text $ trimVar x

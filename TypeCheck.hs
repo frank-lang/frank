@@ -69,6 +69,9 @@ findFTVar x = getContext >>= find'
         find' (es :< _) = find' es
 
 -- Run a contextual computation with an additonal term variable in scope
+-- 1) Push [x:=ty] on context
+-- 2) Run computation m
+-- 3) Remove [x:=ty] from context
 inScope :: Operator -> VType Desugared -> Contextual a -> Contextual a
 inScope x ty m = do modify (:< TermVar x ty)
                     a <- m
@@ -103,12 +106,14 @@ lkpItfInAbMod itf (MkAbFVar x) = getContext >>= find'
         find' (es :< _) = find' es
 lkpItfInAbMod itf v = return Nothing
 
--- Only instantiate 1) polytypic operators and
---                  2) command operators
--- as only those could be polymorphic
+-- The only operators that could potentially be polymorphic are
+-- 1) polytypic operators and
+-- 2) command operators
+-- We only instantiate here in case 1) because command operators get already
+-- instantiated in "find"
+-- LC: TODO: remove this function and transfer its functionality to "find", too?
 instantiate :: Operator -> VType Desugared -> Contextual (VType Desugared)
 instantiate (MkPoly _) ty = addMark >> makeFlexible ty
-instantiate (MkCmdId _) ty = addMark >> makeFlexible ty
 instantiate _ ty = return ty
 
 -- TODO: change output of check to Maybe String?
@@ -142,7 +147,7 @@ checkMHDef (MkDef id ty@(MkCType ps q) cs) =
 
 -- 1st major TC function: Infer type of a "use"
 -- Functions below implement the typing rules described in the paper.
--- 1) Var, PolyVar, Command rules (1st case)
+-- 1) Var, PolyVar, Command rules
 --    - Find operator x in context and retrieve its type
 --    - Case distinction on x:
 --      1.1) x is monotypic (local var)
@@ -150,7 +155,7 @@ checkMHDef (MkDef id ty@(MkCType ps q) cs) =
 --      1.2) x is polytypic (multi-handler) or a command
 --           - Its type (susp. comp. ty) possibly contains rigid ty vars
 --           - Instantiate all of them (add to context), then return type
--- 2) App rule (2nd case)
+-- 2) App rule
 --    - Infer type of f
 --    - If this susp. comp. type is known, check the arguments are well-typed
 --    - If not, create fresh type pattern and unify (constraining for future)
@@ -167,7 +172,7 @@ inferUse (MkApp f xs) =
         checkArg :: Port Desugared -> Tm Desugared -> Contextual ()
         checkArg (MkPort adj ty) tm = inAmbient adj (checkTm tm ty)
 
-        -- Case distinction on ty
+        -- Case distinction on operator's type ty
         -- 1) ty is susp. comp. type
         --    - Check that required abilities of f are admitted (unify with amb)
         --    - Check typings of arguments x_i: p_i in [amb + adj_i] for all i
@@ -282,9 +287,12 @@ checkCls (MkCls pats tm) ports (MkPeg ab ty)
        -- Bring any bindings in to scope for checking the term then purge the
        -- marks (and suffixes) in the context created for this clause.
        case null bs of
-         True -> do checkTm tm ty
+         True -> do -- Just purge marks
+                    checkTm tm ty
                     purgeMarks
-         False -> do foldl1 (.) (map (uncurry inScope) bs) $ checkTm tm ty
+         False -> do -- Push all bindings to context, then check tm, then remove bindings,
+                     -- finally purge marks.
+                     foldl1 (.) (map (uncurry inScope) bs) $ checkTm tm ty
                      purgeMarks
   | otherwise = throwError "number of patterns not equal to number of ports"
 
@@ -308,7 +316,7 @@ checkPat (MkCmdPat cmd xs g) (MkPort adj ty) =
                      rs' <- mapM makeFlexibleTyArg rs
                      ts' <- mapM makeFlexible ts
                      y' <- makeFlexible y
-                     -- instantiate interface (acc. to adj.)
+                     -- instantiate interface (according to adjustment)
                      mapM (uncurry unifyTyArg) (zip ps qs')
                      -- check command patterns against spec. in interface def.
                      bs <- fmap concat $ mapM (uncurry checkVPat) (zip xs ts')
@@ -372,8 +380,8 @@ makeFlexibleAb (MkAb v m) = case v of
   MkAbRVar x -> do v' <- MkAbFVar <$> (getContext >>= (find' x))
                    m' <- mapM (mapM makeFlexibleTyArg) m
                    return $ MkAb v' m'
-  _ -> do m' <- mapM (mapM makeFlexibleTyArg) m
-          return $ MkAb v m'
+  _ ->          do m' <- mapM (mapM makeFlexibleTyArg) m
+                   return $ MkAb v m'
   where find' x BEmp = freshMVar x
         find' x (es :< FlexMVar y _) | trimVar x == trimVar y = return y
         find' x (es :< Mark) = freshMVar x

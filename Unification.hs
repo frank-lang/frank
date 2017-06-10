@@ -79,10 +79,16 @@ unify t            s                 =
 
 -- unify 2 eff tys in current context
 unifyAb :: Ab Desugared -> Ab Desugared -> Contextual ()
-unifyAb ab0@(MkAb v0 m0) ab1@(MkAb v1 m1) =
-  -- first accumulate ability with ability bound in context (only if open ability)
-  do ma0 <- findAbVar v0
-     ma1 <- findAbVar v1
+unifyAb ab0@(MkAb v0 m0)         ab1@(MkAb v1 m1) =
+  --    [v0 | m0_1, ..., m0_m]   [v1 | m1_1, ... m1_n]
+  do ma0 <- findAbVar v0 -- find ability bound to flex. eff var v0
+     ma1 <- findAbVar v1 -- find ability bound to flex. eff var v1
+     -- There are four cases
+     -- 1) v0 = [v0' | m0'_1, ..., m0'_k]
+     --    v1 = [v1' | m1'_1, ..., m1'_l]
+     --    - Merge both together: [v0' | m0_1, ..., m0_m, m0'_1, ..., m0'_n]
+     --                           [v0' | m1_1, ..., m1_k, m1'_1, ..., m1'_l]
+     --    - Unify these two.
      case (ma0, ma1) of
        (Just (MkAb v0 m0'), Just (MkAb v1 m1')) ->
          let m0'' = M.union m0 m0' in
@@ -96,14 +102,20 @@ unifyAb ab0@(MkAb v0 m0) ab1@(MkAb v1 m1) =
          unifyAb' ab0 (MkAb v1 m1'')
        (Nothing, Nothing) ->
          unifyAb' ab0 ab1
-  where unifyAb' ab0@(MkAb v0 m0) ab1@(MkAb v1 m1) | v0 == v1 =
+  where -- Same eff ty vars leaves nothing to unify but the instant.s m0, m1
+        unifyAb' ab0@(MkAb v0 m0) ab1@(MkAb v1 m1) | v0 == v1 =
           catchError (unifyItfMap m0 m1) (unifyAbError ab0 ab1)
+        -- Both eff ty vars are flexible
         unifyAb' (MkAb (MkAbFVar a0) m0) (MkAb (MkAbFVar a1) m1) =
-          do -- for same interfaces, ty args must coincide
+        --       [a0 | m0]               [a1 | m1]
+          do -- For same occurrences of interfaces, their instant.s must coincide
              unifyItfMap (M.intersection m0 m1) (M.intersection m1 m0)
+             -- Unify [a0] = [v | m1 - m0] and
+             --       [a1] = [v | m0 - m1]
              v <- MkAbFVar <$> freshMVar "£"
              solveForEVar a0 [] (MkAb v (M.difference m1 m0))
              solveForEVar a1 [] (MkAb v (M.difference m0 m1))
+        --
         unifyAb' (MkAb (MkAbFVar a0) m0) (MkAb v m1)
           | M.null (M.difference m0 m1) =
             do unifyItfMap (M.intersection m1 m0) (M.intersection m0 m1)
@@ -128,6 +140,8 @@ unifyAbError ab0 ab1 _ =
   throwError $ "cannot unify abilities " ++ (show $ ppAb ab0) ++
   " and " ++ (show $ ppAb ab1)
 
+-- Given two abilities (ItfMap = set of instantiated interfaces), check that
+-- each instantiation has a unifiable counterpart in the other ability.
 unifyItfMap :: ItfMap Desugared -> ItfMap Desugared -> Contextual ()
 unifyItfMap m0 m1 = do mapM_ (unifyItfMap' m1) (M.toList m0)
                        mapM_ (unifyItfMap' m0) (M.toList m1)
@@ -156,7 +170,7 @@ unifyPort (MkPort adj0 ty0) (MkPort adj1 ty1) = unifyAdj adj0 adj1 >>
 solve :: Id -> Suffix -> VType Desugared -> Contextual ()
 solve a ext ty = onTop $ \b d ->
   case ((a == b), (S.member b (fmv ty)), d) of
-    
+
     (_,     _,     TyDefn bty) -> modify (<>< entrify ext) >>                         -- inst-subs
                                   unify (subst bty b (MkFTVar a)) (subst bty b ty) >>
                                   restore

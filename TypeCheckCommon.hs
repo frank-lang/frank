@@ -180,7 +180,7 @@ initContextual :: Prog Desugared -> Contextual (Prog Desugared)
 initContextual (MkProg ttms) =
   do mapM_ f (getDataTs ttms) -- init ctrMap
      mapM_ g (getItfs ttms)   -- init cmdMap
-     mapM h (getDefs ttms)    -- init ctx with term variables
+     mapM h (getDefs ttms)    -- init ctx with [hdr: hdr-type]
      return (MkProg ttms)
   where -- data dt p_1 ... p_n = ctr_1 x_11 ... x_1m
         --                     | ...
