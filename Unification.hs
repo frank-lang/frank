@@ -83,12 +83,11 @@ unifyAb ab0@(MkAb v0 m0)         ab1@(MkAb v1 m1) =
   --    [v0 | m0_1, ..., m0_m]   [v1 | m1_1, ... m1_n]
   do ma0 <- findAbVar v0 -- find ability bound to flex. eff var v0
      ma1 <- findAbVar v1 -- find ability bound to flex. eff var v1
-     -- There are four cases
-     -- 1) v0 = [v0' | m0'_1, ..., m0'_k]
-     --    v1 = [v1' | m1'_1, ..., m1'_l]
-     --    - Merge both together: [v0' | m0_1, ..., m0_m, m0'_1, ..., m0'_n]
-     --                           [v0' | m1_1, ..., m1_k, m1'_1, ..., m1'_l]
-     --    - Unify these two.
+     -- 1a) If v0 is flex. eff var:  v0 = [v0' | m0'_1, ..., m0'_k]
+     --     Consider only merged:    [v0' | m0_1, ..., m0_m, m0'_1, ..., m0'_n]
+     -- 1b) If v1 is flex. eff var:  v1 = [v1' | m1'_1, ..., m1'_l]
+     --     Consider only merged:    [v0' | m1_1, ..., m1_k, m1'_1, ..., m1'_l]
+     -- 2)  Unify these two.
      case (ma0, ma1) of
        (Just (MkAb v0 m0'), Just (MkAb v1 m1')) ->
          let m0'' = M.union m0 m0' in

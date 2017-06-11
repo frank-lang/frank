@@ -382,6 +382,7 @@ makeFlexibleAb (MkAb v m) = case v of
                    return $ MkAb v' m'
   _ ->          do m' <- mapM (mapM makeFlexibleTyArg) m
                    return $ MkAb v m'
+-- find' either creates a new FlexMVar in current locality or identifies the one already existing
   where find' x BEmp = freshMVar x
         find' x (es :< FlexMVar y _) | trimVar x == trimVar y = return y
         find' x (es :< Mark) = freshMVar x
