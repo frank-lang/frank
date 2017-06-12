@@ -1,0 +1,12 @@
+-- Bug: IntChoice [F] gets an additional effect variable [\epsilon] added but shouldn't
+interface IntChoice [F] = choose : {[F|IntChoice [F|]]Int} -> {[F|IntChoice [F|]]Int} -> Int
+
+alwaysPickLeft: {<IntChoice [E|]>String -> [E|]String}
+alwaysPickLeft <choose a b -> k> = alwaysPickLeft (k a!)
+alwaysPickLeft x                 = x
+
+nondetGreeting: {[G|IntChoice [G|]]String}
+nondetGreeting! = "Good morning"
+
+main: {[E|]String}
+main! = alwaysPickLeft nondetGreeting!

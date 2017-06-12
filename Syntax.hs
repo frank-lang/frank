@@ -118,7 +118,7 @@ deriving instance (Eq) (TopTm a)
 
 data Tm a where
   MkRawId :: Id -> Tm Raw
-  MkRawComb :: Id -> [Tm Raw] -> Tm Raw  -- application (at least 1, could also be unit application "com!")
+  MkRawComb :: Id -> [Tm Raw] -> Tm Raw  -- application (0 arg's also possible, e.g. "com!")
   MkSC :: SComp a -> Tm a
   MkLet :: Id -> Tm Raw -> Tm Raw -> Tm Raw
   MkStr :: String -> Tm a
@@ -412,7 +412,7 @@ ppAdj (MkAdj m) = text "<" <> ppItfMap m <> text ">"
 ppAb :: Ab a -> Doc
 ppAb (MkAb v m) | M.null m = text "[" <> ppAbMod v <> text "]"
 ppAb (MkAb v m) =
-  text "[" <> ppAbMod v <> PP.comma <+> ppItfMap m <> text "]"
+  text "[" <> ppAbMod v <> text " | " <+> ppItfMap m <> text "]"
 
 ppAbMod :: AbMod a -> Doc
 ppAbMod MkEmpAb = text "0"

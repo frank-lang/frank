@@ -1,3 +1,4 @@
+
 -- Inspired by Adam Gundry et al.'s treatment of type inference in
 -- context. See Gundry's thesis (most closely aligned) or the paper ``Type
 -- inference in Context'' for more details.
@@ -17,6 +18,7 @@ import qualified Data.Set as S
 import qualified Data.Map.Strict as M
 
 import Debug.Trace
+import Text.PrettyPrint (renderStyle, style, lineLength)
 
 import BwdFwd
 import Syntax
@@ -134,6 +136,7 @@ check p = runExcept $ evalFreshMT $ evalStateT (checkProg p) initTCState
 --        "unpack" the monad
   where
     checkProg p = unCtx $ do MkProg xs <- initContextual p
+                             theCtx <- getContext
                              mapM checkTopTm xs
                              return $ MkProg xs
 
@@ -160,7 +163,9 @@ checkMHDef (MkDef id ty@(MkCType ps q) cs) =
 --    - If this susp. comp. type is known, check the arguments are well-typed
 --    - If not, create fresh type pattern and unify (constraining for future)
 inferUse :: Use Desugared -> Contextual (VType Desugared)
-inferUse (MkOp x) = find x >>= (instantiate x)
+inferUse (MkOp x) =
+  do ty <- find x
+     instantiate x ty
 inferUse (MkApp f xs) =
   do ty <- inferUse (MkOp f)
      discriminate ty

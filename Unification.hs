@@ -101,13 +101,13 @@ unifyAb ab0@(MkAb v0 m0)         ab1@(MkAb v1 m1) =
          unifyAb' ab0 (MkAb v1 m1'')
        (Nothing, Nothing) ->
          unifyAb' ab0 ab1
-  where -- Same eff ty vars leaves nothing to unify but the instant.s m0, m1
+  where -- Same eff ty vars leaves nothing to unify but instantiat's m0, m1
         unifyAb' ab0@(MkAb v0 m0) ab1@(MkAb v1 m1) | v0 == v1 =
           catchError (unifyItfMap m0 m1) (unifyAbError ab0 ab1)
         -- Both eff ty vars are flexible
         unifyAb' (MkAb (MkAbFVar a0) m0) (MkAb (MkAbFVar a1) m1) =
         --       [a0 | m0]               [a1 | m1]
-          do -- For same occurrences of interfaces, their instant.s must coincide
+          do -- For same occurrences of interfaces, their instantiat's must coincide
              unifyItfMap (M.intersection m0 m1) (M.intersection m1 m0)
              -- Unify [a0] = [v | m1 - m0] and
              --       [a1] = [v | m0 - m1]

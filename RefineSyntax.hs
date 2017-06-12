@@ -579,7 +579,7 @@ polyDataT :: DataT Raw -> Bool
 polyDataT (MkDT _ _ xs) = any polyCtr xs
 
 -- Return true if the interface definition contains a computation type
--- with an implicit effect variable "£".
+-- with an implicit/explicit effect variable "£".
 polyItf :: Itf Raw -> Bool
 polyItf (MkItf _ _ xs) = any polyCmd xs
 
@@ -591,11 +591,23 @@ polyCtr (MkCtr _ ts) = any polyVType ts
 
 polyVType :: VType Raw -> Bool
 polyVType (MkDTTy _ ts) = any polyTyArg ts
-polyVType (MkSCTy _)    = True
+polyVType (MkSCTy ty)   = polyCType ty
 polyVType (MkTVar _)    = False
 polyVType MkStringTy    = False
 polyVType MkIntTy       = False
 polyVType MkCharTy      = False
+
+polyCType :: CType Raw -> Bool
+polyCType (MkCType ports peg) = any polyPort ports || polyPeg peg
+
+polyPort :: Port Raw -> Bool
+polyPort (MkPort adj ty) = polyAdj adj || polyVType ty
+
+polyAdj :: Adj Raw -> Bool
+polyAdj (MkAdj itfmap) = polyItfMap itfmap
+
+polyPeg :: Peg Raw -> Bool
+polyPeg (MkPeg ab ty) = polyAb ab || polyVType ty
 
 polyAb :: Ab Raw -> Bool
 polyAb (MkAb v m) = polyAbMod v || polyItfMap m

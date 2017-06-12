@@ -21,6 +21,8 @@ import System.Environment
 import System.Exit
 import System.IO
 
+import Debug.Trace
+
 type Args = [(String,String)]
 
 splice :: Prog Raw -> Tm Raw -> Prog Raw

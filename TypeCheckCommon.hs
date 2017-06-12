@@ -17,6 +17,8 @@ import BwdFwd
 import FreshNames
 import Syntax
 
+-- import Text.PrettyPrint (Doc, text, sep, nest, (<+>), ($$))
+
 newtype Contextual a = Contextual
                        { unCtx :: StateT TCState (FreshMT (Except String)) a}
 --                                       TCState is carried along
@@ -221,3 +223,20 @@ addCtr :: Id -> Id -> [TyArg Desugared] -> [VType Desugared] -> Contextual ()
 addCtr dt     ctr     ts         xs         = get >>= \s ->
 --     dt-id  ctr-id  type-args  value-args
   put $ s { ctrMap = M.insert ctr (dt,ts,xs) (ctrMap s) }
+
+
+
+ppContext :: Context -> Doc
+ppContext = ppFwd . (map ppEntry) . bwd2fwd
+
+ppEntry :: Entry -> Doc
+ppEntry (FlexMVar x decl) = text "FlexMVar " <+> text x <+> text " = "$$
+                            nest 6 (ppDecl decl)
+ppEntry (TermVar op ty)   = text "TermVar " <+> text (show op) <+> text " := " $$
+                            nest 6 (ppVType ty)
+
+
+ppDecl :: Decl -> Doc
+ppDecl Hole        = text "?"
+ppDecl (TyDefn ty) = text "val.ty. " <+> ppVType ty
+ppDecl (AbDefn ab) = text "eff.ty. " <+> ppAb ab
