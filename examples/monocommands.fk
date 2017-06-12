@@ -1,16 +1,16 @@
-interface IntChoice [F] = choose : {[F|IntChoice [F|]]Int} -> {[F|IntChoice [F|]]Int} -> Int
+interface MonoChoice X [E] = choose : {[E|MonoChoice X [E|]]X} -> {[E|MonoChoice X [E|]]X} -> X
 
-alwaysPickLeft: {<IntChoice [E|]>String -> [E|]String}
+nondetGreeting: {[MonoChoice String]String}
+nondetGreeting! = choose { choose {"Morning!"} {"Guten Morgen!"} }
+                         { choose {"Night!"}   {"Gute Nacht!"}   }
+
+alwaysPickLeft: {<MonoChoice Y>X -> X}
 alwaysPickLeft <choose a b -> k> = alwaysPickLeft (k a!)
-alwaysPickLeft x                 = x
+alwaysPickLeft x =                 x
 
-alwaysPickRight: {<IntChoice [E|]>String -> [E|]String}
+alwaysPickRight: {<MonoChoice Y>X -> X}
 alwaysPickRight <choose a b -> k> = alwaysPickRight (k b!)
-alwaysPickRight x                 = x
-
-nondetGreeting: {[G|IntChoice [G|]]String}
-nondetGreeting! = case (choose {0} { choose {0} {1} }) { 0 -> "Good morning"
-                                                       | 1 -> "Guten Tag" }
+alwaysPickRight x =                 x
 
 main: {[E|]String}
-main! = alwaysPickRight nondetGreeting!
+main! = alwaysPickLeft nondetGreeting!
