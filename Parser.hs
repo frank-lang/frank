@@ -153,18 +153,16 @@ parseItf = do reserved "interface"
 
 parseCmd :: MonadicParsing m => m (Cmd Raw)
 parseCmd = do cmd <- identifier
+              ps <- many parseTyVar  -- polymorphic commands
               symbol ":"
-              (ps,xs,y) <- parseCmdType
+              (xs,y) <- parseCmdType
               return (MkCmd cmd ps xs y)
 
 -- type vars, input types, output type
-parseCmdType :: MonadicParsing m => m ([(Id, Kind)], [VType Raw], VType Raw)
-parseCmdType = do maybePs <- optional parseQuantifiedTVs -- polymorphic commands
-                  let ps = case maybePs of Just tvs -> tvs
-                                           Nothing -> []
-                  vs <- sepBy1 parseVType (symbol "->")
-                  if length vs == 1 then return (ps, [],head vs)
-                  else return (ps, init vs, last vs)
+parseCmdType :: MonadicParsing m => m ([VType Raw], VType Raw)
+parseCmdType = do vs <- sepBy1 parseVType (symbol "->")
+                  if length vs == 1 then return ([],head vs)
+                  else return (init vs, last vs)
 
 -- allow polymorphic commands of the form "mycommand : forall X [E], X -> {[E]X}"
 parseQuantifiedTVs :: MonadicParsing m => m [(Id,Kind)]
