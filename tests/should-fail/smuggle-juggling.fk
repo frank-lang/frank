@@ -1,0 +1,61 @@
+-- #desc Conor's eg (upd.): no smuggling effects to where they don't belong
+
+-- Some standard stuff
+data Zero =     -- empty type
+
+data Either A B = left A | right B
+
+interface State S = get : S
+                  | put : S -> Unit
+
+interface Abort = aborting : Zero
+
+abort : {[Abort]X}
+abort! = case aborting! {}
+  -- Zero is uninhabited, so no clauses are needed
+
+state : X -> <State X>Y    -> Y
+state   x    <put x' -> k>  = state x' (k unit)
+state   x    <get    -> k>  = state x (k x)
+state   x         y         = y
+
+-- first, define an evil state handler which quits on get, smuggling out the
+-- continuation as data.
+
+data Payload = MkA | MkAA | MkRec Payload
+
+smuggle : {<State Payload>X -> [0]Either {Payload -> [0|State Payload]X} X}
+smuggle <get -> k> = left k -- k's peg type says this is ok (Sig = empty, so
+	     	     	    -- it doesn't matter whose candidate rule)
+smuggle <put s -> k> = smuggle (k unit)
+smuggle x = right x
+
+-- let's have a thing which locally allows abort
+catch : {<Abort>X -> {X} -> X}
+catch x               h = x
+catch <aborting -> _> h = h!
+
+-- here's a thing which post-processes a smuggle, running the smuggled
+-- continuation with the regular state handler
+-- NB: If we have open pegs we get an error here because the first parameter
+-- to Either does not unify with {Payload -> [e|Abort,State Payload]X}
+juggle : {Payload -> Either {Payload -> [0|State Payload]X} X -> X}
+juggle a (right x) = x
+juggle a (left k) = state a (k a)
+
+{- now
+** juggle a (catch (smuggle (get! ; abort!)) {...})
+   becomes
+** juggle a (catch (left {x -> abort!}) {...})
+   then
+** juggle a (left {x -> abort!})
+   then
+** state a (abort!)
+
+The typechecker should report an error between the result ability of smuggle
+and the ambient.
+-}
+
+-- #return cannot unify abilities [0, Abort] and [0]
+main : {[0]Payload}
+main! = juggle MkAA (catch (smuggle (get! ; abort!)) {right MkA})

@@ -92,9 +92,6 @@ data Operator = MkMono Id  -- monotypic (just variable)
               | MkCmdId Id
               deriving (Show, Eq)
 
-data Use a = MkOp Operator | MkApp Operator [Tm a]
-           deriving (Show, Eq)
-
 data DataCon a = MkDataCon Id [Tm a]
                deriving (Show, Eq)
 
@@ -114,11 +111,18 @@ data TopTm a where
 deriving instance (Show) (TopTm a)
 deriving instance (Eq) (TopTm a)
 
+data Use a where
+  MkRawId :: Id -> Use Raw
+  MkRawComb :: Use Raw -> [Tm Raw] -> Use Raw
+  MkOp :: NotRaw a => Operator -> Use a
+  MkApp :: NotRaw a => Use a -> [Tm a] -> Use a
+
+deriving instance (Show) (Use a)
+deriving instance (Eq) (Use a)
+
 -- Tm here = 'construction' in the paper
 
 data Tm a where
-  MkRawId :: Id -> Tm Raw
-  MkRawComb :: Id -> [Tm Raw] -> Tm Raw  -- application (0 arg's also possible, e.g. "com!")
   MkSC :: SComp a -> Tm a
   MkLet :: Id -> Tm Raw -> Tm Raw -> Tm Raw
   MkStr :: String -> Tm a
@@ -126,7 +130,7 @@ data Tm a where
   MkChar :: Char -> Tm a
   MkList :: [Tm Raw] -> Tm Raw
   MkTmSeq :: Tm a -> Tm a -> Tm a
-  MkUse :: NotRaw a => Use a -> Tm a
+  MkUse :: Use a -> Tm a
   MkDCon :: NotRaw a => DataCon a -> Tm a
 
 deriving instance (Show) (Tm a)

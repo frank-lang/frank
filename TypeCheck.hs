@@ -166,10 +166,14 @@ inferUse :: Use Desugared -> Contextual (VType Desugared)
 inferUse (MkOp x) =
   do ty <- find x
      instantiate x ty
-inferUse (MkApp f xs) =
-  do ty <- inferUse (MkOp f)
+inferUse app@(MkApp f xs) =
+  do ty <- inferUse f
      discriminate ty
-  where -- Check typings of x_i for port p_i
+  where appAbError :: String -> Contextual ()
+        appAbError msg | inDebugMode = throwError (msg ++ " in " ++ show app)
+        appAbError msg = throwError msg
+
+        -- Check typings of x_i for port p_i
         checkArgs :: [Port Desugared] -> [Tm Desugared] -> Contextual ()
         checkArgs ps xs = mapM_ (uncurry checkArg) (zip ps xs)
 

@@ -8,7 +8,6 @@ import Syntax
 import RefineSyntax
 import DesugarSyntax
 import System.Environment
-import qualified ExpectedTestOutput as ETO
 
 import Shonky.Semantics
 

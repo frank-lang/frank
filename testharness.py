@@ -108,6 +108,9 @@ class Result:
     def success(self):
         return self.code == 0 and self.aout == self.eout
 
+    def fail(self):
+        return self.code != 0 and self.aout == self.eout
+
 def main(okDirs,errDirs,args):
     ## A test of the summary output
     logger = TestHarnessLogger()
@@ -160,12 +163,12 @@ def check_pass(logger, res):
 
 def check_fail(logger, res):
     ttype = "r" if res.regression else "t"
-    if res.success():
-        status = "PASSED"
-        logger.inc("up",ttype)
-    else:
+    if res.fail():
         status = "Failed"
         logger.inc("ef",ttype)
+    else:
+        status = "PASSED"
+        logger.inc("up",ttype)
     log_run(logger,status,res)
 
 def log_run(logger,status,res):
