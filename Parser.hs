@@ -231,7 +231,8 @@ parseItfInstance = do x <- identifier
                       return (x, ts)
 
 parseVType :: MonadicParsing m => m (VType Raw)
-parseVType = try parseDTType <|>
+parseVType = try parseDTType <|>                      -- DTid t_1 ... t_n (data type indeed) or
+                                                      -- X    t_1 ... t_n (paramet'ed ty var, gets fixed during refinement)
              parseVType'
 
 parseVType' :: MonadicParsing m => m (VType Raw)
@@ -240,7 +241,7 @@ parseVType' = parens parseVType <|>
               MkStringTy <$ reserved "String" <|>
               MkIntTy <$ reserved "Int" <|>
               MkCharTy <$ reserved "Char" <|>
-              MkTVar <$> identifier
+              MkTVar <$> identifier                   -- DTid (gets fixed during refinement) or X
 
 parseTyArg :: MonadicParsing m => m (TyArg Raw)
 parseTyArg = VArg <$> parseVType' <|>

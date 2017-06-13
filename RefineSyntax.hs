@@ -217,16 +217,14 @@ existsMain (_ : xs) = error "invalid top term: expected multihandler"
 
 -- explicit refinements:
 -- + data type has unique effect & type variables
--- + polym. data type gets £ effect variable
+-- + implicit eff var [£] is defined explicitly
 refineDataT :: DataT Raw -> Refine (TopTm Refined)
 refineDataT d@(MkDT dt ps           ctrs) =
 --          data dt p_1 ... p_m = ctr_1 | ... | ctr_n
   if uniqueIds (map fst ps) then
     do let tvs = [x | (x, VT) <- ps] -- val ty vars
        let evs = [x | (x, ET) <- ps] -- eff ty vars
-       -- add [£] if any constructor's arg. ty is either
-       -- 1) a susp. comp. ty (implicit [£])
-       -- 2) a data type parameterised (instantiated) with [£]
+       -- add [£] if any constructor's arg. ty contains implicit [£]
        let (evs', ps') = if not (any ((==) "£") evs) && polyDataT d then
                             (evs ++ ["£"], ps ++ [("£", ET)])
                          else (evs, ps)
@@ -244,16 +242,14 @@ refineDataT d@(MkDT dt ps           ctrs) =
 
 -- explicit refinements:
 -- + interface has unique effect & type variables
--- + polym. interface gets £ effect variable
+-- + implicit eff var [£] is defined explicitly
 refineItf :: Itf Raw -> Refine (TopTm Refined)
 refineItf i@(MkItf itf ps      cmds) =
 --        interface itf p_1 ... p_m = cmd_1 | ... | cmd_n
   if uniqueIds (map fst ps) then
     do let tvs = [x | (x, VT) <- ps] -- val ty vars
        let evs = [x | (x, ET) <- ps] -- eff ty vars
-       -- add [£] if any command's arg. ty is either
-       -- 1) a susp. comp. ty (implicit [£])
-       -- 2) a data type parameterised (instantiated) with [£]
+       -- add [£] if any command's arg. ty contains implicit [£]
        let (evs', ps') = if not (any ((==) "£") evs) && polyItf i then
                             (evs ++ ["£"], ps ++ [("£", ET)])
                          else (evs, ps)
@@ -271,6 +267,7 @@ refineItf i@(MkItf itf ps      cmds) =
 
 -- explicit refinements:
 -- + command has unique effect & type variables
+-- + implicit eff var [£] is defined explicitly
 refineCmd :: Cmd Raw -> Refine (Cmd Refined)
 refineCmd c@(MkCmd id ps xs y) =
 --        id : forall p_1 ... p_m, x_1 -> ... -> x_n -> y
@@ -282,14 +279,12 @@ refineCmd c@(MkCmd id ps xs y) =
          do
            let tvs = [x | (x, VT) <- ps] -- val ty vars
            let evs = [x | (x, ET) <- ps] -- eff ty vars
-           -- add [£] if any arg. ty is either
-           -- 1) a susp. comp. ty (implicit [£])
-           -- 2) a data type parameterised (instantiated) with [£]
+           -- add [£] if any constructor's arg. ty contains implicit [£]
            let (evs', ps') = if not (any ((==) "£") evs) && polyCmd c then
                                 (evs ++ ["£"], ps ++ [("£", ET)])
                              else (evs, ps)
            -- refine argument types and result type
-           -- add temp. val, eff ty vars
+           -- first add temp. val, eff ty vars
            putTMap (M.union tmap (M.fromList $ zip tvs (map MkTVar tvs)))
            putEVSet (S.union evset (S.fromList evs))
            -- refine
@@ -371,16 +366,24 @@ refineAdj (MkAdj m) = do m' <- refineItfMap m
                          return $ MkAdj m'
 
 -- explicit refinements:
--- + val ty refers only to introduced val tys
+-- + implicit [£] ty args to data types are made explicit
+-- + MkDTTy is distinguished between being
+--   1) data type indeed  -> MkDTTy
+--   2) introduced ty var -> MkTVar
+--      TODO: LC: shouldn't there be an error as type constructors can't occur as MkTVar's?
+-- + MkTVar is distinguished between being
+--   1) data type         -> MkDTTy
+--   2) introduced ty var -> MkTVar
+-- + ty arguments refer only to introduced val tys
 refineVType :: VType Raw -> Refine (VType Refined)
 refineVType (MkDTTy x  ts) =
 --           x t_1 ... t_n
---       or  x t_1 ... t_n t_{n+1}
   do dtm <- getRDTs
      case M.lookup x dtm of
        Just ps ->
---       data x p_1 ... p_{n+1}     (p_i being either eff or val ty var)
-         do -- If not specified yet, set t_{n+1} := [£]
+--        1) data x p_1 ... p_n
+--    or  2) data x p_1 ... p_n [£]       ([£] has been explicitly added during ref't)
+         do           -- If 2), set t_{n+1} := [£]
             let ts' = if length ps == length ts + 1 && (snd (ps !! length ts) == ET) then
                         ts ++ [EArg (MkAb (MkAbVar "£") M.empty)]
                       else
@@ -446,7 +449,7 @@ refineUse (MkRawId id) =
             -- LC: Do we need to check
             Nothing ->
               case id `findPair` hdrs of
-                Just n -> return $ Left $ MkOp $ MkPoly id  -- polytypic (n=0 means: takes unit (!) argument)
+                Just n -> return $ Left $ MkOp $ MkPoly id  -- polytypic (n=0 means: takes no argument, x!)
                 -- LC: Same here, check for handler's arity = 0?
                 Nothing -> return $ Left $ MkOp $ MkMono id -- monotypic: must be local variable
 refineUse (MkRawComb (MkRawId id) xs) =
