@@ -5,6 +5,7 @@ module RefineSyntax where
 import Control.Monad
 import Control.Monad.Except
 import Control.Monad.State
+import Data.Functor.Identity
 
 import Debug.Trace
 
@@ -23,20 +24,22 @@ type EVarSet = S.Set Id
 -- Object-Int pair
 type IPair = (Id,Int)
 -- data type id is mapped to rigid data type (RDT) variables (for polymorphic data types)
-type DTMap = M.Map Id [(Id, Kind)]
-type IFMap = M.Map Id [(Id, Kind)]
+type DTMap = M.Map Id [(Id, Kind)]                      -- dt-id     -> [ty-vars]
+type IFMap = M.Map Id [(Id, Kind)]                      -- itf-id    -> [ty-vars]
+type IFAliasesMap = M.Map Id ([(Id, Kind)], ItfMap Raw) -- itf-al-id -> ([ty-vars], itf's -> itf-instant's)
 
-data TopLevelCtxt = Interface | Datatype | Handler
+data TopLevelCtxt = Interface | InterfaceAlias | Datatype | Handler
   deriving (Show, Eq)
 
-data RState = MkRState { interfaces :: IFMap     -- Id -> [(Id, Kind)]       store type & effect variables of each interface
-                       , datatypes :: DTMap      -- Id -> [(Id, Kind)]       store type & effect variables of each data type
-                       , handlers :: [IPair]     -- handler Id -> # of arguments
-                       , ctrs :: [IPair]         -- constructor Id -> # of arguments
-                       , cmds :: [IPair]         -- command Id -> # of arguments
-                       , program :: Prog Refined -- LC: what is this for?
-                       , tmap :: TVarMap         -- type var Id ->   VType Raw     type vars of current context
-                       , evmap :: EVarSet        -- effect var Id                  effect vars of current context
+data RState = MkRState { interfaces :: IFMap
+                       , interfaceAliases :: IFAliasesMap
+                       , datatypes :: DTMap
+                       , handlers :: [IPair]              -- handler Id -> # of arguments
+                       , ctrs :: [IPair]                  -- constructor Id -> # of arguments
+                       , cmds :: [IPair]                  -- command Id -> # of arguments
+                       , program :: Prog Refined          -- LC: what is this for?
+                       , tmap :: TVarMap                  -- type var Id ->   VType Raw     type vars of current context
+                       , evmap :: EVarSet                 -- effect var Id                  effect vars of current context
                        , tlctxt :: Maybe TopLevelCtxt }
 
 getRState :: Refine RState
@@ -52,6 +55,14 @@ putRItfs xs = do s <- getRState
 getRItfs :: Refine IFMap
 getRItfs = do s <- getRState
               return $ interfaces s
+
+putRItfAliases :: IFAliasesMap -> Refine()
+putRItfAliases xs = do s <- getRState
+                       putRState $ s {interfaceAliases = xs }
+
+getRItfAliases :: Refine IFAliasesMap
+getRItfAliases = do s <- getRState
+                    return $ interfaceAliases s
 
 putRDTs :: DTMap -> Refine ()
 putRDTs m = do s <- getRState
@@ -141,10 +152,11 @@ getHdrDefs ((MkClsTm cls) : xs) ys = getHdrDefs xs (cls : ys)
 getHdrDefs (_ : xs) ys = getHdrDefs xs ys
 getHdrDefs [] ys = reverse ys
 
-splitTopTm :: [TopTm Raw] -> ([MHSig], [MHCls], [DataT Raw], [Itf Raw])
-splitTopTm xs = (getHdrSigs xs, getHdrDefs xs [], dts, itfs)
+splitTopTm :: [TopTm Raw] -> ([MHSig], [MHCls], [DataT Raw], [Itf Raw], [ItfAlias])
+splitTopTm xs = (getHdrSigs xs, getHdrDefs xs [], dts, itfs, itfAliases)
   where dts = getDataTs xs
         itfs = getItfs xs
+        itfAliases = getItfAliases xs
 
 -- Add the name if not already present
 addEntry :: [IPair] -> Id -> Int -> String -> Refine [IPair]
@@ -155,12 +167,17 @@ addEntry xs x n prefix = if x `mem` xs then throwError (prefix ++ x ++
 -- addItf :: [IPair] -> Itf a -> Refine [IPair]
 -- addItf xs (MkItf x ps _) = addEntry xs x (length ps) "duplicate interface: "
 
-addItf :: IFMap -> Itf a -> Refine DTMap
+addItf :: IFMap -> Itf a -> Refine IFMap
 addItf m (MkItf x ps _) = if M.member x m then
                              throwError ("duplicate interface: " ++ x ++
-                                          " already defined.")
+                                         " already defined.")
                            else return $ M.insert x ps m
 
+addItfAlias :: IFAliasesMap -> ItfAlias -> Refine IFAliasesMap
+addItfAlias m (MkItfAlias x ps itfMap) = if M.member x m then
+                                            throwError ("duplicate interface alias: " ++ x ++
+                                                        " already defined.")
+                                         else return $ M.insert x (ps, itfMap) m
 
 addDataT :: DTMap -> DataT a -> Refine DTMap
 addDataT m (MkDT x ps _) = if M.member x m then
@@ -194,7 +211,8 @@ refine prog = evalState (runExceptT (refine' prog)) initRefine
 -- + built-in data types, interfaces, operators are added
 refine' :: Prog Raw -> Refine (Prog Refined)
 refine' (MkProg xs) = do initialiseRState xs
-                         let (sigs, defs, dts, itfs) = splitTopTm xs
+                         let (sigs, defs, dts, itfs, itfAliases) = splitTopTm xs
+                         -- Refine top level terms
                          putTopLevelCtxt Datatype
                          dtTms <- mapM refineDataT dts
                          putTopLevelCtxt Interface
@@ -224,20 +242,16 @@ refineDataT d@(MkDT dt ps           ctrs) =
   if uniqueIds (map fst ps) then
     do let tvs = [x | (x, VT) <- ps] -- val ty vars
        let evs = [x | (x, ET) <- ps] -- eff ty vars
-       -- add [£] if any constructor's arg. ty contains implicit [£]
-       let (evs', ps') = if not (any ((==) "£") evs) && polyDataT d then
-                            (evs ++ ["£"], ps ++ [("£", ET)])
-                         else (evs, ps)
        -- add new rigid data type
        m <- getRDTs
-       putRDTs $ M.insert dt ps' m
+       putRDTs $ M.insert dt ps m
        -- refine constructors
        putTMap (M.fromList $ zip tvs (map MkTVar tvs)) -- temp. val ty vars
-       putEVSet (S.fromList evs')                      -- temp. eff ty vars
+       putEVSet (S.fromList evs)                      -- temp. eff ty vars
        ctrs' <- mapM refineCtr ctrs
        putEVSet S.empty                                -- reset
        putTMap M.empty                                 -- reset
-       return $ MkDataTm $ MkDT dt ps' ctrs'
+       return $ MkDataTm $ MkDT dt ps ctrs'
   else throwError $ "duplicate parameter in datatype " ++ dt
 
 -- explicit refinements:
@@ -249,20 +263,16 @@ refineItf i@(MkItf itf ps      cmds) =
   if uniqueIds (map fst ps) then
     do let tvs = [x | (x, VT) <- ps] -- val ty vars
        let evs = [x | (x, ET) <- ps] -- eff ty vars
-       -- add [£] if any command's arg. ty contains implicit [£]
-       let (evs', ps') = if not (any ((==) "£") evs) && polyItf i then
-                            (evs ++ ["£"], ps ++ [("£", ET)])
-                         else (evs, ps)
        -- add new rigid interface
        m <- getRItfs
-       putRItfs $ M.insert itf ps' m
+       putRItfs $ M.insert itf ps m
        -- refine commands
        putTMap (M.fromList $ zip tvs (map MkTVar tvs)) -- temp. val ty vars
-       putEVSet (S.fromList evs')                      -- temp. eff ty vars
+       putEVSet (S.fromList evs)                      -- temp. eff ty vars
        cmds' <- mapM refineCmd cmds
        putEVSet S.empty                                -- reset
        putTMap M.empty                                 -- reset
-       return $ MkItfTm $ MkItf itf ps' cmds'
+       return $ MkItfTm $ MkItf itf ps cmds'
   else throwError $ "duplicate parameter in interface " ++ itf
 
 -- explicit refinements:
@@ -279,18 +289,14 @@ refineCmd c@(MkCmd id ps xs y) =
          do
            let tvs = [x | (x, VT) <- ps] -- val ty vars
            let evs = [x | (x, ET) <- ps] -- eff ty vars
-           -- add [£] if any constructor's arg. ty contains implicit [£]
-           let (evs', ps') = if not (any ((==) "£") evs) && polyCmd c then
-                                (evs ++ ["£"], ps ++ [("£", ET)])
-                             else (evs, ps)
            -- refine argument types and result type
-           -- first add temp. val, eff ty vars
+           -- first, add temp. val, eff ty vars
            putTMap (M.union tmap (M.fromList $ zip tvs (map MkTVar tvs)))
            putEVSet (S.union evset (S.fromList evs))
-           -- refine
+           -- then, refine
            xs' <- mapM refineVType xs
            y' <- refineVType y
-           -- reset temp val, eff ty vars
+           -- finally, reset temp val, eff ty vars
            putTMap tmap
            putEVSet evset
            return $ MkCmd id ps xs' y'
@@ -320,7 +326,9 @@ refinePeg (MkPeg ab ty) = do ab' <- refineAb ab
 
 refineAb :: Ab Raw -> Refine (Ab Refined)
 refineAb ab@(MkAb v m) =
-  do es <- getEVars $ M.toList m
+--       [v | itf_1 x_11 ... x_1k, ..., itf_l x_l1 ... x_ln]
+  do -- Check if itf_i contains effect variable
+     es <- getEVars $ M.toList m
      if null es then do m' <- refineItfMap m
                         return $ MkAb (refineAbMod v) m'
      else if length es == 1 then do let u = head es
@@ -328,6 +336,10 @@ refineAb ab@(MkAb v m) =
                                     return $ MkAb (MkAbVar u) m'
      else throwError $ "ability has multiple effect variables " ++ (show es)
 
+-- Input: itf_1 x_11 ... x_1k, ..., itf_l x_l1 ... x_ln
+-- If a itf_i is an already-introduced effect variable, require that there are
+--   no x_ij (else throw error)
+-- Output: all itf_i which refer to already-introduced effect variables
 getEVars :: [(Id,[TyArg Raw])] -> Refine [Id]
 getEVars ((x, ts) : ys) =
   do p <- getEVSet
@@ -339,23 +351,44 @@ getEVars ((x, ts) : ys) =
      else return es
 getEVars [] = return []
 
+-- explicit refinements:
+-- + implicit [£] ty args to interfaces are made explicit
 refineItfMap :: ItfMap Raw -> Refine (ItfMap Refined)
 refineItfMap m = do xs <- mapM (uncurry refineEntry) (M.toList m)
-                    return $ M.fromList xs
-  where refineEntry :: Id -> [TyArg Raw] -> Refine (Id, [TyArg Refined])
+                    return $ M.fromList (concat xs)
+  where refineEntry :: Id -> [TyArg Raw] -> Refine [(Id, [TyArg Refined])]
         refineEntry x ts =
+--                  x t_1 ... t_n
           do itfs <- getRItfs
+             itfAliases <- getRItfAliases
              case M.lookup x itfs of
                Just ps ->
+--               1) interface x p_1 ... p_n
+--            or 2) interface x p_1 ... p_n [£]       ([£] has been explicitly added before)
+--                               If 2), set t_{n+1} := [£]
                  do let ts' = if length ps == length ts + 1 &&
                                  (snd (ps !! length ts) == ET) then
-                                ts ++ [EArg (MkAb (MkAbVar "£") M.empty)]
-                              else
-                                ts
+                                   ts ++ [EArg (MkAb (MkAbVar "£") M.empty)]
+                              else ts
                     checkArgs x (length ps) (length ts')
                     ts'' <- mapM refineTyArg ts'
-                    return (x, ts'')
-               Nothing -> idError x "interface"
+                    return [(x, ts'')]
+               Nothing ->
+                 case M.lookup x itfAliases of
+                   Just (ps, m) ->
+--                   1) interface x p_1 ... p_n     = [itf_i p_i1 ... p_ik, ...]
+--                   2) interface x p_1 ... p_n [£] = [itf_i p_i1 ... p_ik, ...]
+                     do -- if 2), set t_{n+1} := [£]
+                        let ts' = if length ps == length ts + 1 &&
+                                     (snd (ps !! length ts) == ET) then
+                                       ts ++ [EArg (MkAb (MkAbVar "£") M.empty)]
+                                  else ts
+                        checkArgs x (length ps) (length ts')
+                        ts'' <- mapM refineTyArg ts'
+                        -- substitute alias by interfaces
+                        --TODO last point
+                        idError x "interface"
+                   Nothing -> idError x "interface"
 
 refineAbMod :: AbMod Raw -> AbMod Refined
 refineAbMod MkEmpAb = MkEmpAb
@@ -382,7 +415,7 @@ refineVType (MkDTTy x  ts) =
      case M.lookup x dtm of
        Just ps ->
 --        1) data x p_1 ... p_n
---    or  2) data x p_1 ... p_n [£]       ([£] has been explicitly added during ref't)
+--    or  2) data x p_1 ... p_n [£]       ([£] has been explicitly added before)
          do           -- If 2), set t_{n+1} := [£]
             let ts' = if length ps == length ts + 1 && (snd (ps !! length ts) == ET) then
                         ts ++ [EArg (MkAb (MkAbVar "£") M.empty)]
@@ -402,7 +435,7 @@ refineVType (MkTVar x) =
   do dtm <- getRDTs
      case M.lookup x dtm of
        Just ps ->
-         -- if the data type is parameterised by a single eff var then instantiate it to "£"
+         -- if the data type is parameterised by a single eff var then instantiate it to [£|]
          do let ts = case ps of
                        [(_, ET)] -> [EArg (MkAb (MkAbVar "£") M.empty)]
                        _ -> []
@@ -446,7 +479,7 @@ refineUse (MkRawId id) =
         Nothing ->
           case id `findPair` cmds of
             Just n -> return $ Left $ MkOp $ MkCmdId id
-            -- LC: Do we need to check
+            -- LC: Do we need to check command's arity = 0?
             Nothing ->
               case id `findPair` hdrs of
                 Just n -> return $ Left $ MkOp $ MkPoly id  -- polytypic (n=0 means: takes no argument, x!)
@@ -556,6 +589,9 @@ refineVPat (MkListPat ps) =
          (MkDataPat "nil" [])
          ps'
 
+-- Substitute (x, val/eff?) for
+--substituteInTyArg :: (Id, Kind) -> TyArg Refined -> TyArg Raw
+
 checkArgs :: Id -> Int -> Int -> Refine ()
 checkArgs x exp act =
   if exp /= act then
@@ -570,75 +606,25 @@ idError x cls = throwError $ "no " ++ cls ++ " named '" ++ x ++ "' declared"
 initialiseRState :: [TopTm Raw] -> Refine ()
 initialiseRState xs =
   do i <- getRState
-     let itfs = getItfs xs
-         dts = getDataTs xs
-         hdrSigs = getHdrSigs xs
-     xs <- foldM addItf (interfaces i) itfs
-     ys <- foldM addDataT (datatypes i) dts
-     zs <- foldM addMH (handlers i) hdrSigs
-     cmds <- foldM addCmd (cmds i) (concatMap getCmds itfs)
-     ctrs <- foldM addCtr (ctrs i) (concatMap getCtrs dts)
-     putRItfs xs
-     putRDTs ys
-     putRCmds cmds
-     putRCtrs ctrs
-     putRMHs zs
+     let (dts', itfs', itfAls') = expatiateEpsilons (getDataTs xs) (getItfs xs) (getItfAliases xs)
+         hdrs'   = getHdrSigs xs
+     itfs   <- foldM addItf      (interfaces i)       itfs'
+     itfAls <- foldM addItfAlias (interfaceAliases i) itfAls'
+     dts    <- foldM addDataT    (datatypes i)        dts'
+     hdrs   <- foldM addMH       (handlers i)         hdrs'
+     cmds   <- foldM addCmd      (cmds i)             (concatMap getCmds itfs')
+     ctrs   <- foldM addCtr      (ctrs i)             (concatMap getCtrs dts')
+     putRItfs       itfs
+     putRItfAliases itfAls
+     putRDTs        dts
+     putRCmds       cmds
+     putRCtrs       ctrs
+     putRMHs        hdrs
 
 makeIntBinOp :: Char -> MHDef Refined
 makeIntBinOp c = MkDef [c] (MkCType [MkPort (MkAdj M.empty) MkIntTy
                                     ,MkPort (MkAdj M.empty) MkIntTy]
                             (MkPeg (MkAb (MkAbVar "£") M.empty) MkIntTy)) []
-
--- Return true if the data type definition contains a computation type
--- with an implicit effect variable "£".
-polyDataT :: DataT Raw -> Bool
-polyDataT (MkDT _ _ xs) = any polyCtr xs
-
--- Return true if the interface definition contains a computation type
--- with an implicit/explicit effect variable "£".
-polyItf :: Itf Raw -> Bool
-polyItf (MkItf _ _ xs) = any polyCmd xs
-
-polyCmd :: Cmd Raw -> Bool
-polyCmd (MkCmd _ _ ts t) = any polyVType ts || polyVType t
-
-polyCtr :: Ctr Raw -> Bool
-polyCtr (MkCtr _ ts) = any polyVType ts
-
-polyVType :: VType Raw -> Bool
-polyVType (MkDTTy _ ts) = any polyTyArg ts
-polyVType (MkSCTy ty)   = polyCType ty
-polyVType (MkTVar _)    = False
-polyVType MkStringTy    = False
-polyVType MkIntTy       = False
-polyVType MkCharTy      = False
-
-polyCType :: CType Raw -> Bool
-polyCType (MkCType ports peg) = any polyPort ports || polyPeg peg
-
-polyPort :: Port Raw -> Bool
-polyPort (MkPort adj ty) = polyAdj adj || polyVType ty
-
-polyAdj :: Adj Raw -> Bool
-polyAdj (MkAdj itfmap) = polyItfMap itfmap
-
-polyPeg :: Peg Raw -> Bool
-polyPeg (MkPeg ab ty) = polyAb ab || polyVType ty
-
-polyAb :: Ab Raw -> Bool
-polyAb (MkAb v m) = polyAbMod v || polyItfMap m
-
-polyItfMap :: ItfMap Raw -> Bool
-polyItfMap m = any (any polyTyArg) m
-
-polyAbMod :: AbMod Raw -> Bool
-polyAbMod MkEmpAb       = False
-polyAbMod (MkAbVar "£") = True
-polyAbMod (MkAbVar _)   = False
-
-polyTyArg :: TyArg Raw -> Bool
-polyTyArg (VArg t)  = polyVType t
-polyTyArg (EArg ab) = polyAb ab
 
 {-- The initial state for the refinement pass. -}
 
@@ -653,6 +639,9 @@ builtinItfs :: [Itf Refined]
 builtinItfs = [MkItf "Console" [] [MkCmd "inch" [] [] MkCharTy
                                   ,MkCmd "ouch" [] [MkCharTy]
                                                    (MkDTTy "Unit" [])]]
+
+builtinItfAliases :: [ItfAlias]
+builtinItfAliases = []
 
 builtinMHDefs :: [MHDef Refined]
 builtinMHDefs = map makeIntBinOp "+-" ++ [caseDef]
@@ -682,6 +671,10 @@ builtinIFs :: IFMap
 builtinIFs = foldl add M.empty builtinItfs
   where add m (MkItf id ps _) = M.insert id ps m
 
+builtinIFAliases :: IFAliasesMap
+builtinIFAliases = foldl add M.empty builtinItfAliases
+  where add m (MkItfAlias id ps itfMap) = M.insert id (ps, itfMap) m
+
 builtinCtrs :: [IPair]
 builtinCtrs = map add $ concatMap getCtrs builtinDataTs
   where add (MkCtr id ts) = (id,length ts)
@@ -691,5 +684,155 @@ builtinCmds = map add $ concatMap getCmds builtinItfs
   where add (MkCmd id _ ts _) = (id,length ts)
 
 initRefine :: RState
-initRefine = MkRState builtinIFs builtinDTs builtinMHs builtinCtrs
+initRefine = MkRState builtinIFs builtinIFAliases builtinDTs builtinMHs builtinCtrs
              builtinCmds (MkProg []) M.empty S.empty Nothing
+
+
+-- The following definitions are for making implicit [£] eff vars explicit.
+
+data Node = DtNode (DataT Raw) | ItfNode (Itf Raw) | ItfAlNode ItfAlias
+  deriving (Show, Eq)
+data HasEps = HasEps | HasEpsIfAny [Id]
+  deriving (Show, Eq)
+
+nodeId :: Node -> Id
+nodeId (DtNode (MkDT id _ _)) = id
+nodeId (ItfNode (MkItf id _ _)) = id
+nodeId (ItfAlNode (MkItfAlias id _ _)) = id
+
+anyHasEps :: [HasEps] -> HasEps
+anyHasEps xs = if any ((==) HasEps) xs then HasEps
+                   else HasEpsIfAny (concat [ids | HasEpsIfAny ids <- xs])
+
+-- Given data type, interface and interface alias def's, determine which of them
+-- carry an implicit or explicit [£] eff var. As the def's may depend on each
+-- other, we consider each def. a node and model the dependencies as a
+-- dependency graph.
+-- A node will be decided either positive (i.e. carries [£]) or
+-- negative (i.e. no [£]). Whenever a node reaches a positive one, it is also
+-- decided positive (i.e. any contained subtype requiring [£] induces
+-- [£] for the parent).
+-- Finally, all definitions that are decided to have [£], but do not yet
+-- explicitly have it, are added an additional [£] eff var.
+expatiateEpsilons :: [DataT Raw] -> [Itf Raw] -> [ItfAlias] -> ([DataT Raw], [Itf Raw], [ItfAlias])
+expatiateEpsilons dts itfs itfAls =
+  let nodes = map DtNode dts ++ map ItfNode itfs ++ map ItfAlNode itfAls
+      posIds = map nodeId (decideGraph (nodes, [], [])) in
+    (map (expatiateEpsInDataT posIds) dts,
+     map (expatiateEpsInItf posIds)   itfs,
+     map (expatiateEpsInItfAl posIds) itfAls)
+  where
+    -- Given graph (undecided-nodes, positive-nodes, negative-nodes), decide
+    -- subgraphs as long as there are unvisited nodes. Finally (base case),
+    -- return positive nodes.
+    decideGraph :: ([Node], [Node], [Node]) -> [Node]
+    decideGraph ([],   pos, _  )    = pos
+    decideGraph (x:xr, pos, neg) = decideGraph $ runIdentity $ execStateT (decideSubgraph x) (xr, pos, neg)
+
+    -- Given graph (passed as state, same as for decideGraph) and a starting
+    -- node x (already excluded from the graph), visit the whole subgraph
+    -- reachable from x and thereby decide each node.
+    -- To avoid cycles, x must always be excluded from graph.
+    -- Method: 1) Try to decide x on its own. Either:
+    --            (1), (2) Already decided
+    --            (3), (4) Decidable without dependencies
+    --         2) If x's decision is dependent on neighbours' ones, visit all
+    --            and recursively decide them, too. Either:
+    --            (5)(i)  A neighbour y is decided pos.     => x is pos.
+    --            (5)(ii) All neighbours y are decided neg. => x is neg.
+    decideSubgraph :: Node -> State ([Node], [Node], [Node]) Bool
+    decideSubgraph x = do
+      (xs, pos, neg) <- get
+      if        x `elem` pos then return True      -- (1)
+      else if   x `elem` neg then return False     -- (2)
+      else case hasEpsNode x of
+        HasEps          -> do put (xs, x:pos, neg) -- (3)
+                              return True
+        HasEpsIfAny ids ->
+          let neighbours = filter ((`elem` ids) . nodeId) (xs ++ pos ++ neg) in
+          do dec <- foldl (\dec y -> do -- Exclude neighbour from graph
+                                        (xs', pos', neg') <- get
+                                        put (xs' \\ [y], pos', neg')
+                                        d  <- dec
+                                        d' <- decideSubgraph y
+                                        -- Once pos. y found, result stays pos.
+                                        return $ d || d')
+                          (return False)           -- (4) (no neighbours)
+                          neighbours
+             (xs', pos', neg') <- get
+             if dec then put (xs', x:pos', neg')   -- (5)(i)
+                    else put (xs', pos', x:neg')   -- (5)(ii)
+             return dec
+
+    expatiateEpsInDataT :: [Id] -> DataT Raw -> DataT Raw
+    expatiateEpsInDataT posIds (MkDT dt ps ctrs) = (MkDT dt ps' ctrs) where
+      ps' = if not (any ((==) ("£", ET)) ps) && dt `elem` posIds then ps ++ [("£", ET)] else ps
+
+    expatiateEpsInItf :: [Id] -> Itf Raw -> Itf Raw
+    expatiateEpsInItf posIds (MkItf itf ps cmds) = (MkItf itf ps' cmds) where
+      ps' = if not (any ((==) ("£", ET)) ps) && itf `elem` posIds then ps ++ [("£", ET)] else ps
+
+    expatiateEpsInItfAl :: [Id] -> ItfAlias -> ItfAlias
+    expatiateEpsInItfAl posIds (MkItfAlias itfAl ps itfMap) = (MkItfAlias itfAl ps' itfMap) where
+      ps' = if not (any ((==) ("£", ET)) ps) && itfAl `elem` posIds then ps ++ [("£", ET)] else ps
+
+hasEpsNode :: Node -> HasEps
+hasEpsNode (DtNode dt) = hasEpsDataT dt
+hasEpsNode (ItfNode itf) = hasEpsItf itf
+hasEpsNode (ItfAlNode itfAl) = hasEpsItfAl itfAl
+
+-- Return true if the data type def. has *necessarily* an implicit or explicit [£]
+-- variable, only by considering the definition itself
+hasEpsDataT :: DataT Raw -> HasEps
+hasEpsDataT (MkDT _ ps ctrs) = if any ((==) ("£", ET)) ps then HasEps
+                                  else anyHasEps (map hasEpsCtr ctrs)
+
+-- Return true if the interface definition contains a computation type
+-- with an implicit/explicit effect variable "£".
+hasEpsItf :: Itf Raw -> HasEps
+hasEpsItf (MkItf _ ps cmds) = if any ((==) ("£", ET)) ps then HasEps
+                            else anyHasEps (map hasEpsCmd cmds)
+
+hasEpsItfAl :: ItfAlias -> HasEps
+hasEpsItfAl _ = HasEps -- TODO
+
+hasEpsCmd :: Cmd Raw -> HasEps
+hasEpsCmd (MkCmd _ _ ts t) = anyHasEps $ map hasEpsVType ts ++ [hasEpsVType t]
+
+hasEpsCtr :: Ctr Raw -> HasEps
+hasEpsCtr (MkCtr _ ts) = anyHasEps (map hasEpsVType ts)
+
+hasEpsVType :: VType Raw -> HasEps
+hasEpsVType (MkDTTy _ ts) = anyHasEps (map hasEpsTyArg ts)
+hasEpsVType (MkSCTy ty)   = hasEpsCType ty
+hasEpsVType (MkTVar _)    = HasEpsIfAny []
+hasEpsVType MkStringTy    = HasEpsIfAny []
+hasEpsVType MkIntTy       = HasEpsIfAny []
+hasEpsVType MkCharTy      = HasEpsIfAny []
+
+hasEpsCType :: CType Raw -> HasEps
+hasEpsCType (MkCType ports peg) = anyHasEps $ map hasEpsPort ports ++ [hasEpsPeg peg]
+
+hasEpsPort :: Port Raw -> HasEps
+hasEpsPort (MkPort adj ty) = anyHasEps [hasEpsAdj adj, hasEpsVType ty]
+
+hasEpsAdj :: Adj Raw -> HasEps
+hasEpsAdj (MkAdj itfmap) = hasEpsItfMap itfmap
+
+hasEpsPeg :: Peg Raw -> HasEps
+hasEpsPeg (MkPeg ab ty) = anyHasEps [hasEpsAb ab, hasEpsVType ty]
+
+hasEpsAb :: Ab Raw -> HasEps
+hasEpsAb (MkAb v m) = anyHasEps [hasEpsAbMod v, hasEpsItfMap m]
+
+hasEpsItfMap :: ItfMap Raw -> HasEps
+hasEpsItfMap m = (anyHasEps . (map hasEpsTyArg) . concat . M.elems) m
+
+hasEpsAbMod :: AbMod Raw -> HasEps
+hasEpsAbMod MkEmpAb       = HasEpsIfAny []
+hasEpsAbMod (MkAbVar "£") = HasEps
+hasEpsAbMod (MkAbVar _)   = HasEpsIfAny []
+
+hasEpsTyArg :: TyArg Raw -> HasEps
+hasEpsTyArg (VArg t)  = hasEpsVType t
+hasEpsTyArg (EArg ab) = hasEpsAb ab

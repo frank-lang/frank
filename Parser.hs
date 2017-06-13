@@ -70,7 +70,8 @@ tterm :: MonadicParsing m => m (TopTm Raw)
 tterm = MkDataTm <$> parseDataT <|>
         MkSigTm <$> try parseMHSig <|>
         MkClsTm <$> parseMHCls <|>
-        MkItfTm <$> parseItf
+        MkItfTm <$> try parseItf <|>
+        MkItfAliasTm <$> parseItfAlias
 
 parseTyVar :: MonadicParsing m => m (Id, Kind)
 parseTyVar = (\x -> (x, ET)) <$> brackets parseEVar <|>
@@ -164,12 +165,15 @@ parseCmdType = do vs <- sepBy1 parseVType (symbol "->")
                   if length vs == 1 then return ([],head vs)
                   else return (init vs, last vs)
 
--- allow polymorphic commands of the form "mycommand : forall X [E], X -> {[E]X}"
-parseQuantifiedTVs :: MonadicParsing m => m [(Id,Kind)]
-parseQuantifiedTVs = do reserved "forall"
-                        ps <- some parseTyVar
-                        symbol ","
-                        return ps
+parseItfAlias :: MonadicParsing m => m ItfAlias
+parseItfAlias = do reserved "interface"
+                   name <- identifier
+                   ps <- many parseTyVar
+                   symbol "="
+                   symbol "["
+                   xs <- parseItfInstances
+                   symbol "]"
+                   return $ MkItfAlias name ps (M.fromList xs)
 
 parseCType :: MonadicParsing m => m (CType Raw)
 parseCType = do ports <- many (try (parsePort <* symbol "->"))
