@@ -1,0 +1,37 @@
+-- #desc    Interface aliases that refer to interface aliases are unfolded correctly
+-- #return  unit
+
+--- start of standard stuff ---
+data Maybe X = nothing | just X
+data Pair X Y = pair X Y
+data Zero =     -- empty type
+
+on : X -> {X -> Y} -> Y
+on x f = f x
+
+if : Bool -> {X} -> {X} -> X
+if b t e = on b { true  -> t!
+                | false -> e! }
+
+append : List X -> List X -> List X
+append []        ys = ys
+append (x :: xs) ys = x :: (append xs ys)
+
+concat : List (List X) -> List X
+concat []          = []
+concat (xs :: xss) = append xs (concat xss)
+
+data Bool = true | false
+
+--- end of standard stuff ---
+
+interface Choice = choice : Bool
+interface MyChoice = [Choice]
+interface MyMyChoice = [MyChoice]
+
+myProg : {[MyMyChoice]Int}
+myProg! = case choice! { true -> 1
+                       | false -> 0 }
+
+main: {Unit}
+main! = unit

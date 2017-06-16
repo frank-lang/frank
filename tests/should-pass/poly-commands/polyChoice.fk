@@ -1,0 +1,56 @@
+-- #desc    Polymorphic Choice Interface
+-- #return  "Nacht!"
+
+--- start of standard stuff ---
+data Maybe X = nothing | just X
+data Pair X Y = pair X Y
+data Zero =     -- empty type
+
+on : X -> {X -> Y} -> Y
+on x f = f x
+
+if : Bool -> {X} -> {X} -> X
+if b t e = on b { true  -> t!
+                | false -> e! }
+
+append : List X -> List X -> List X
+append []        ys = ys
+append (x :: xs) ys = x :: (append xs ys)
+
+concat : List (List X) -> List X
+concat []          = []
+concat (xs :: xss) = append xs (concat xss)
+
+data Bool = true | false
+
+interface Choice = choice : Bool
+--- end of standard stuff ---
+
+
+
+
+interface PolyChoice = choose X: {[PolyChoice] X} -> {[PolyChoice] X} -> X
+-- means implicitly:
+-- interface PolyChoice [E] = choose X: {[E|PolyChoice [E|]]X} -> {[E|PolyChoice [E|]]X} -> X
+
+-- Choose a time of day and a language
+nondetGreeting: {[PolyChoice]String}
+nondetGreeting! = choose { case (choose {0} {1})
+                                { 0 -> "Hello!"
+                                | _ -> "Moin!" }}
+                         { choose {"Night!"} {"Nacht!"} }
+
+alwaysPickLeft: {<PolyChoice>X -> X}
+alwaysPickLeft <choose a b -> k> = alwaysPickLeft (k a!)
+alwaysPickLeft x =                 x
+
+-- pick from list until list is empty, then pick left
+pickFromList: {List Bool -> <PolyChoice>X -> X}
+pickFromList (x::xs) <choose a b -> k> = if x {pickFromList xs (k a!)}
+                                              {pickFromList xs (k b!)}
+pickFromList nil     <choose a b -> k> = pickFromList nil (k a!)
+pickFromList _       x                 = x
+
+-- Test run
+main: {String}
+main! = pickFromList [false, false] nondetGreeting!

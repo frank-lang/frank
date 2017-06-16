@@ -13,11 +13,17 @@ from subprocess import Popen,PIPE
 class TestHarnessLogger:
     """Defines the logger for the test harness.
 
-    The fields are defined as follows:
-        * prefix: e (expected), u (unexpected)
-        * postfix: p (pass), f (failure)
+    * The first 4 fields are defined as follows:
+        * prefix:  e (expected), u (unexpected)
+        * postfix: p (pass),     f (failure)
+          (A further sub-division into regressions (r) and tests (t))
 
-    A further sub-division into regressions (r) and tests (t)."""
+     * Verbose logging works as follows: Either
+       1) Verbose for all or                    (self.verbose)
+       2) Verbose only for specific dir/file    (self.verbose_on)
+
+
+    """
     def __init__(self):
         self.ef = self.new_pair()
         self.uf = self.new_pair()
@@ -35,11 +41,13 @@ class TestHarnessLogger:
 
         ## Verbose logging
         self.verbose = False
-        self.verbose_on = ""
+        self.verbose_on = ""  ## file path to write to
 
     def new_pair(self):
         return { "r" : 0, "t" : 0 }
 
+    ## field: {ef, uf, ep, up}
+    ## d:     {"r", "t"}
     def inc(self, field, d):
         x = getattr(self, field)
         x[d] = x[d]+1
@@ -95,13 +103,14 @@ class TestHarnessLogger:
     def all_desc(self):
         return self.descf + self.descp
 
+""" Single test unit """
 class Result:
     def __init__(self,test,desc,code,aout,eout,directive,regression):
         self.test = test ## filename
         self.desc = desc
         self.code = code
         self.aout = aout ## actual output
-        self.eout = eout
+        self.eout = eout ## expected output
         self.directive = directive
         self.regression = regression
 
@@ -121,21 +130,30 @@ def main(okDirs,errDirs,args):
         run_tests_in_dir(logger, check_fail, x)
     logger.log(logger.show())
 
+## logger: Logger
+## fn:     (Logger, result) -> Unit
+## d:      dir-path
 def run_tests_in_dir(logger, fn, d):
     """Execute tests in directory d checking results with function fn."""
+    ## Turn on focused verbosity
     if logger.is_verbose_on(d):
         logger.set_verbose(True)
     logger.verbose_log("Entering test directory {0}".format(d))
     for x in os.listdir(d):
         x = d+x
+        ## Recursively go through subdirectories
         if os.path.isdir(x):
             run_tests_in_dir(logger, fn, x+"/")
+        ## Process only *.fk files
         elif os.path.isfile(x) and x.endswith(".fk"):
+            ## Turn on focused verbosity
             if logger.is_verbose_on(os.path.basename(x)):
                 logger.set_verbose(True)
             process_file(logger, fn, x)
+            ## Turn off focused verbosity
             if logger.is_verbose_on(os.path.basename(x)):
                 logger.set_verbose(False)
+    ## Turn off focused verbosity
     if logger.is_verbose_on(d):
         logger.set_verbose(False)
 
@@ -144,6 +162,7 @@ def process_file(logger, fn, x):
     ds = parse_file(logger, x)
     if ds:
         res = process_directives(logger, x, ds)
+        ## Log
         list(map(lambda r: fn(logger,r), res))
 
 def log_directives(logger, x, ds):
@@ -188,6 +207,7 @@ def show_directive(k,v,args):
     argRep = "".join(["~{0} {1}".format(x,y) for (x,y) in args])
     return "#{0} {1} {2}".format(k,v,argRep)
 
+## (Logger, File) -> [Directive]
 def parse_file(logger, x):
     ds = []
     with open(x) as f:

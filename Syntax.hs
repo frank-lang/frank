@@ -104,7 +104,7 @@ data DataCon a = MkDataCon Id [Tm a]
 data TopTm a where
   MkDataTm :: DataT a -> TopTm a
   MkItfTm :: Itf a -> TopTm a
-  MkItfAliasTm :: ItfAlias -> TopTm Raw
+  MkItfAliasTm :: ItfAlias a -> TopTm a
   MkSigTm :: MHSig -> TopTm Raw
   MkClsTm :: MHCls -> TopTm Raw
   MkDefTm :: NotRaw a => MHDef a -> TopTm a
@@ -154,7 +154,7 @@ data DataT a = MkDT Id [(Id, Kind)] [Ctr a]
 data Itf a = MkItf Id [(Id, Kind)] [Cmd a]
   deriving (Show, Eq)
 
-data ItfAlias = MkItfAlias Id [(Id, Kind)] (ItfMap Raw)
+data ItfAlias a = MkItfAlias Id [(Id, Kind)] (ItfMap a)
   deriving (Show, Eq)
 
 data Ctr a = MkCtr Id [VType a]
@@ -251,7 +251,7 @@ getItfs xs = getItfs' xs []
 getCmds :: Itf a -> [Cmd a]
 getCmds (MkItf _ _ xs) = xs
 
-getItfAliases :: [TopTm a] -> [ItfAlias]
+getItfAliases :: [TopTm a] -> [ItfAlias a]
 getItfAliases xs = [itfAlias | MkItfAliasTm itfAlias <- xs]
 
 collectINames :: [Itf a] -> [Id]

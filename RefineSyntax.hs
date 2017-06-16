@@ -56,11 +56,11 @@ getRItfs :: Refine IFMap
 getRItfs = do s <- getRState
               return $ interfaces s
 
-putRItfAliases :: IFAliasesMap -> Refine()
+putRItfAliases :: IFAliasesMap -> Refine ()
 putRItfAliases xs = do s <- getRState
                        putRState $ s {interfaceAliases = xs }
 
-getRItfAliases :: Refine IFAliasesMap
+getRItfAliases :: Refine (IFAliasesMap)
 getRItfAliases = do s <- getRState
                     return $ interfaceAliases s
 
@@ -152,7 +152,7 @@ getHdrDefs ((MkClsTm cls) : xs) ys = getHdrDefs xs (cls : ys)
 getHdrDefs (_ : xs) ys = getHdrDefs xs ys
 getHdrDefs [] ys = reverse ys
 
-splitTopTm :: [TopTm Raw] -> ([MHSig], [MHCls], [DataT Raw], [Itf Raw], [ItfAlias])
+splitTopTm :: [TopTm Raw] -> ([MHSig], [MHCls], [DataT Raw], [Itf Raw], [ItfAlias Raw])
 splitTopTm xs = (getHdrSigs xs, getHdrDefs xs [], dts, itfs, itfAliases)
   where dts = getDataTs xs
         itfs = getItfs xs
@@ -173,7 +173,7 @@ addItf m (MkItf x ps _) = if M.member x m then
                                          " already defined.")
                            else return $ M.insert x ps m
 
-addItfAlias :: IFAliasesMap -> ItfAlias -> Refine IFAliasesMap
+addItfAlias :: IFAliasesMap -> ItfAlias Raw -> Refine (IFAliasesMap)
 addItfAlias m (MkItfAlias x ps itfMap) = if M.member x m then
                                             throwError ("duplicate interface alias: " ++ x ++
                                                         " already defined.")
@@ -211,12 +211,14 @@ refine prog = evalState (runExceptT (refine' prog)) initRefine
 -- + built-in data types, interfaces, operators are added
 refine' :: Prog Raw -> Refine (Prog Refined)
 refine' (MkProg xs) = do initialiseRState xs
-                         let (sigs, defs, dts, itfs, itfAliases) = splitTopTm xs
+                         let (sigs, defs, dts, itfs, itfAls) = splitTopTm xs
                          -- Refine top level terms
                          putTopLevelCtxt Datatype
                          dtTms <- mapM refineDataT dts
                          putTopLevelCtxt Interface
                          itfTms <- mapM refineItf itfs
+                         putTopLevelCtxt InterfaceAlias
+                         itfAlTms <- mapM refineItfAl itfAls
                          putTopLevelCtxt Handler
                          hdrs <- mapM (refineMH defs) sigs
                          if existsMain hdrs then
@@ -242,12 +244,9 @@ refineDataT d@(MkDT dt ps           ctrs) =
   if uniqueIds (map fst ps) then
     do let tvs = [x | (x, VT) <- ps] -- val ty vars
        let evs = [x | (x, ET) <- ps] -- eff ty vars
-       -- add new rigid data type
-       m <- getRDTs
-       putRDTs $ M.insert dt ps m
        -- refine constructors
        putTMap (M.fromList $ zip tvs (map MkTVar tvs)) -- temp. val ty vars
-       putEVSet (S.fromList evs)                      -- temp. eff ty vars
+       putEVSet (S.fromList evs)                       -- temp. eff ty vars
        ctrs' <- mapM refineCtr ctrs
        putEVSet S.empty                                -- reset
        putTMap M.empty                                 -- reset
@@ -258,14 +257,11 @@ refineDataT d@(MkDT dt ps           ctrs) =
 -- + interface has unique effect & type variables
 -- + implicit eff var [£] is defined explicitly
 refineItf :: Itf Raw -> Refine (TopTm Refined)
-refineItf i@(MkItf itf ps      cmds) =
+refineItf (MkItf itf ps      cmds) =
 --        interface itf p_1 ... p_m = cmd_1 | ... | cmd_n
   if uniqueIds (map fst ps) then
     do let tvs = [x | (x, VT) <- ps] -- val ty vars
        let evs = [x | (x, ET) <- ps] -- eff ty vars
-       -- add new rigid interface
-       m <- getRItfs
-       putRItfs $ M.insert itf ps m
        -- refine commands
        putTMap (M.fromList $ zip tvs (map MkTVar tvs)) -- temp. val ty vars
        putEVSet (S.fromList evs)                      -- temp. eff ty vars
@@ -274,6 +270,24 @@ refineItf i@(MkItf itf ps      cmds) =
        putTMap M.empty                                 -- reset
        return $ MkItfTm $ MkItf itf ps cmds'
   else throwError $ "duplicate parameter in interface " ++ itf
+
+-- explicit refinements:
+-- + interface has unique effect & type variables
+-- + implicit eff var [£] is defined explicitly
+refineItfAl :: ItfAlias Raw -> Refine (ItfAlias Refined)
+refineItfAl (MkItfAlias itfAl ps itfMap) =
+--          interface itf p_1 ... p_m = [itf_1 t_11 ... t_1n, ...]
+  if uniqueIds (map fst ps) then
+    do let tvs = [x | (x, VT) <- ps] -- val ty vars
+       let evs = [x | (x, ET) <- ps] -- eff ty vars
+       -- refine itf map
+       putTMap (M.fromList $ zip tvs (map MkTVar tvs)) -- temp. val ty vars
+       putEVSet (S.fromList evs)                       -- temp. eff ty vars
+       itfMap' <- refineItfMap itfMap
+       putEVSet S.empty                                -- reset
+       putTMap M.empty                                 -- reset
+       return $ MkItfAlias itfAl ps itfMap'
+  else throwError $ "duplicate parameter in interface alias " ++ itfAl
 
 -- explicit refinements:
 -- + command has unique effect & type variables
@@ -296,7 +310,7 @@ refineCmd c@(MkCmd id ps xs y) =
            -- then, refine
            xs' <- mapM refineVType xs
            y' <- refineVType y
-           -- finally, reset temp val, eff ty vars
+           -- finally, reset temp. val, eff ty vars
            putTMap tmap
            putEVSet evset
            return $ MkCmd id ps xs' y'
@@ -354,41 +368,120 @@ getEVars [] = return []
 -- explicit refinements:
 -- + implicit [£] ty args to interfaces are made explicit
 refineItfMap :: ItfMap Raw -> Refine (ItfMap Refined)
-refineItfMap m = do xs <- mapM (uncurry refineEntry) (M.toList m)
-                    return $ M.fromList (concat xs)
-  where refineEntry :: Id -> [TyArg Raw] -> Refine [(Id, [TyArg Refined])]
-        refineEntry x ts =
+refineItfMap m = do -- substitute interfaces for interface aliases
+                    xs <- concat <$> mapM substitItfAls (M.toList m)
+                    -- refine each interface
+                    xs' <- mapM refineEntry xs
+                    return $ M.fromList xs'
+  where refineEntry :: (Id, [TyArg Raw]) -> Refine (Id, [TyArg Refined])
+        refineEntry (x, ts) =
 --                  x t_1 ... t_n
           do itfs <- getRItfs
-             itfAliases <- getRItfAliases
              case M.lookup x itfs of
                Just ps ->
---               1) interface x p_1 ... p_n
---            or 2) interface x p_1 ... p_n [£]       ([£] has been explicitly added before)
---                               If 2), set t_{n+1} := [£]
+--               1) interface x p_1 ... p_n     = ...
+--            or 2) interface x p_1 ... p_n [£] = ...
+--                  and [£] has been explicitly added before
+--                            if 2), set t_{n+1} := [£]
                  do let ts' = if length ps == length ts + 1 &&
                                  (snd (ps !! length ts) == ET) then
                                    ts ++ [EArg (MkAb (MkAbVar "£") M.empty)]
                               else ts
                     checkArgs x (length ps) (length ts')
                     ts'' <- mapM refineTyArg ts'
-                    return [(x, ts'')]
-               Nothing ->
-                 case M.lookup x itfAliases of
-                   Just (ps, m) ->
---                   1) interface x p_1 ... p_n     = [itf_i p_i1 ... p_ik, ...]
---                   2) interface x p_1 ... p_n [£] = [itf_i p_i1 ... p_ik, ...]
-                     do -- if 2), set t_{n+1} := [£]
-                        let ts' = if length ps == length ts + 1 &&
-                                     (snd (ps !! length ts) == ET) then
-                                       ts ++ [EArg (MkAb (MkAbVar "£") M.empty)]
-                                  else ts
-                        checkArgs x (length ps) (length ts')
-                        ts'' <- mapM refineTyArg ts'
-                        -- substitute alias by interfaces
-                        --TODO last point
-                        idError x "interface"
-                   Nothing -> idError x "interface"
+                    return (x, ts'')
+               Nothing -> idError x "interface"
+
+        substitItfAls :: (Id, [TyArg Raw]) -> Refine [(Id, [TyArg Raw])]
+        substitItfAls = substitItfAls' [] where
+          substitItfAls' :: [Id] -> (Id, [TyArg Raw]) -> Refine [(Id, [TyArg Raw])]
+          substitItfAls' visited (x, ts) = do
+            itfAls <- getRItfAliases
+            if not (x `elem` visited) then
+              case M.lookup x itfAls of
+                Nothing -> return [(x, ts)]
+                Just (ps, itfMap) ->
+  --               1) interface x p_1 ... p_n     = [itf_i p_i1 ... p_ik, ...]
+  --            or 2) interface x p_1 ... p_n [£] = [itf_i p_i1 ... p_ik, ...]
+  --                  and [£] has been explicitly added before
+  --                                if 2), set t_{n+1} := [£]
+                  do let ts' = if length ps == length ts + 1 &&
+                                  (snd (ps !! length ts) == ET) then
+                                    ts ++ [EArg (MkAb (MkAbVar "£") M.empty)]
+                               else ts
+                     checkArgs x (length ps) (length ts')
+                     let subst = zip ps ts'
+                     -- substitute x ts
+                     --         by [x_1 ts_1', ..., x_n ts_n']
+                     -- where ts_i' has been acted upon by subst
+                     xs <- mapM (substitInTyArgs subst) (M.toList itfMap)
+                     -- recursively substitute itf als in x_1, ..., x_n together
+                     --            [[x_11 x_11_ts, ...], ...]
+                     xss <- mapM (substitItfAls' (x:visited)) xs
+                     return $ concat xss
+            else throwError $ "interface alias " ++ show x ++ " is defined in terms of itself (cycle)"
+
+type Subst = [((Id, Kind), TyArg Raw)]
+
+substLookupVT :: Subst -> Id -> Maybe (VType Raw)
+substLookupVT subst x = case find (\((x', k), y) -> x' == x && k == VT) subst of
+  Just (_, VArg ty) -> Just ty
+  _                 -> Nothing
+
+substLookupET :: Subst -> Id -> Maybe (Ab Raw)
+substLookupET subst x = case find (\((x', k), y) -> x' == x && k == ET) subst of
+  Just (_, EArg ab) -> Just ab
+  _                 -> Nothing
+
+substitInTyArgs :: Subst -> (Id, [TyArg Raw]) -> Refine (Id, [TyArg Raw])
+substitInTyArgs subst (x, ts) = do ts' <- mapM (substitInTyArg subst) ts
+                                   return (x, ts')
+-- Replace (x, val/eff?) by ty-arg
+substitInTyArg :: Subst -> TyArg Raw -> Refine (TyArg Raw)
+substitInTyArg subst (VArg ty) = VArg <$> (substitInVType subst ty)
+substitInTyArg subst (EArg ab) = EArg <$> (substitInAb subst ab)
+
+substitInVType :: Subst -> VType Raw -> Refine (VType Raw)
+substitInVType subst (MkDTTy x ts) = do
+  dtm <- getRDTs
+  tmap <- getTMap
+  ctx <- getTopLevelCtxt
+  case (not (M.member x dtm) && -- Check if id is really type variable
+        null ts &&
+        (isHdrCtxt ctx ||
+         M.member x tmap), substLookupVT subst x) of -- if so, then substitute
+    (True, Just y) -> return y
+    _              -> do ts' <- mapM (substitInTyArg subst) ts
+                         return $ MkDTTy x ts'
+substitInVType subst (MkSCTy ty) = substitInCType subst ty >>= return . MkSCTy
+substitInVType subst (MkTVar x) = case substLookupVT subst x of
+  Just y -> return y
+  _      -> return $ MkTVar x
+substitInVType subst ty = return ty  -- MkStringTy, MkIntTy, MkCharTy
+
+substitInCType :: Subst -> CType Raw -> Refine (CType Raw)
+substitInCType subst (MkCType ports peg) = do ports' <- mapM (substitInPort subst) ports
+                                              peg' <- substitInPeg subst peg
+                                              return $ MkCType ports' peg'
+
+substitInPort :: Subst -> Port Raw -> Refine (Port Raw)
+substitInPort subst (MkPort adj ty) = do adj' <- substitInAdj subst adj
+                                         ty' <- substitInVType subst ty
+                                         return $ MkPort adj' ty'
+
+substitInPeg :: Subst -> Peg Raw -> Refine (Peg Raw)
+substitInPeg subst (MkPeg ab ty) = do ab' <- substitInAb subst ab
+                                      ty' <- substitInVType subst ty
+                                      return $ MkPeg ab' ty'
+
+substitInAb :: Subst -> Ab Raw -> Refine (Ab Raw)
+substitInAb subst a = return a
+
+substitInAdj :: Subst -> Adj Raw -> Refine (Adj Raw)
+substitInAdj subst (MkAdj m) = substitInItfMap subst m >>= return . MkAdj
+
+substitInItfMap :: Subst -> ItfMap Raw -> Refine (ItfMap Raw)
+substitInItfMap subst itfMap = do M.fromList <$> mapM (substitInTyArgs subst) (M.toList itfMap)
 
 refineAbMod :: AbMod Raw -> AbMod Refined
 refineAbMod MkEmpAb = MkEmpAb
@@ -400,18 +493,20 @@ refineAdj (MkAdj m) = do m' <- refineItfMap m
 
 -- explicit refinements:
 -- + implicit [£] ty args to data types are made explicit
--- + MkDTTy is distinguished between being
---   1) data type indeed  -> MkDTTy
---   2) introduced ty var -> MkTVar
---      TODO: LC: shouldn't there be an error as type constructors can't occur as MkTVar's?
+-- + MkDTTy is distinguished between being (in the following precedence)
+--   1) data type indeed            -> MkDTTy
+--   2) (implicitly) intro'd ty var -> MkTVar  (if no ty args)
+--   3) neither                     -> error
 -- + MkTVar is distinguished between being
---   1) data type         -> MkDTTy
---   2) introduced ty var -> MkTVar
+--   1) intro'd ty var              -> MkTVar
+--   2) data type                   -> MkDTTy
+--   3) neither                     -> MkTVar
 -- + ty arguments refer only to introduced val tys
 refineVType :: VType Raw -> Refine (VType Refined)
 refineVType (MkDTTy x  ts) =
 --           x t_1 ... t_n
-  do dtm <- getRDTs
+  do
+     dtm <- getRDTs
      case M.lookup x dtm of
        Just ps ->
 --        1) data x p_1 ... p_n
@@ -426,23 +521,27 @@ refineVType (MkDTTy x  ts) =
             return $ MkDTTy x ts''
        Nothing -> do m <- getTMap
                      ctx <- getTopLevelCtxt
-                     if isHdrCtxt ctx ||     -- Handlers use implicit polym.
-                        M.member x m then    -- x can be in val ty contexts
-                          return $ MkTVar x
+                     if null ts &&  -- there must be no arguments to ty var
+                        (isHdrCtxt ctx || -- x can be implic. poly. ty var in hdr sign.
+                         M.member x m)    -- x can be in val ty contexts
+                     then return $ MkTVar x
                      else idError x "type variable"
 refineVType (MkSCTy ty) = refineCType ty >>= return . MkSCTy
 refineVType (MkTVar x) =
-  do dtm <- getRDTs
-     case M.lookup x dtm of
-       Just ps ->
-         -- if the data type is parameterised by a single eff var then instantiate it to [£|]
-         do let ts = case ps of
-                       [(_, ET)] -> [EArg (MkAb (MkAbVar "£") M.empty)]
-                       _ -> []
-            checkArgs x (length ps) (length ts)
-            ts' <- mapM refineTyArg ts
-            return $ MkDTTy x ts'
-       Nothing -> return $ MkTVar x
+  do tmap <- getTMap
+     dtm <- getRDTs
+     case M.lookup x tmap of
+       Just _  -> return $ MkTVar x
+       Nothing -> case M.lookup x dtm of
+         Just ps ->
+           -- if the data type is parameterised by a single eff var then instantiate it to [£|]
+           do let ts = case ps of
+                         [(_, ET)] -> [EArg (MkAb (MkAbVar "£") M.empty)]
+                         _ -> []
+              checkArgs x (length ps) (length ts)
+              ts' <- mapM refineTyArg ts
+              return $ MkDTTy x ts'
+         Nothing -> return $ MkTVar x
 refineVType MkStringTy = return MkStringTy
 refineVType MkIntTy = return MkIntTy
 refineVType MkCharTy = return MkCharTy
@@ -589,9 +688,6 @@ refineVPat (MkListPat ps) =
          (MkDataPat "nil" [])
          ps'
 
--- Substitute (x, val/eff?) for
---substituteInTyArg :: (Id, Kind) -> TyArg Refined -> TyArg Raw
-
 checkArgs :: Id -> Int -> Int -> Refine ()
 checkArgs x exp act =
   if exp /= act then
@@ -640,7 +736,7 @@ builtinItfs = [MkItf "Console" [] [MkCmd "inch" [] [] MkCharTy
                                   ,MkCmd "ouch" [] [MkCharTy]
                                                    (MkDTTy "Unit" [])]]
 
-builtinItfAliases :: [ItfAlias]
+builtinItfAliases :: [ItfAlias Raw]
 builtinItfAliases = []
 
 builtinMHDefs :: [MHDef Refined]
@@ -690,7 +786,7 @@ initRefine = MkRState builtinIFs builtinIFAliases builtinDTs builtinMHs builtinC
 
 -- The following definitions are for making implicit [£] eff vars explicit.
 
-data Node = DtNode (DataT Raw) | ItfNode (Itf Raw) | ItfAlNode ItfAlias
+data Node = DtNode (DataT Raw) | ItfNode (Itf Raw) | ItfAlNode (ItfAlias Raw)
   deriving (Show, Eq)
 data HasEps = HasEps | HasEpsIfAny [Id]
   deriving (Show, Eq)
@@ -714,12 +810,12 @@ anyHasEps xs = if any ((==) HasEps) xs then HasEps
 -- [£] for the parent).
 -- Finally, all definitions that are decided to have [£], but do not yet
 -- explicitly have it, are added an additional [£] eff var.
-expatiateEpsilons :: [DataT Raw] -> [Itf Raw] -> [ItfAlias] -> ([DataT Raw], [Itf Raw], [ItfAlias])
+expatiateEpsilons :: [DataT Raw] -> [Itf Raw] -> [ItfAlias Raw] -> ([DataT Raw], [Itf Raw], [ItfAlias Raw])
 expatiateEpsilons dts itfs itfAls =
   let nodes = map DtNode dts ++ map ItfNode itfs ++ map ItfAlNode itfAls
       posIds = map nodeId (decideGraph (nodes, [], [])) in
     (map (expatiateEpsInDataT posIds) dts,
-     map (expatiateEpsInItf posIds)   itfs,
+     map (expatiateEpsInItf   posIds) itfs,
      map (expatiateEpsInItfAl posIds) itfAls)
   where
     -- Given graph (undecided-nodes, positive-nodes, negative-nodes), decide
@@ -772,7 +868,7 @@ expatiateEpsilons dts itfs itfAls =
     expatiateEpsInItf posIds (MkItf itf ps cmds) = (MkItf itf ps' cmds) where
       ps' = if not (any ((==) ("£", ET)) ps) && itf `elem` posIds then ps ++ [("£", ET)] else ps
 
-    expatiateEpsInItfAl :: [Id] -> ItfAlias -> ItfAlias
+    expatiateEpsInItfAl :: [Id] -> ItfAlias Raw -> ItfAlias Raw
     expatiateEpsInItfAl posIds (MkItfAlias itfAl ps itfMap) = (MkItfAlias itfAl ps' itfMap) where
       ps' = if not (any ((==) ("£", ET)) ps) && itfAl `elem` posIds then ps ++ [("£", ET)] else ps
 
@@ -785,16 +881,17 @@ hasEpsNode (ItfAlNode itfAl) = hasEpsItfAl itfAl
 -- variable, only by considering the definition itself
 hasEpsDataT :: DataT Raw -> HasEps
 hasEpsDataT (MkDT _ ps ctrs) = if any ((==) ("£", ET)) ps then HasEps
-                                  else anyHasEps (map hasEpsCtr ctrs)
+                               else anyHasEps (map hasEpsCtr ctrs)
 
 -- Return true if the interface definition contains a computation type
 -- with an implicit/explicit effect variable "£".
 hasEpsItf :: Itf Raw -> HasEps
 hasEpsItf (MkItf _ ps cmds) = if any ((==) ("£", ET)) ps then HasEps
-                            else anyHasEps (map hasEpsCmd cmds)
+                              else anyHasEps (map hasEpsCmd cmds)
 
-hasEpsItfAl :: ItfAlias -> HasEps
-hasEpsItfAl _ = HasEps -- TODO
+hasEpsItfAl :: ItfAlias Raw -> HasEps
+hasEpsItfAl (MkItfAlias _ ps itfMap) = if any ((==) ("£", ET)) ps then HasEps
+                                       else hasEpsItfMap itfMap
 
 hasEpsCmd :: Cmd Raw -> HasEps
 hasEpsCmd (MkCmd _ _ ts t) = anyHasEps $ map hasEpsVType ts ++ [hasEpsVType t]
@@ -826,7 +923,7 @@ hasEpsAb :: Ab Raw -> HasEps
 hasEpsAb (MkAb v m) = anyHasEps [hasEpsAbMod v, hasEpsItfMap m]
 
 hasEpsItfMap :: ItfMap Raw -> HasEps
-hasEpsItfMap m = (anyHasEps . (map hasEpsTyArg) . concat . M.elems) m
+hasEpsItfMap = anyHasEps . (map hasEpsTyArg) . concat . M.elems
 
 hasEpsAbMod :: AbMod Raw -> HasEps
 hasEpsAbMod MkEmpAb       = HasEpsIfAny []

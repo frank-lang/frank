@@ -1,0 +1,16 @@
+-- #desc    Polymorphic Abort Interface
+-- #return  pair "Exploded" "Safe"
+
+data Pair X Y = pair X Y
+interface Abort = abort X: X
+
+explosiveString: {[Abort]String}
+explosiveString! = "Boom"; abort!
+
+defuser: {<Abort>X -> X -> X}
+defuser <abort -> k> alt = alt
+defuser x            _   = x
+
+main: {Pair String String}
+main! = pair (defuser explosiveString! "Exploded")
+             (defuser "Safe"           "Exploded")

@@ -165,7 +165,7 @@ parseCmdType = do vs <- sepBy1 parseVType (symbol "->")
                   if length vs == 1 then return ([],head vs)
                   else return (init vs, last vs)
 
-parseItfAlias :: MonadicParsing m => m ItfAlias
+parseItfAlias :: MonadicParsing m => m (ItfAlias Raw)
 parseItfAlias = do reserved "interface"
                    name <- identifier
                    ps <- many parseTyVar
@@ -234,18 +234,24 @@ parseItfInstance = do x <- identifier
                       ts <- many parseTyArg
                       return (x, ts)
 
+-- This parser gives higher precedence to MkDTTy when coming across "X"
+-- E.g., the type "X" becomes   MkDTTy "X" []   (instead of MkTVar "X")
 parseVType :: MonadicParsing m => m (VType Raw)
-parseVType = try parseDTType <|>                      -- DTid t_1 ... t_n (data type indeed) or
-                                                      -- X    t_1 ... t_n (paramet'ed ty var, gets fixed during refinement)
+parseVType = try parseDTType <|> -- could possibly also be a MKTvar (determined
+                                 -- during refinement)
              parseVType'
 
+-- This parser gives higher precedence to MkTVar when coming across "X"
+-- E.g., the type "X" becomes   MkTVar "X"   (instead of MkDTTy "X" [])
+-- By writing "(X)" one can escape back to parseVType
 parseVType' :: MonadicParsing m => m (VType Raw)
 parseVType' = parens parseVType <|>
               MkSCTy <$> try (braces parseCType) <|>
               MkStringTy <$ reserved "String" <|>
               MkIntTy <$ reserved "Int" <|>
               MkCharTy <$ reserved "Char" <|>
-              MkTVar <$> identifier                   -- DTid (gets fixed during refinement) or X
+              MkTVar <$> identifier  -- could possibly also be a MkDTTy
+                                     -- (determined during refinement)
 
 parseTyArg :: MonadicParsing m => m (TyArg Raw)
 parseTyArg = VArg <$> parseVType' <|>

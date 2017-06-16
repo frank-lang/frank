@@ -1,0 +1,23 @@
+-- #desc   This tests that implicit epsilons are recognised correctly
+-- #return unit
+
+-- We test 4 cases: A) ChoiceBox has impl. [£]   MonoChoice has impl. [£]
+--                  B) ChoiceBox has impl. [£]   MonoChoice not
+--                  C) ChoiceBox not             MonoChoice has impl. [£]
+--                  D) ChoiceBox not             MonoChoice not
+
+data ChoiceBoxA Y = boxA {[MonoChoiceA Y]Y}
+interface MonoChoiceA X = chooseA : {[MonoChoiceA X]X} -> {[MonoChoiceA X]X} -> X
+
+data ChoiceBoxB Y = boxB {[MonoChoiceB Y]Y}
+interface MonoChoiceB X [E] = chooseB : {[E|MonoChoiceB X [E|]]X} -> {[E|MonoChoiceB X [E|]]X} -> X
+
+data ChoiceBoxC Y [E] = boxC {[E|MonoChoiceC Y [E|]]Y}
+interface MonoChoiceC X = chooseC : {[MonoChoiceC X]X} -> {[MonoChoiceC X]X} -> X
+
+data ChoiceBoxD Y [E] = boxD {[E|MonoChoiceD Y [E|]]Y}
+interface MonoChoiceD X [E] = chooseD : {[E|MonoChoiceD X [E|]]X} -> {[E|MonoChoiceD X [E|]]X} -> X
+
+-- Dummy, as only refinement phase needs testing
+main: {Unit}
+main! = unit
