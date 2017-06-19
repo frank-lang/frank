@@ -327,7 +327,22 @@ getOpName (MkMono x) = x
 getOpName (MkPoly x) = x
 getOpName (MkCmdId x) = x
 
--- Syntax pretty printing facilities
+-- transform type variable (+ its kind) to a raw tye variable argument
+-- (use during refinement of itf maps)
+tyVar2rawTyVarArg :: (Id, Kind) -> TyArg Raw
+tyVar2rawTyVarArg (id, VT) = VArg (MkTVar id)
+tyVar2rawTyVarArg (id, ET) = EArg (liftAbMod (MkAbVar id))
+
+-- transform type variable (+ its kind) to a rigid tye variable argument
+-- (prepare for later unification)
+tyVar2rigTyVarArg :: (Id, Kind) -> TyArg Desugared
+tyVar2rigTyVarArg (id, VT) = VArg (MkRTVar id)
+tyVar2rigTyVarArg (id, ET) = EArg (liftAbMod (MkAbRVar id))
+
+liftAbMod :: AbMod a -> Ab a
+liftAbMod v = MkAb v M.empty
+
+{- Syntax pretty printing facilities -}
 
 (<+>) = (PP.<+>)
 (<>) = (PP.<>)

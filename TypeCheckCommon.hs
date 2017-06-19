@@ -108,9 +108,6 @@ fmvPort (MkPort adj ty) = S.union (fmvAdj adj) (fmv ty)
 entrify :: Suffix -> [Entry]
 entrify = map $ uncurry FlexMVar
 
-liftAbMod :: AbMod a -> Ab a
-liftAbMod v = MkAb v M.empty
-
 getContext :: Contextual Context
 getContext = do s <- get
                 return (ctx s)
@@ -204,12 +201,6 @@ initContextual (MkProg ttms) =
         -- init context for each handler id of type ty with "id := ty"
         h :: MHDef Desugared -> Contextual ()
         h (MkDef id ty _) = modify (:< TermVar (MkPoly id) (MkSCTy ty))
-
-        -- transform type variable (+ its kind) to a rigid tye variable argument
-        -- (prepare for later unification)
-        tyVar2rigTyVarArg :: (Id, Kind) -> TyArg Desugared
-        tyVar2rigTyVarArg (id, VT) = VArg (MkRTVar id)
-        tyVar2rigTyVarArg (id, ET) = EArg (liftAbMod (MkAbRVar id))
 
 initTCState :: TCState
 initTCState = MkTCState BEmp (MkAb MkEmpAb M.empty) M.empty M.empty []

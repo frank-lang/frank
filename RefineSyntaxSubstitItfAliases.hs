@@ -26,9 +26,9 @@ substitItfAls = substitItfAls' [] where
       case M.lookup x itfAls of
         Nothing -> return [(x, ts)]
         Just (ps, itfMap) ->
---               1) interface x p_1 ... p_n     = [itf_i p_i1 ... p_ik, ...]
---            or 2) interface x p_1 ... p_n [£] = [itf_i p_i1 ... p_ik, ...]
---                  and [£] has been explicitly added before
+--            1) interface x p_1 ... p_n     = [itf_i p_i1 ... p_ik, ...]
+--         or 2) interface x p_1 ... p_n [£] = [itf_i p_i1 ... p_ik, ...]
+--               and [£] has been explicitly added before
 --                                if 2), set t_{n+1} := [£]
           do let ts' = if length ps == length ts + 1 &&
                           (snd (ps !! length ts) == ET) then

@@ -89,7 +89,7 @@ refineItf (MkItf itf ps      cmds) =
 -- + interface has unique effect & type variables
 -- + implicit eff var [£] is defined explicitly
 refineItfAl :: ItfAlias Raw -> Refine (ItfAlias Refined)
-refineItfAl (MkItfAlias itfAl ps itfMap) =
+refineItfAl (MkItfAlias itfAl ps _) =
 --          interface itf p_1 ... p_m = [itf_1 t_11 ... t_1n, ...]
   if uniqueIds (map fst ps) then
     do let tvs = [x | (x, VT) <- ps] -- val ty vars
@@ -97,7 +97,11 @@ refineItfAl (MkItfAlias itfAl ps itfMap) =
        -- refine itf map
        putTMap (M.fromList $ zip tvs (map MkTVar tvs)) -- temp. val ty vars
        putEVSet (S.fromList evs)                       -- temp. eff ty vars
-       itfMap' <- refineItfMap itfMap
+       -- interpret RHS of interface alias def. as the instantiation of itf with
+       -- the generic type variables ps (this "lift" is possible as the
+       -- itf map of itf is part of the RState)
+       let singletonItfMap = M.singleton itfAl (map tyVar2rawTyVarArg ps)
+       itfMap' <- refineItfMap $ singletonItfMap
        putEVSet S.empty                                -- reset
        putTMap M.empty                                 -- reset
        return $ MkItfAlias itfAl ps itfMap'
@@ -183,7 +187,7 @@ getEVars [] = return []
 -- + implicit [£] ty args to interfaces are made explicit
 refineItfMap :: ItfMap Raw -> Refine (ItfMap Refined)
 refineItfMap m = do
-  -- substitute interfaces for interface aliases
+  -- replace interface aliases by interfaces
   xs <- concat <$> mapM substitItfAls (M.toList m)
   -- refine each interface
   xs' <- mapM refineEntry xs

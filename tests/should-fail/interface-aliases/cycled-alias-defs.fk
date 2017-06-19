@@ -1,0 +1,13 @@
+-- #desc    Defining itf als in terms of themselves (cycling def's) should be detected
+-- #return  interface alias "A" is defined in terms of itself (cycle)
+
+interface Abort = abort X: X
+interface MyAbort = [Abort]
+
+interface A = [B]
+interface B = [C]
+interface C = [D]
+interface D = [A]
+
+main: {String}
+main! = "hey"
