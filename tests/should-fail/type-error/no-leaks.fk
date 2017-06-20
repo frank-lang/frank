@@ -3,7 +3,7 @@ interface Eff = bang : Unit
 
 data Bar = One {Int}
 
--- #return cannot unify abilities [£] and [£, Eff]
+-- #return cannot unify abilities [£] and [£ | Eff]
 exec : Bar [Eff] -> Int
 exec (One f) = f!
 

@@ -27,8 +27,12 @@ refine prog = evalState (runExceptT (refine' prog)) initRefine
 -- + built-in data types, interfaces, operators are added
 refine' :: Prog Raw -> Refine (Prog Refined)
 refine' (MkProg xs) = do
-  initialiseRState xs
-  let (sigs, defs, dts, itfs, itfAls) = splitTopTm xs
+  -- Concretise epsilon ty vars
+  let (dts, itfs, itfAls) = concretiseEps (getDataTs xs) (getItfs xs) (getItfAliases xs)
+      hdrSigs = getHdrSigs xs
+      hdrDefs = getHdrDefs xs []
+  -- Initialise refinement state
+  initialiseRState dts itfs itfAls hdrSigs
   -- Refine top level terms
   putTopLevelCtxt Datatype
   dtTms <- mapM refineDataT dts
@@ -37,7 +41,7 @@ refine' (MkProg xs) = do
   putTopLevelCtxt InterfaceAlias
   itfAlTms <- mapM refineItfAl itfAls
   putTopLevelCtxt Handler
-  hdrs <- mapM (refineMH defs) sigs
+  hdrs <- mapM (refineMH hdrDefs) hdrSigs
   if existsMain hdrs then
     return $ MkProg (map MkDataTm builtinDataTs ++ dtTms ++
                      map MkItfTm builtinItfs ++ itfTms ++
@@ -421,23 +425,21 @@ refineVPat (MkListPat ps) =
 idError :: Id -> String -> Refine a
 idError x cls = throwError $ "no " ++ cls ++ " named '" ++ x ++ "' declared"
 
-initialiseRState :: [TopTm Raw] -> Refine ()
-initialiseRState xs =
+initialiseRState :: [DataT Raw] -> [Itf Raw] -> [ItfAlias Raw] -> [MHSig] -> Refine ()
+initialiseRState dts itfs itfAls hdrs =
   do i <- getRState
-     let (dts', itfs', itfAls') = concretiseEps (getDataTs xs) (getItfs xs) (getItfAliases xs)
-         hdrs'   = getHdrSigs xs
-     itfs   <- foldM addItf      (interfaces i)       itfs'
-     itfAls <- foldM addItfAlias (interfaceAliases i) itfAls'
-     dts    <- foldM addDataT    (datatypes i)        dts'
-     hdrs   <- foldM addMH       (handlers i)         hdrs'
-     cmds   <- foldM addCmd      (cmds i)             (concatMap getCmds itfs')
-     ctrs   <- foldM addCtr      (ctrs i)             (concatMap getCtrs dts')
-     putRItfs       itfs
-     putRItfAliases itfAls
-     putRDTs        dts
-     putRCmds       cmds
-     putRCtrs       ctrs
-     putRMHs        hdrs
+     itfs'   <- foldM addItf      (interfaces i)       itfs
+     itfAls' <- foldM addItfAlias (interfaceAliases i) itfAls
+     dts'    <- foldM addDataT    (datatypes i)        dts
+     hdrs'   <- foldM addMH       (handlers i)         hdrs
+     cmds'   <- foldM addCmd      (cmds i)             (concatMap getCmds itfs)
+     ctrs'   <- foldM addCtr      (ctrs i)             (concatMap getCtrs dts)
+     putRItfs       itfs'
+     putRItfAliases itfAls'
+     putRDTs        dts'
+     putRCmds       cmds'
+     putRCtrs       ctrs'
+     putRMHs        hdrs'
 
 makeIntBinOp :: Char -> MHDef Refined
 makeIntBinOp c = MkDef [c] (MkCType [MkPort (MkAdj M.empty) MkIntTy
@@ -537,12 +539,6 @@ getHdrDefs :: [TopTm Raw] -> [MHCls] -> [MHCls]
 getHdrDefs ((MkClsTm cls) : xs) ys = getHdrDefs xs (cls : ys)
 getHdrDefs (_ : xs) ys = getHdrDefs xs ys
 getHdrDefs [] ys = reverse ys
-
-splitTopTm :: [TopTm Raw] -> ([MHSig], [MHCls], [DataT Raw], [Itf Raw], [ItfAlias Raw])
-splitTopTm xs = (getHdrSigs xs, getHdrDefs xs [], dts, itfs, itfAliases)
-  where dts = getDataTs xs
-        itfs = getItfs xs
-        itfAliases = getItfAliases xs
 
 -- Add the name if not already present
 addEntry :: [IPair] -> Id -> Int -> String -> Refine [IPair]

@@ -56,6 +56,6 @@ The typechecker should report an error between the result ability of smuggle
 and the ambient.
 -}
 
--- #return cannot unify abilities [0, Abort] and [0]
+-- #return cannot unify abilities [0 | Abort] and [0]
 main : {[0]Payload}
 main! = juggle MkAA (catch (smuggle (get! ; abort!)) {right MkA})

@@ -1,0 +1,77 @@
+-- #desc Little integer (i.e. monom.) state simulation. This is the most we can get in terms of in-Frank-memory-simulation
+
+-- --- start of standard stuff ---
+data Maybe X = nothing | just X
+data Pair X Y = pair X Y
+data Zero =     -- empty type
+
+on : X -> {X -> Y} -> Y
+on x f = f x
+
+if : Bool -> {X} -> {X} -> X
+if b t e = on b { true  -> t!
+                | false -> e! }
+
+append : List X -> List X -> List X
+append []        ys = ys
+append (x :: xs) ys = x :: (append xs ys)
+
+concat : List (List X) -> List X
+concat []          = []
+concat (xs :: xss) = append xs (concat xss)
+
+nth : Int -> List X -> Maybe X
+nth _ []      = nothing
+nth 0 (x::xr) = just x
+nth n (x::xr) = nth (n-1) xr
+
+update : Int -> X -> List X -> List X
+update n x []      = []
+update 0 x (y::yr) = (x::yr)
+update n x (y::yr) = y::(update (n-1) x yr)
+
+interface Abort = aborting : Zero
+
+abort : [Abort]X
+abort! = case aborting! {}
+
+data Bool = true | false
+
+interface Choice = choice : Bool
+-- --- end of standard stuff ---
+
+data IntRef = ref Int
+
+interface IntState = new: Int -> IntRef
+                   | put: IntRef -> Int -> Unit
+                   | get: IntRef -> Int
+
+sumToN : {Int -> [IntState]Int}
+sumToN n = sumToN' n (new 0)
+
+sumToN' : {Int -> IntRef -> [IntState]Int}
+sumToN' n cell = let sum = get cell in
+                 case n { 0  -> sum
+                        | _  -> put cell (sum + n); sumToN' (n-1) cell }
+
+dummyProg : {[IntState] Int}
+dummyProg! = 3
+
+data Memory = mem (List Int) Int
+
+initMem : {Memory}
+initMem! = mem [] 0
+
+intStateSim : {Memory -> <IntState>X -> X}
+intStateSim (mem vs nextFresh) <new n -> k> =
+  intStateSim (mem (append vs [n]) (n+1)) (k (ref nextFresh))
+intStateSim (mem vs nextFresh) <put (ref addr) n -> k> =
+  intStateSim (mem (update addr n vs) nextFresh) (k unit)
+intStateSim (mem vs nextFresh) <get (ref addr) -> k> =
+  case (nth addr vs) { nothing  -> intStateSim (mem vs nextFresh) (k (-1))
+                     | (just n) -> intStateSim (mem vs nextFresh) (k n) }
+intStateSim _ n = n
+
+-- #return 10
+main: {Int}
+main! = intStateSim initMem! (sumToN 4)

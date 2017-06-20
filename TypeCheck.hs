@@ -376,7 +376,8 @@ makeFlexible :: VType Desugared -> Contextual (VType Desugared)
 makeFlexible (MkDTTy id ts) = MkDTTy id <$> mapM makeFlexibleTyArg ts
 makeFlexible (MkSCTy cty) = MkSCTy <$> makeFlexibleCType cty
 makeFlexible (MkRTVar x) = MkFTVar <$> (getContext >>= find')
--- find' either creates a new FlexMVar in current locality or identifies the one already existing
+-- find' either creates a new FlexMVar in current locality or identifies the one
+-- already existing
   where find' BEmp = freshMVar x
         find' (es :< FlexMVar y _) | trimVar x == trimVar y = return y
         find' (es :< Mark) = freshMVar x  -- only search in current locality
@@ -391,7 +392,8 @@ makeFlexibleAb (MkAb v m) = case v of
                    return $ MkAb v' m'
   _ ->          do m' <- mapM (mapM makeFlexibleTyArg) m
                    return $ MkAb v m'
--- find' either creates a new FlexMVar in current locality or identifies the one already existing
+-- find' either creates a new FlexMVar in current locality or identifies the one
+-- already existing
   where find' x BEmp = freshMVar x
         find' x (es :< FlexMVar y _) | trimVar x == trimVar y = return y
         find' x (es :< Mark) = freshMVar x

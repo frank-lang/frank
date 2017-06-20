@@ -1,0 +1,13 @@
+-- #desc Take [Console] prog, output [Console] prog
+
+consoleProg: {[Console]Unit}
+consoleProg! = ouch 'a'; ouch 'b'
+
+doubleOutTransf: {<Console>Unit -> [Console]Unit}
+doubleOutTransf <inch   -> k> = let c = inch! in doubleOutTransf (k c)
+doubleOutTransf <ouch c -> k> = ouch c; ouch c; doubleOutTransf (k unit)
+doubleOutTransf unit          = unit
+
+-- #return aabbunit
+main: {[Console]Unit}
+main! = doubleOutTransf consoleProg!

@@ -419,7 +419,7 @@ ppVType MkCharTy = text "Char"
 
 ppTyArg :: TyArg a -> Doc
 ppTyArg (VArg t) = ppParenVType t
-ppTyArg (EArg ab) = text "[" <> ppAb ab <> text "]"
+ppTyArg (EArg ab) = ppAb ab
 
 ppParenVType :: VType a -> Doc
 ppParenVType v@(MkDTTy _ _) = text "(" <+> ppVType v <+> text ")"
@@ -438,7 +438,7 @@ ppAdj (MkAdj m) = text "<" <> ppItfMap m <> text ">"
 ppAb :: Ab a -> Doc
 ppAb (MkAb v m) | M.null m = text "[" <> ppAbMod v <> text "]"
 ppAb (MkAb v m) =
-  text "[" <> ppAbMod v <> text " | " <+> ppItfMap m <> text "]"
+  text "[" <> ppAbMod v <+> text "|" <+> ppItfMap m <> text "]"
 
 ppAbMod :: AbMod a -> Doc
 ppAbMod MkEmpAb = text "0"

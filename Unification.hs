@@ -114,15 +114,18 @@ unifyAb ab0@(MkAb v0 m0)         ab1@(MkAb v1 m1) =
              v <- MkAbFVar <$> freshMVar "£"
              solveForEVar a0 [] (MkAb v (M.difference m1 m0))
              solveForEVar a1 [] (MkAb v (M.difference m0 m1))
-        --
+        -- One eff ty var is flexible, the other one either empty or rigid
+        -- ...and m0 `subsetOf` m1
         unifyAb' (MkAb (MkAbFVar a0) m0) (MkAb v m1)
           | M.null (M.difference m0 m1) =
             do unifyItfMap (M.intersection m1 m0) (M.intersection m0 m1)
                solveForEVar a0 [] (MkAb v (M.difference m1 m0))
+        -- ...and m1 `subsetOf` m0
         unifyAb' (MkAb v m0) (MkAb (MkAbFVar a1) m1)
           | M.null (M.difference m1 m0) =
             do unifyItfMap (M.intersection m0 m1) (M.intersection m1 m0)
                solveForEVar a1 [] (MkAb v (M.difference m0 m1))
+        -- In any other case
         unifyAb' ab0 ab1 =
           throwError $ "cannot unify abilities " ++ (show $ ppAb ab0) ++
           " and " ++ (show $ ppAb ab1)

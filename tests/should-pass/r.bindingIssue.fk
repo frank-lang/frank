@@ -1,0 +1,18 @@
+-- #desc Polymorphic variables must shadow data types
+
+data A = mkA
+
+data Either A B = left A | right B          -- without parens, reference is to ty vars
+data ReferToDT A B = left' (A) | right' B   -- use parens to explicitly refer to DT
+
+useEither : {Either Int Unit -> Int}
+useEither (left a)  = a
+useEither (right b) = 0
+
+useReferToDT : {ReferToDT Int Unit -> A}
+useReferToDT (left' a)  = a
+useReferToDT (right' b) = mkA
+
+-- #return unit
+main: {Unit}
+main! = unit
