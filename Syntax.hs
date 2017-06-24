@@ -313,6 +313,7 @@ substOpenAbPort ab (MkPort adj ty) =
   MkPort (substOpenAbAdj ab adj) (substOpenAb ab ty)
 -}
 
+-- ability might be overridden by adjustment
 plus :: Ab a -> Adj a -> Ab a
 plus (MkAb v m) (MkAdj m') = MkAb v (M.union m' m)
 

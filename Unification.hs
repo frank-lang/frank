@@ -80,7 +80,8 @@ unify t            s                 =
 unifyAb :: Ab Desugared -> Ab Desugared -> Contextual ()
 unifyAb ab0@(MkAb v0 m0)         ab1@(MkAb v1 m1) =
   --    [v0 | m0_1, ..., m0_m]   [v1 | m1_1, ... m1_n]
-  do ma0 <- findAbVar v0 -- find ability bound to flex. eff var v0
+  do logBeginUnifyAb ab0 ab1
+     ma0 <- findAbVar v0 -- find ability bound to flex. eff var v0
      ma1 <- findAbVar v1 -- find ability bound to flex. eff var v1
      -- 1a) If v0 is flex. eff var:  v0 = [v0' | m0'_1, ..., m0'_k]
      --     Consider only merged:    [v0' | m0_1, ..., m0_m, m0'_1, ..., m0'_n]
@@ -91,27 +92,16 @@ unifyAb ab0@(MkAb v0 m0)         ab1@(MkAb v1 m1) =
        (Just (MkAb v0 m0'), Just (MkAb v1 m1')) ->
          let m0'' = M.union m0 m0' in
          let m1'' = M.union m1 m1' in
-         do logBeginUnifyAb ab0 ab1
-            res <- unifyAb' (MkAb v0 m0'') (MkAb v1 m1'')
-            logEndUnifyAb ab0 ab1
-            return res
+         unifyAb' (MkAb v0 m0'') (MkAb v1 m1'')
        (Just (MkAb v0 m0'), Nothing) ->
-         let m0'' = M.union m0 m0' in do
-           logBeginUnifyAb ab0 ab1
-           res <- unifyAb' (MkAb v0 m0'') ab1
-           logEndUnifyAb ab0 ab1
-           return res
+         let m0'' = M.union m0 m0' in
+         unifyAb' (MkAb v0 m0'') ab1
        (Nothing, Just (MkAb v1 m1')) ->
-         let m1'' = M.union m1 m1' in do
-           logBeginUnifyAb ab0 ab1
-           res <- unifyAb' ab0 (MkAb v1 m1'')
-           logEndUnifyAb ab0 ab1
-           return res
-       (Nothing, Nothing) -> do
-           logBeginUnifyAb ab0 ab1
-           res <- unifyAb' ab0 ab1
-           logEndUnifyAb ab0 ab1
-           return res
+         let m1'' = M.union m1 m1' in
+         unifyAb' ab0 (MkAb v1 m1'')
+       (Nothing, Nothing) ->
+         unifyAb' ab0 ab1
+     logEndUnifyAb ab0 ab1
   where -- Same eff ty vars leaves nothing to unify but instantiat's m0, m1
         unifyAb' ab0@(MkAb v0 m0) ab1@(MkAb v1 m1) | v0 == v1 =
           catchError (unifyItfMap m0 m1) (unifyAbError ab0 ab1)
