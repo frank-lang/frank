@@ -37,7 +37,7 @@ interface Queue S = enqueue : S -> Unit
 
 data Proc = proc {[Queue Proc]Unit}
 
-pushProc : {[Queue Proc]Unit} -> [Queue Proc]Unit
+pushProc : {{[Queue Proc]Unit} -> [Queue Proc]Unit}
 pushProc p = enqueue (proc p)
 
 popProc : {[Queue Proc]Maybe Unit}
@@ -48,6 +48,7 @@ popProcs : {[Queue Proc]Unit}
 popProcs! = case popProc! { (just unit) -> popProcs!
                           | nothing     -> unit }
 
+roundRobin : {<Co [R | Queue Proc]>Unit -> [R | Queue Proc]Unit}
 roundRobin : {<Co [Queue Proc]>Unit -> [Queue Proc]Unit}
 roundRobin <yield -> k>  = pushProc {roundRobin (k unit)}; popProcs!
 roundRobin <fork p -> k> = pushProc {roundRobin p!}; roundRobin (k unit)
@@ -62,4 +63,3 @@ zipQueue ps        qs unit             = unit
 
 main : {[Console]Unit}
 main! = zipQueue [] [] (roundRobin test!)
-

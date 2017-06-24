@@ -5,14 +5,13 @@ module Unification where
 import qualified Data.Map as M
 import qualified Data.Set as S
 
-import Debug.Trace
-
 import Control.Monad.Except
 
 import BwdFwd
 import FreshNames
 import Syntax
 import TypeCheckCommon
+import Debug
 
 data Extension = Restore | Replace Suffix
 
@@ -92,15 +91,27 @@ unifyAb ab0@(MkAb v0 m0)         ab1@(MkAb v1 m1) =
        (Just (MkAb v0 m0'), Just (MkAb v1 m1')) ->
          let m0'' = M.union m0 m0' in
          let m1'' = M.union m1 m1' in
-         unifyAb' (MkAb v0 m0'') (MkAb v1 m1'')
+         do logBeginUnifyAb ab0 ab1
+            res <- unifyAb' (MkAb v0 m0'') (MkAb v1 m1'')
+            logEndUnifyAb ab0 ab1
+            return res
        (Just (MkAb v0 m0'), Nothing) ->
-         let m0'' = M.union m0 m0' in
-         unifyAb' (MkAb v0 m0'') ab1
+         let m0'' = M.union m0 m0' in do
+           logBeginUnifyAb ab0 ab1
+           res <- unifyAb' (MkAb v0 m0'') ab1
+           logEndUnifyAb ab0 ab1
+           return res
        (Nothing, Just (MkAb v1 m1')) ->
-         let m1'' = M.union m1 m1' in
-         unifyAb' ab0 (MkAb v1 m1'')
-       (Nothing, Nothing) ->
-         unifyAb' ab0 ab1
+         let m1'' = M.union m1 m1' in do
+           logBeginUnifyAb ab0 ab1
+           res <- unifyAb' ab0 (MkAb v1 m1'')
+           logEndUnifyAb ab0 ab1
+           return res
+       (Nothing, Nothing) -> do
+           logBeginUnifyAb ab0 ab1
+           res <- unifyAb' ab0 ab1
+           logEndUnifyAb ab0 ab1
+           return res
   where -- Same eff ty vars leaves nothing to unify but instantiat's m0, m1
         unifyAb' ab0@(MkAb v0 m0) ab1@(MkAb v1 m1) | v0 == v1 =
           catchError (unifyItfMap m0 m1) (unifyAbError ab0 ab1)

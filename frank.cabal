@@ -28,6 +28,7 @@ executable frank
                , TypeCheck
                , TypeCheckCommon
                , Unification
+               , Debug
 
   build-depends: Unique
                , base >= 4.7 && < 5

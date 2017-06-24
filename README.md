@@ -44,6 +44,11 @@ each be invoked with `--entry-point tXX` for an appropriate number
 Optionally a [shonky](https://github.com/pigworker/shonky) file can be
 output with the `--output-shonky` option.
 
+Further debug options are
+* `--debug-output`: Enable all debugging facilities
+* `--debug-verbose`: Enable verbose variable names etc. on output
+* `--debug-tc`: Enable output of type-checking logs
+
 #### Limitations with respect to the paper
 
  * Only top-level mutually recursive computation bindings are

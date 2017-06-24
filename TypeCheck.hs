@@ -17,14 +17,12 @@ import Data.List.Unique
 import qualified Data.Set as S
 import qualified Data.Map.Strict as M
 
-import Debug.Trace
-import Text.PrettyPrint (renderStyle, style, lineLength)
-
 import BwdFwd
 import Syntax
 import FreshNames
 import TypeCheckCommon
 import Unification
+import Debug
 
 type EVMap a = M.Map Id (Ab a)
 
@@ -43,6 +41,7 @@ find (MkCmdId x) =
      (itf, qs, rs, ts, y) <- getCmd x
      -- interface itf q_1 ... q_m = x: forall r1 ... r_l, t_1 -> ... -> t_n -> y
      mps <- lkpItf itf amb -- how is itf instantiated in amb?
+     logBeginFindCmd x itf mps
      case mps of
        Nothing -> throwError $ "command " ++ x ++
                   " belonging to interface " ++ itf ++
@@ -56,8 +55,10 @@ find (MkCmdId x) =
             ts' <- mapM makeFlexible ts
             y' <- makeFlexible y
             mapM (uncurry unifyTyArg) (zip ps qs')
-            return $ MkSCTy $
-              MkCType (map (\x -> MkPort idAdj x) ts') (MkPeg amb y')
+            let ty = MkSCTy $
+                       MkCType (map (\x -> MkPort idAdj x) ts') (MkPeg amb y')
+            logEndFindCmd x ty
+            return ty
 find x = getContext >>= find'
   where find' BEmp = throwError $ "'" ++ getOpName x ++ "' not in scope"
         find' (es :< TermVar y ty) | x == y = return ty
@@ -163,14 +164,20 @@ checkMHDef (MkDef id ty@(MkCType ps q) cs) =
 --    - If this susp. comp. type is known, check the arguments are well-typed
 --    - If not, create fresh type pattern and unify (constraining for future)
 inferUse :: Use Desugared -> Contextual (VType Desugared)
-inferUse (MkOp x) =
-  do ty <- find x
-     instantiate x ty
+inferUse u@(MkOp x) =
+  do logBeginInferUse u
+     ty <- find x
+     res <- instantiate x ty
+     logEndInferUse u res
+     return res
 inferUse app@(MkApp f xs) =
-  do ty <- inferUse f
-     discriminate ty
+  do logBeginInferUse app
+     ty <- inferUse f
+     res <- discriminate ty
+     logEndInferUse app res
+     return res
   where appAbError :: String -> Contextual ()
-        appAbError msg | inDebugMode = throwError (msg ++ " in " ++ show app)
+        appAbError msg | debugVerboseOn () = throwError (msg ++ " in " ++ show app)
         appAbError msg = throwError msg
 
         -- Check typings of x_i for port p_i

@@ -7,7 +7,9 @@ import TypeCheck
 import Syntax
 import RefineSyntax
 import DesugarSyntax
-import System.Environment
+import Debug
+
+import Debug.Trace
 
 import Shonky.Semantics
 
@@ -19,8 +21,6 @@ import System.Console.CmdArgs.Explicit
 import System.Environment
 import System.Exit
 import System.IO
-
-import Debug.Trace
 
 type Args = [(String,String)]
 
@@ -83,6 +83,7 @@ checkUse p use =
     Left err -> die err
     Right ty -> return ty
 
+compileProg :: String -> Prog Desugared -> [(String, String)] -> IO Env
 compileProg progName p args =
   do env <- if ("output-shonky","") `elem` args then
               do compileToFile p progName
@@ -90,6 +91,7 @@ compileProg progName p args =
             else return $ load $ compile p
      return env
 
+evalProg :: Env -> String -> IO ()
 evalProg env tm =
   case try env tm of
     Ret v -> putStrLn $ ppVal v
@@ -97,6 +99,7 @@ evalProg env tm =
                v <- ioHandler comp
                putStrLn $ ppVal v
 
+compileAndRunProg :: String -> [(String, String)] -> IO ()
 compileAndRunProg fileName args =
   do let progName = takeWhile (\c -> c /= '.') fileName
      prog <- parseProg fileName args
@@ -119,9 +122,14 @@ compileAndRunProg fileName args =
 arguments :: Mode Args
 arguments =
   mode "frank" [] "Frank program" (flagArg (upd "file") "FILE")
-  [flagNone ["output-shonky"] (("output-shonky",""):) "Output Shonky code"
+  [flagNone ["output-shonky"] (("output-shonky",""):)
+   "Output Shonky code"
   ,flagNone ["debug-output"] (("debug-output",""):)
-   "Enable output for debugging the Frank system"
+   "Enable all debugging facilities"
+  ,flagNone ["debug-verbose"] (("debug-verbose",""):)
+   "Enable verbose variable names etc. on output"
+  ,flagNone ["debug-tc"] (("debug-tc",""):)
+   "Enable output of type-checking logs"
   ,flagReq ["eval"] (upd "eval") "USE"
    "Run Frank computation USE (default: main!)"
   ,flagReq ["entry-point"] (upd "entry-point") "NAME"
@@ -137,7 +145,11 @@ main = do
   hSetBuffering stdin NoBuffering
   hSetEcho stdin False
   args <- processArgs arguments
-  writeIORef debugMode (("debug-output","") `elem` args)
+  let debugVerboseOn =   ("debug-output","") `elem` args ||
+                         ("debug-verbose", "") `elem` args
+      debugTypeCheckOn = ("debug-output","") `elem` args ||
+                         ("debug-tc", "") `elem` args
+  writeIORef debugMode (debugVerboseOn, debugTypeCheckOn)
   if ("help","") `elem` args then
      print $ helpText [] HelpFormatDefault arguments
   else case lookup "file" args of

@@ -15,8 +15,6 @@ import "indentation-trifecta" Text.Trifecta.Indentation
 import Data.Char
 import qualified Data.Map.Strict as M
 
-import Debug.Trace
-
 import Text.Parser.Token as Tok
 import Text.Parser.Token.Style
 import qualified Text.Parser.Token.Highlight as Hi

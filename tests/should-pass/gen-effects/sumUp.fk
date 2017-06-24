@@ -1,0 +1,9 @@
+-- #desc Simple program using memory to calculate a litte sum
+sumToN : {Int -> Ref Int -> [RefState]Int}
+sumToN n cell = let sum = read cell in
+                 case n { 0  -> sum
+                        | _  -> write cell (sum + n); sumToN (n-1) cell }
+
+-- #return 10
+main: {[RefState]Int}
+main! = sumToN 4 (new 0)

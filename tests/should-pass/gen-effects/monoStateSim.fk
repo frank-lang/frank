@@ -42,12 +42,12 @@ interface Choice = choice : Bool
 
 data IntRef = ref Int
 
-interface IntState = new: Int -> IntRef
+interface IntState = alloc: Int -> IntRef
                    | put: IntRef -> Int -> Unit
                    | get: IntRef -> Int
 
 sumToN : {Int -> [IntState]Int}
-sumToN n = sumToN' n (new 0)
+sumToN n = sumToN' n (alloc 0)
 
 sumToN' : {Int -> IntRef -> [IntState]Int}
 sumToN' n cell = let sum = get cell in
@@ -63,7 +63,7 @@ initMem : {Memory}
 initMem! = mem [] 0
 
 intStateSim : {Memory -> <IntState>X -> X}
-intStateSim (mem vs nextFresh) <new n -> k> =
+intStateSim (mem vs nextFresh) <alloc n -> k> =
   intStateSim (mem (append vs [n]) (n+1)) (k (ref nextFresh))
 intStateSim (mem vs nextFresh) <put (ref addr) n -> k> =
   intStateSim (mem (update addr n vs) nextFresh) (k unit)

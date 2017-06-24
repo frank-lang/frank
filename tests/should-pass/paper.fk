@@ -49,7 +49,7 @@ interface Send X = send : X -> Unit
 interface Receive X = receive : X
 
 interface State S = get : S
-                  | put : S -> Unit
+                        | put : S -> Unit
 
 interface Abort = aborting : Zero
 

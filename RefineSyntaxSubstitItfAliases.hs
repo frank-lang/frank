@@ -13,8 +13,6 @@ import qualified Data.Set as S
 import Syntax
 import RefineSyntaxCommon
 
-import Debug.Trace
-
 -- Given an occurrence of interface instantiation x t_1 ... t_n, determine
 -- whether it is an interface alias and if so, recursively substitute
 substitItfAls :: (Id, [TyArg Raw]) -> Refine [(Id, [TyArg Raw])]

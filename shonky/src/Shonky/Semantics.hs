@@ -3,10 +3,15 @@ module Shonky.Semantics where
 import Control.Monad
 import Debug.Trace
 import System.IO
+import Data.IORef
 
 import qualified Data.Map.Strict as M
 
 import Shonky.Syntax
+
+-- There is no predefined Show instance
+instance Show (IORef a) where
+  show _ = "<ioref>"
 
 data Val
   = VA String
@@ -16,6 +21,7 @@ data Val
   | VF Env [[String]] [([Pat], Exp)]
   | VB String Env
   | VC Comp
+  | VR (IORef Val)
   | VK [Frame]
   deriving Show
 
@@ -150,6 +156,15 @@ ioHandler comp@(Call "ouch" [VX [c]] ks) =
   do putChar c
      hFlush stdout
      ioHandler (consume (VA "unit" :&& VA "") (reverse ks))
+ioHandler (Call "new" [v] ks) =
+  do ref <- newIORef v
+     ioHandler (consume (VR ref) (reverse ks))
+ioHandler (Call "write" [VR ref, v] ks) =
+  do writeIORef ref v
+     ioHandler (consume (VA "unit" :&& VA "") (reverse ks))
+ioHandler (Call "read" [VR ref] ks) =
+  do v <- readIORef ref
+     ioHandler (consume v (reverse ks))
 ioHandler (Call c vs ks) = error $ "Unhandled command: " ++ c ++ concat (map (\v -> " " ++ ppVal v) vs)
 
 -- A helper to simplify strings (list of characters)

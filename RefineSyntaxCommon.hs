@@ -12,8 +12,6 @@ import qualified Data.Set as S
 
 import Syntax
 
-import Debug.Trace
-
 type Refine = ExceptT String (State RState)
 
 type TVarMap = M.Map Id (VType Raw)

@@ -16,8 +16,6 @@ import RefineSyntaxCommon
 import RefineSyntaxConcretiseEps
 import RefineSyntaxSubstitItfAliases
 
-import Debug.Trace
-
 -- Main refinement function
 refine :: Prog Raw -> Either String (Prog Refined)
 refine prog = evalState (runExceptT (refine' prog)) initRefine
@@ -444,21 +442,28 @@ initialiseRState dts itfs itfAls hdrs =
 makeIntBinOp :: Char -> MHDef Refined
 makeIntBinOp c = MkDef [c] (MkCType [MkPort (MkAdj M.empty) MkIntTy
                                     ,MkPort (MkAdj M.empty) MkIntTy]
-                            (MkPeg (MkAb (MkAbVar "£") M.empty) MkIntTy)) []
+                           (MkPeg (MkAb (MkAbVar "£") M.empty) MkIntTy)) []
 
 {-- The initial state for the refinement pass. -}
 
 builtinDataTs :: [DataT Refined]
 builtinDataTs = [MkDT "List" [("X", VT)] [MkCtr "cons" [MkTVar "X"
                                                        ,MkDTTy "List" [VArg (MkTVar "X")]]
-                                      ,MkCtr "nil" []]
-                ,MkDT "Unit" [] [MkCtr "unit" []]]
-
+                                         ,MkCtr "nil" []]
+                ,MkDT "Unit" [] [MkCtr "unit" []]
+                ,MkDT "Ref" [("X", VT)] []]
 
 builtinItfs :: [Itf Refined]
 builtinItfs = [MkItf "Console" [] [MkCmd "inch" [] [] MkCharTy
                                   ,MkCmd "ouch" [] [MkCharTy]
-                                                   (MkDTTy "Unit" [])]]
+                                                   (MkDTTy "Unit" [])]
+              ,MkItf "RefState" [] [MkCmd "new" [("X", VT)] [MkTVar "X"]
+                                                            (MkDTTy "Ref" [VArg (MkTVar "X")])
+                                   ,MkCmd "write" [("X", VT)] [MkDTTy "Ref" [VArg (MkTVar "X")]
+                                                             ,MkTVar "X"]
+                                                             (MkDTTy "Unit" [])
+                                   ,MkCmd "read" [("X", VT)] [MkDTTy "Ref" [VArg (MkTVar "X")]]
+                                                              (MkTVar "X")]]
 
 builtinItfAliases :: [ItfAlias Raw]
 builtinItfAliases = []

@@ -1,0 +1,48 @@
+-- #desc Summing up using a while loop
+
+--- start of standard stuff ---
+data Maybe X = nothing | just X
+data Pair X Y = pair X Y
+data Zero =     -- empty type
+
+on : X -> {X -> Y} -> Y
+on x f = f x
+
+if : Bool -> {X} -> {X} -> X
+if b t e = on b { true  -> t!
+                | false -> e! }
+
+append : List X -> List X -> List X
+append []        ys = ys
+append (x :: xs) ys = x :: (append xs ys)
+
+concat : List (List X) -> List X
+concat []          = []
+concat (xs :: xss) = append xs (concat xss)
+
+interface Abort = aborting : Zero
+
+abort : [Abort]X
+abort! = case aborting! {}
+
+data Bool = true | false
+
+interface Choice = choice : Bool
+--- end of standard stuff ---
+
+while: {{Bool} -> {Unit} -> Unit}
+while cond body = case cond! { false -> unit
+                             | true  -> body!; while cond body }
+
+sumUpToN: {Int -> [RefState]Int}
+sumUpToN n = let arg = new n in
+             let res = new 0 in
+             while { case (read arg) { 0 -> false
+                                     | _ -> true} }
+                   { write res ((read res) + (read arg)); -- res := res + arg
+                     write arg (read arg - 1) };          -- arg := arg - 1
+             read res
+
+-- #return 10
+main: {[RefState]Int}
+main! = sumUpToN 4
