@@ -74,6 +74,12 @@ logEndUnifyAb ab0 ab1 = ifDebugTypeCheckOnThen $ do
   ctx <- getContext
   traceM $ "ended unifying\n   " ++ show (ppAb ab0) ++ "\nwith\n   " ++ show (ppAb ab1) ++ "\nCurrent context:\n" ++ show (ppContext ctx) ++ "\n\n"
 
+debug :: String -> a -> a
+debug = trace
+
+debugM :: Applicative f => String -> f ()
+debugM = traceM
+
 {- Syntax pretty printers -}
 
 (<+>) = (PP.<+>)

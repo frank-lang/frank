@@ -15,6 +15,7 @@ import Syntax
 import RefineSyntaxCommon
 import RefineSyntaxConcretiseEps
 import RefineSyntaxSubstitItfAliases
+import Debug
 
 -- Main refinement function
 refine :: Prog Raw -> Either String (Prog Refined)

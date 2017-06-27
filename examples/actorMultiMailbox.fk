@@ -182,4 +182,4 @@ roundRobin unit          = popProcs!
 
 main: {[Console, RefState]Unit}
 main! = let me = mbox (new (zipq [] [])) in
-        runZipQueue' (roundRobin (step me divConqActor!)) (zipq [] []); unit
+        runZipQueue {roundRobin (step me divConqActor!)} (zipq [] []); unit

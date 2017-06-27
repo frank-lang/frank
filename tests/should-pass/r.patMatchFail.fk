@@ -1,0 +1,25 @@
+-- Regression for the fixed bug discovered by M. Pickering
+-- (https://github.com/mpickering) at https://github.com/cmcl/frankjnr/issues/11.
+-- The bug was an occurring pattern match failure in the compiler code, very
+-- likely caused by a violation of an invariant. It turned out that implicit [£]
+-- arguments were not considered correctly which then must have violated this
+-- invariant.
+-- #desc This checks the code which used to cause a 'pattern match fail' in the compiler code
+-- #return unit
+
+--- start of standard stuff ---
+on : {X -> {X -> Y} -> Y}
+on x f = f x
+
+data S = S (List Card)
+
+data Card = Card { Unit }
+
+interface State = get : S | put : S -> Unit
+
+drawCardDeck : [State]Card
+drawCardDeck! =
+	on get! { (S (cons top deck)) -> put (S deck); top }
+
+main : { [Console]Unit }
+main! = unit
