@@ -1,0 +1,25 @@
+-- Regression for the non-termination bug spotted by M. Pickering
+-- (https://github.com/cmcl/frankjnr/issues/9). The error must have
+-- caused by a bug already fixed previously, so no explicit fix
+-- was necessary.
+
+-- #desc Used to cause non-termination bug during type-check
+-- #return unit
+
+on : {X -> {X -> Y} -> Y}
+on x f = f x
+
+interface Trivial = triv : Unit
+
+data S = S { Unit }
+
+interface State = get : S | put : S -> Unit
+
+handleTrivial : <Trivial>X -> [State]X
+handleTrivial x = x
+handleTrivial <triv -> k> =
+  on get! { (S n) -> put (S n); handleTrivial (k unit) }
+
+
+main : { [Console]Unit }
+main! = unit
