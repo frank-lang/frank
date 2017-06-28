@@ -17,6 +17,15 @@ print : {String -> [Console]Unit}
 print s = map ouch s; unit
 --- end of standard stuff ---
 
+-- =============================================================================
+-- Description
+-- Little Frank library for writing concurrent programs that can synchronise via
+-- promises. When a new Async process is spawned, the caller gets a promise
+-- object. When the caller wants the spawned process to be finished, it `awaits`
+-- the promise. As soon as the spawned process is executed, the calling program
+-- is resumed.
+-- =============================================================================
+
 --------------------------------------------------------------------------------
 -- Queue interface and fast queue implementation
 --------------------------------------------------------------------------------
@@ -51,70 +60,54 @@ execZipQueue t q = case (runZipQueue t q) { (pair _ q) -> q }
 interface Co = fork : {[Co]Unit} -> Unit
              | yield : Unit
 
--- Multi-item mailbox
-data Mailbox X = mbox (Ref (ZipQueue X))
+data PromiseStatus = done
+                   | waiting (List {Unit})
 
-interface Actor X = spawn Y: {[Actor Y]Unit} -> Mailbox Y
-                  | self:    Mailbox X
-                  | recv:    X
-                  | send Y:  Mailbox Y -> Y -> Unit
+data Promise = promise (Ref PromiseStatus)
 
-data WithSender X Y = withSender (Mailbox X) Y
+interface Async = async: {[Async]Unit} -> Promise
+                | await: Promise -> Unit
 
 --------------------------------------------------------------------------------
--- Example actors
+-- Concurrent Async programs
 --------------------------------------------------------------------------------
 
-doubleActor: {[Actor (WithSender Int Int)]Unit}
-doubleActor! = case recv! { (withSender sender n) -> send sender (n + n) }
+binOp : {Int -> Int -> Ref Int -> [Async [RefState], RefState]Unit}
+binOp m n ref = let v = m + n in
+                write ref v
 
-doubleSpawningActor: {[Actor Int [Console], Console]Unit}
-doubleSpawningActor! = let doubler = spawn doubleActor in
-                       send doubler (withSender self! 3);
-                       case recv! { 6 -> print "you truly know how to double"
-                                  | _ -> print "naw" }
-
-divConqActor: {[Actor Int [Console], Console]Unit}
-divConqActor! = let doublerA = spawn doubleActor in
-                let doublerB = spawn doubleActor in
-                send doublerA (withSender self! 1);
-                send doublerB (withSender self! 2);
-                print "calculating (1+1) + (2+2)... ";
-                case (recv! + recv!) { 6 -> print "yay got 6"
-                                     | _ -> print "naw" }
-
-soliloquistActor: {[Actor Int [Console], Console]Unit}
-soliloquistActor! = send self! 42;
-                    case recv! { 42 -> print "ouh how unexpected"
-                               | _  -> print "what did I send again?" }
-
-nicePrintActor: {[Actor String [Console], Console]Unit}
-nicePrintActor! = let msg = recv! in
-                  print "Hey, a message came in: "; print msg
-
-writingActor: {[Actor Int [Console], Console]Unit}
-writingActor! = let you = spawn nicePrintActor in
-                send you "important msg"
+calcProg : {Int -> Int -> Int -> Ref Int -> [Async [RefState], RefState]Unit}
+calcProg a b c ref = let ref1 = new 0 in
+                     let ref2 = new 0 in
+                     let p1 = async {binOp a b ref1} in
+                     let p2 = async {binOp b c ref2} in
+                     await p1;
+                     await p2;
+                     write ref (read ref1 + read ref2)
 
 --------------------------------------------------------------------------------
--- Turn an actor step into a process step
+-- Transform a async process step into fork/yield process steps
 --------------------------------------------------------------------------------
 
-step: {Mailbox X -> <Actor X [RefState, Co[RefState]]>Unit -> [RefState, Co [RefState]]Unit}
-step mine         <self -> k> = step mine (k mine)
-step (mbox mine') <recv -> k> = case (runZipQueue {dequeue!} (read mine'))
-                              { (pair nothing _)  -> yield!;
-                                                     step (mbox mine') (k recv!)
-                              | (pair (just x) q) -> write mine' q;
-                                                     step (mbox mine') (k x) }
-step mine         <send (mbox yours') x -> k> = let q  = read yours' in
-                                            case (execZipQueue {enqueue x} q)
-                                            { q' -> write yours' q';
-                                                    step mine (k unit) }
-step mine         <spawn you -> k> = let yours = mbox (new (zipq [] [])) in
-                                     fork {step yours you!};
-                                     step mine (k yours)
-step mine         x = x
+step: {<Async[RefState, Co[RefState]]>Unit -> [RefState, Co[RefState]]Unit}
+step unit = unit
+step <async c -> k> = let ref = new (waiting []) in
+                      fork { execIfNeeded (promise ref) {step c!} };
+                      step (k (promise ref))
+step <await (promise ref) -> k> = case (read ref)
+                                  { done -> step (k unit)
+                                  | (waiting fs) -> let fib = {step (k unit)} in
+                                                    write ref (waiting (fib::fs)) }
+
+execIfNeeded: {Promise[RefState, Co[RefState]] -> {[RefState, Co[RefState]]Unit} -> [RefState, Co[RefState]]Unit}
+execIfNeeded (promise ref) f = case (read ref)
+                               { done -> unit -- should not happen
+                               | (waiting []) -> yield!;
+                                                 execIfNeeded (promise ref) f
+                               | (waiting fs) -> f!;
+                                                 write ref done;
+                                                 map fork fs;
+                                                 unit } -- wake up
 
 --------------------------------------------------------------------------------
 -- This is the process executer from coop-factored.fk, using a queue to handle
@@ -134,19 +127,26 @@ popProcs : {[Queue Proc]Unit}
 popProcs! = case popProc! { (just unit) -> popProcs!
                           | nothing     -> unit }
 
+-- Serialise a queue-tree and return a "queue-manager" in the following way:
+-- Given a forkable computation,
+-- 1) yield  ==translate==>  push continuation into queue, pop rest of list
+-- 2) fork   ==translate==>  push fork into queue, then carry on
+-- 3) unit   ==translate==>  pop rest of list
+-- roundRobin : {<Co [R | Queue Proc]>Unit -> [R | Queue Proc]Unit}
 roundRobin : {<Co [Queue Proc]>Unit -> [Queue Proc]Unit}
 roundRobin <yield -> k>  = pushProc {roundRobin (k unit)}; popProcs!
 roundRobin <fork p -> k> = pushProc {roundRobin p!}; roundRobin (k unit)
 roundRobin unit          = popProcs!
 
 --------------------------------------------------------------------------------
--- Test an example actor
+-- Main
 --------------------------------------------------------------------------------
 
 -- Dont delete these lines, they make this program into a unit test.
--- #desc   examples/actorMultiMailbox.fk
--- #return calculating (1+1) + (2+2)... yay got 6unit
+-- #desc   examples/asyncUnit.fk
+-- #return 8
 
-main: {[Console, RefState]Unit}
-main! = let me = mbox (new (zipq [] [])) in
-        runZipQueue {roundRobin (step me divConqActor!)} (zipq [] []); unit
+main: {[RefState]Int}
+main! = let ref = new 0 in
+        runZipQueue {roundRobin (step (calcProg 1 2 3 ref))} (zipq [] []);
+        read ref

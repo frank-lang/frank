@@ -73,6 +73,10 @@ nest s n = on peek! { '('  -> accept!; nest s (n+1)
 t2 : {[Console]String}
 t2! = parse {nest "" 0}
 
+-- Dont delete these lines, they make this program into a unit test.
+-- #desc   examples/rollback.fk
+-- #return unit
+
 -- just a stub: use --entry-point tX to do something interesting
 main : {[]Unit}
 main! = unit

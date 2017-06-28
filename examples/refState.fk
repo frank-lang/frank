@@ -1,0 +1,25 @@
+-- Summing up using RefState and a while loop
+
+--- start of standard stuff ---
+data Bool = true | false
+--- end of standard stuff ---
+
+while: {{Bool} -> {Unit} -> Unit}
+while cond body = case cond! { false -> unit
+                             | true  -> body!; while cond body }
+
+sumUpToN: {Int -> [RefState]Int}
+sumUpToN n = let arg = new n in
+             let res = new 0 in
+             while { case (read arg) { 0 -> false
+                                     | _ -> true} }
+                   { write res ((read res) + (read arg)); -- res := res + arg
+                     write arg (read arg - 1) };          -- arg := arg - 1
+             read res
+
+-- Dont delete these lines, they make this program into a unit test.
+-- #desc   examples/refState.fk
+-- #return 10
+
+main: {[RefState]Int}
+main! = sumUpToN 4

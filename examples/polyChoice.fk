@@ -1,50 +1,14 @@
 --- start of standard stuff ---
-data Maybe X = nothing | just X
-data Pair X Y = pair X Y
-data Zero =     -- empty type
-
-on : X -> {X -> Y} -> Y
-on x f = f x
-
 if : Bool -> {X} -> {X} -> X
-if b t e = on b { true  -> t!
-                | false -> e! }
-
-append : List X -> List X -> List X
-append []        ys = ys
-append (x :: xs) ys = x :: (append xs ys)
-
-concat : List (List X) -> List X
-concat []          = []
-concat (xs :: xss) = append xs (concat xss)
+if b t e = case b { true  -> t!
+                  | false -> e! }
 
 data Bool = true | false
-
-interface Choice = choice : Bool
 --- end of standard stuff ---
 
 
-
--- Polymorphic Abort Interface
-interface Abort = abort X: X
-
-explosiveString: {[Abort]String}
-explosiveString! = "Boom"; abort!
-
-defuser: {<Abort>X -> X -> X}
-defuser <abort -> k> alt = alt
-defuser x            _   = x
-
--- Test run
--- main: {Pair String String}
--- main! = pair (defuser explosiveString! "Exploded")
---              (defuser "Safe"           "Exploded")
-
-
-
--- Polymorphic Choice Interface
 interface PolyChoice = choose X: {[PolyChoice] X} -> {[PolyChoice] X} -> X
--- means implicitly:
+-- ...means implicitly:
 -- interface PolyChoice [E] = choose X: {[E|PolyChoice [E|]]X} -> {[E|PolyChoice [E|]]X} -> X
 
 -- Choose a time of day and a language
@@ -64,6 +28,10 @@ pickFromList (x::xs) <choose a b -> k> = if x {pickFromList xs (k a!)}
                                               {pickFromList xs (k b!)}
 pickFromList nil     <choose a b -> k> = pickFromList nil (k a!)
 pickFromList _       x                 = x
+
+-- Dont delete these lines, they make this program into a unit test.
+-- #desc   examples/polyChoice.fk
+-- #return "Nacht!"
 
 -- Test run
 main: {String}

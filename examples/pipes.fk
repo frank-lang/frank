@@ -92,6 +92,10 @@ logSend <send s -> k> = print "Sending: "; print s; ouch '\n'; send s; logSend (
 t6 : {[Console]String}
 t6! = catchList (pipe (logSend sendDoBeDoBeDoNil!) catter!)
 
+-- Dont delete these lines, they make this program into a unit test.
+-- #desc   examples/pipes.fk
+-- #return unit
+
 -- just a stub: use --entry-point tX to do something interesting
 main : {[]Unit}
 main! = unit

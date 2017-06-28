@@ -88,6 +88,10 @@ flip unit                    = unit
 t4 : [Console]Unit
 t4! = fairkf nil nil (flip test!)
 
+-- Dont delete these lines, they make this program into a unit test.
+-- #desc   examples/coop-old.fk
+-- #return unit
+
 -- just a stub: use --entry-point tX to do something interesting
 main : []Unit
 main! = unit

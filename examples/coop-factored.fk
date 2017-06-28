@@ -30,7 +30,7 @@ test! = print "M1 ";
         yield!;
         print "M3 ";
         yield!;
-        print "\n"
+        print "."
 
 interface Queue S = enqueue : S -> Unit
                   | dequeue : Maybe S
@@ -48,7 +48,6 @@ popProcs : {[Queue Proc]Unit}
 popProcs! = case popProc! { (just unit) -> popProcs!
                           | nothing     -> unit }
 
-roundRobin : {<Co [R | Queue Proc]>Unit -> [R | Queue Proc]Unit}
 roundRobin : {<Co [Queue Proc]>Unit -> [Queue Proc]Unit}
 roundRobin <yield -> k>  = pushProc {roundRobin (k unit)}; popProcs!
 roundRobin <fork p -> k> = pushProc {roundRobin p!}; roundRobin (k unit)
@@ -60,6 +59,10 @@ zipQueue []        [] <dequeue -> k>   = zipQueue [] [] (k nothing)
 zipQueue []        qs <dequeue -> k>   = zipQueue (reverse qs) [] (k dequeue!)
 zipQueue (p :: ps) qs <dequeue -> k>   = zipQueue ps qs (k (just p))
 zipQueue ps        qs unit             = unit
+
+-- Dont delete these lines, they make this program into a unit test.
+-- #desc   examples/coop-factored.fk
+-- #return M1 M2 A1 A2 B1 M3 B2 .unit
 
 main : {[Console]Unit}
 main! = zipQueue [] [] (roundRobin test!)

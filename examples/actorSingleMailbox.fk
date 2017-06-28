@@ -21,31 +21,29 @@ print s = map ouch s; unit
 -- Definitions of interfaces, data types
 --------------------------------------------------------------------------------
 
--- interface Co [C] = fork : {[C | Co [C|]]Unit} -> Unit
 interface Co = fork : {[Co]Unit} -> Unit
              | yield : Unit
 
 -- Single item mailbox
 data Mailbox X = mbox (Ref (Maybe X))
 
--- interface Actor X [A] = spawn Y: {[A | Actor Y [A|]]Unit} -> Mailbox Y
 interface Actor X = spawn Y: {[Actor Y]Unit} -> Mailbox Y
                   | self:    Mailbox X
                   | recv:    X
                   | send Y:  Mailbox Y -> Y -> Unit
 
-data Traceable X Y = traceable (Mailbox X) Y
+data WithSender X Y = withSender (Mailbox X) Y
 
 --------------------------------------------------------------------------------
 -- Simple example actors
 --------------------------------------------------------------------------------
 
-doubleActor: {[Actor (Traceable Int Int)]Unit}
-doubleActor! = case recv! { (traceable sender inp) -> send sender (inp + inp) }
+doubleActor: {[Actor (WithSender Int Int)]Unit}
+doubleActor! = case recv! { (withSender sender inp) -> send sender (inp + inp) }
 
 doubleSpawningActor: {[Actor Int [Console], Console]Unit}
 doubleSpawningActor! = let doubler = spawn doubleActor in
-                       send doubler (traceable self! 3);
+                       send doubler (withSender self! 3);
                        case recv! { 6 -> print "you truly know how to double"
                                   | _ -> print "naw" }
 
@@ -53,8 +51,8 @@ doubleSpawningActor! = let doubler = spawn doubleActor in
 divConqActor: {Int -> Int -> [Actor Int [Console], Console]Unit}
 divConqActor m n = let doublerA = spawn doubleActor in
                    let doublerB = spawn doubleActor in
-                   send doublerA (traceable self! m);
-                   send doublerB (traceable self! n);
+                   send doublerA (withSender self! m);
+                   send doublerB (withSender self! n);
                    print "sent";
                    case (recv! + recv!) { 6 -> print "6"
                                         | _ -> print "naw" }
@@ -160,6 +158,10 @@ zipQueue ps        qs unit             = unit
 --------------------------------------------------------------------------------
 -- Test doubleSpawningActor example
 --------------------------------------------------------------------------------
+
+-- Dont delete these lines, they make this program into a unit test.
+-- #desc   examples/actorSingleMailbox.fk
+-- #return you truly know how to doubleunit
 
 main: {[Console, RefState]Unit}
 main! = let me = mbox (new nothing) in

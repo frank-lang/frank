@@ -1,4 +1,6 @@
-interface MonoChoice X [E] = choose : {[E|MonoChoice X [E|]]X} -> {[E|MonoChoice X [E|]]X} -> X
+interface MonoChoice X = choose: {[MonoChoice X]X} -> {[MonoChoice X]X} -> X
+-- ...means implicitly:
+-- interface MonoChoice X [E] = choose : {[E|MonoChoice X [E|]]X} -> {[E|MonoChoice X [E|]]X} -> X
 
 nondetGreeting: {[MonoChoice String]String}
 nondetGreeting! = choose { choose {"Morning!"} {"Guten Morgen!"} }
@@ -12,5 +14,9 @@ alwaysPickRight: {<MonoChoice Y>X -> X}
 alwaysPickRight <choose a b -> k> = alwaysPickRight (k b!)
 alwaysPickRight x =                 x
 
-main: {[E|]String}
+-- Dont delete these lines, they make this program into a unit test.
+-- #desc   examples/monoCommands.fk
+-- #return "Morning!"
+
+main: {String}
 main! = alwaysPickLeft nondetGreeting!

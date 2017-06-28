@@ -291,4 +291,4 @@ if __name__ == "__main__":
                         help="Produce verbose output. {0}".format(more))
     args = parser.parse_args()
     # Invariant: All directories end with a forward slash.
-    main(["tests/should-pass/"], ["tests/should-fail/"], args)
+    main(["tests/should-pass/", "examples/"], ["tests/should-fail/"], args)

@@ -154,6 +154,10 @@ t11! = catch (head [42]) { -1 }
 t12 : {[0|Console]Int}
 t12! = catch (print "hello\n"; head []) { -1 }
 
+-- Dont delete these lines, they make this program into a unit test.
+-- #desc   examples/fun.fk
+-- #return unit
+
 -- just a stub: use --entry-point tXX to do something interesting
 main : {[0]Unit}
 main! = unit

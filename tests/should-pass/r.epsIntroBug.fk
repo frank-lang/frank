@@ -1,3 +1,6 @@
+-- #desc Regression test that used to demonstrate wrong adding of effect vars
+-- #return "Good morning"
+
 -- Bug: IntChoice [F] gets an additional effect variable [\epsilon] added but shouldn't
 interface IntChoice [F] = choose : {[F|IntChoice [F|]]Int} -> {[F|IntChoice [F|]]Int} -> Int
 

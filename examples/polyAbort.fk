@@ -1,0 +1,22 @@
+--- start of standard stuff ---
+data Pair X Y = pair X Y
+--- end of standard stuff ---
+
+
+interface Abort = abort X: X
+
+explosiveString: {[Abort]String}
+explosiveString! = "Boom"; abort!
+
+defuser: {<Abort>X -> X -> X}
+defuser <abort -> k> alt = alt
+defuser x            _   = x
+
+-- Dont delete these lines, they make this program into a unit test.
+-- #desc   examples/polyAbort.fk
+-- #return pair "Exploded" "Safe"
+
+-- Test run
+main: {Pair String String}
+main! = pair (defuser explosiveString! "Exploded")
+             (defuser "Safe"           "Exploded")
