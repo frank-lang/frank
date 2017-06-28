@@ -1,0 +1,30 @@
+-- Regression for the same error that occured in r.patMatchFail.fk.
+-- The error's cause was a bug in the unification algorithm. During
+-- the instantiation procedure (`solve`), declared flexible eff ty
+-- vars were not substituted ("inst-subs rule" in Gundry's thesis) but
+-- instead skipped ("inst-skip-ty rule" in Gundry's thesis). This
+-- is fixed now.
+
+-- #desc This checks 2nd piece of code which used to cause a 'pattern match fail' in the compiler code
+-- #return unit
+
+interface Co = fork : {[Co]Unit} -> Unit
+             | yield : Unit
+
+data PromiseStatus = waiting (List {[RefState, Co[RefState]]Unit})
+
+data Promise = promise (Ref PromiseStatus)
+
+interface Async = async: {[Async]Unit} -> Promise
+
+step: {<Async[RefState, Co[RefState]]>Unit -> [RefState, Co[RefState]]Unit}
+step unit = unit
+step <async c -> k> = let ref = new (waiting []) in
+                      fork { execIfNeeded (promise ref) };
+                      step (k (promise ref))
+
+execIfNeeded: {Promise -> Unit}
+execIfNeeded (promise ref) = unit
+
+main: {Unit}
+main! = unit

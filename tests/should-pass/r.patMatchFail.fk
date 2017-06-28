@@ -4,6 +4,7 @@
 -- likely caused by a violation of an invariant. It turned out that implicit [£]
 -- arguments were not considered correctly which then must have violated this
 -- invariant.
+
 -- #desc This checks the code which used to cause a 'pattern match fail' in the compiler code
 -- #return unit
 

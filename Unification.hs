@@ -46,35 +46,39 @@ findAbVar (MkAbFVar x) = getContext >>= find'
 eqLens :: [a] -> [a] -> Bool
 eqLens xs ys = length xs == length ys
 
--- unfiy 2 val tys in current context
-unify :: VType Desugared -> VType Desugared -> Contextual ()                   -- corresponding rule in Gundry's thesis:
-unify (MkDTTy dt0 ts0) (MkDTTy dt1 ts1)                                        -- decompose (modified)
-  | dt0 == dt1 && eqLens ts0 ts1 =
-    mapM_ (uncurry unifyTyArg) (zip ts0 ts1)
-unify t@(MkDTTy dt0 ts0) s@(MkDTTy dt1 ts1)                                    -- decompose fails
-  | not $ eqLens ts0 ts1 =
-  throwError $ "failed to unify " ++
-  (show $ ppVType t) ++ " with " ++ (show $ ppVType s) ++
-    " because they have different numbers of type arguments"
-unify (MkSCTy cty0) (MkSCTy cty1) = unifyCType cty0 cty1
-unify (MkRTVar a)  (MkRTVar b) | a == b = return ()
-unify MkIntTy      MkIntTy           = return ()
-unify MkCharTy     MkCharTy          = return ()
-unify (MkFTVar a)  (MkFTVar b)       = onTop $ \c d ->
-  cmp (a == c) (b == c) d
-  where cmp :: Bool -> Bool -> Decl -> Contextual Extension
-        cmp True  True  _           = restore                                  -- idle
-        cmp True  False Hole        = replace [(a, TyDefn (MkFTVar b))]        -- define
-        cmp False True  Hole        = replace [(b, TyDefn (MkFTVar a))]        -- define
-        cmp True  False (TyDefn ty) = unify ty (MkFTVar b) >> restore          -- subs
-        cmp False True  (TyDefn ty) = unify (MkFTVar a) ty >> restore          -- subs
-        cmp False False _           = unify (MkFTVar a) (MkFTVar b) >> restore -- skip-ty
-        cmp _     _     (AbDefn _)  = error "unification invariant broken"
-unify (MkFTVar a)  ty                = solve a [] ty                           -- inst
-unify ty           (MkFTVar a)       = solve a [] ty                           -- inst
-unify t            s                 =
-  throwError $ "failed to unify " ++
-  (show $ ppVType t) ++ " with " ++ (show $ ppVType s)
+-- unify 2 val tys in current context
+unify :: VType Desugared -> VType Desugared -> Contextual ()                     -- corresponding rule in Gundry's thesis:
+unify t0 t1 = do logBeginUnify t0 t1
+                 unify' t0 t1
+                 logEndUnify t0 t1
+  where
+  unify' (MkDTTy dt0 ts0) (MkDTTy dt1 ts1)                                        -- decompose (modified)
+    | dt0 == dt1 && eqLens ts0 ts1 =
+      mapM_ (uncurry unifyTyArg) (zip ts0 ts1)
+  unify' t@(MkDTTy dt0 ts0) s@(MkDTTy dt1 ts1)                                    -- decompose fails
+    | not $ eqLens ts0 ts1 =
+    throwError $ "failed to unify " ++
+    (show $ ppVType t) ++ " with " ++ (show $ ppVType s) ++
+      " because they have different numbers of type arguments"
+  unify' (MkSCTy cty0) (MkSCTy cty1) = unifyCType cty0 cty1
+  unify' (MkRTVar a)  (MkRTVar b) | a == b = return ()
+  unify' MkIntTy      MkIntTy           = return ()
+  unify' MkCharTy     MkCharTy          = return ()
+  unify' (MkFTVar a)  (MkFTVar b)       = onTop $ \c d ->
+    cmp (a == c) (b == c) d
+    where cmp :: Bool -> Bool -> Decl -> Contextual Extension
+          cmp True  True  _           = restore                                  -- idle
+          cmp True  False Hole        = replace [(a, TyDefn (MkFTVar b))]        -- define
+          cmp False True  Hole        = replace [(b, TyDefn (MkFTVar a))]        -- define
+          cmp True  False (TyDefn ty) = unify ty (MkFTVar b) >> restore          -- subs
+          cmp False True  (TyDefn ty) = unify (MkFTVar a) ty >> restore          -- subs
+          cmp False False _           = unify (MkFTVar a) (MkFTVar b) >> restore -- skip-ty
+          cmp _     _     (AbDefn _)  = error "unification invariant broken"
+  unify' (MkFTVar a)  ty                = solve a [] ty                           -- inst
+  unify' ty           (MkFTVar a)       = solve a [] ty                           -- inst
+  unify' t            s                 =
+    throwError $ "failed to unify " ++
+    (show $ ppVType t) ++ " with " ++ (show $ ppVType s)
 
 -- unify 2 eff tys in current context
 unifyAb :: Ab Desugared -> Ab Desugared -> Contextual ()
@@ -171,18 +175,23 @@ unifyPort (MkPort adj0 ty0) (MkPort adj1 ty1) = unifyAdj adj0 adj1 >>
 
 -- unify a meta variable "a" with a type "ty"
 solve :: Id -> Suffix -> VType Desugared -> Contextual ()
-solve a ext ty = onTop $ \b d ->
-  case ((a == b), (S.member b (fmv ty)), d) of
-
-    (_,     _,     TyDefn bty) -> modify (<>< entrify ext) >>                         -- inst-subs
-                                  unify (subst bty b (MkFTVar a)) (subst bty b ty) >>
-                                  restore
-    (True,  True,  Hole) -> throwError "solve: occurs check failure"
-    (True,  False, Hole) -> replace (ext ++ [(a, TyDefn ty)])                         -- inst-define
-    (False, True,  _) -> solve a ((b,d):ext) ty >> replace []                         -- inst-depend
-    (False, False, _) -> solve a ext ty >> restore                                    -- inst-skip-ty
-    (_,     _,     AbDefn _) ->
-      error "solve invariant broken: reached impossible case"
+solve a ext ty = do logBeginSolve a ext ty
+                    solve'
+                    logEndSolve a ext ty
+  where
+  solve' = onTop $ \b d -> do
+    logSolveStep ((a == b), (S.member b (fmv ty)), d)
+    case ((a == b), (S.member b (fmv ty)), d) of
+      (_,     _,     TyDefn bty) -> modify (<>< entrify ext) >>                         -- inst-subs (val ty var)
+                                    unify (subst bty b (MkFTVar a)) (subst bty b ty) >>
+                                    restore
+      (_,     _,     AbDefn ab) ->  modify (<>< entrify ext) >>                         -- inst-subs (eff ty var)
+                                    unify (substEVar ab b (MkFTVar a)) (substEVar ab b ty) >>
+                                    restore
+      (True,  True,  Hole) -> throwError "solve: occurs check failure"
+      (True,  False, Hole) -> replace (ext ++ [(a, TyDefn ty)])                         -- inst-define
+      (False, True,  Hole) -> solve a ((b,d):ext) ty >> replace []                         -- inst-depend
+      (False, False, Hole) -> solve a ext ty >> restore                                    -- inst-skip-ty
 
 solveForEVar :: Id -> Suffix -> Ab Desugared -> Contextual ()
 solveForEVar a ext ab = onTop $ \b d ->

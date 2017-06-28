@@ -177,7 +177,6 @@ inferUse app@(MkApp f xs) =
      logEndInferUse app res
      return res
   where appAbError :: String -> Contextual ()
-        appAbError msg | debugVerboseOn () = throwError (msg ++ " in " ++ show app)
         appAbError msg = throwError msg
 
         -- Check typings of x_i for port p_i
