@@ -153,6 +153,19 @@ getCmd cmd = get >>= \s -> case M.lookup cmd (cmdMap s) of
   Nothing -> error $ "invariant broken: " ++ show cmd ++ " not a command"
   Just (itf, qs, rs, xs, y) -> return (itf, qs, rs, xs, y)
 
+getCmdTyVars :: Id -> Contextual [Id]
+getCmdTyVars cmd = do
+  (_, _, cmdTyVars, _, _) <- getCmd cmd
+  return $ map filterTyVar cmdTyVars
+  where
+    filterTyVar :: TyArg Desugared -> Id
+    filterTyVar (VArg (MkRTVar x)) = x
+    filterTyVar (EArg (MkAb (MkAbRVar x) _)) = x
+    -- TODO: LC: This is a terrible invariant: refactor the way in which commands
+    --           (and constructors) are represented in the Contextual. Works for
+    --           now though.
+
+
 getCtr :: Id -> Contextual (Id,[TyArg Desugared],[VType Desugared])
 getCtr k = get >>= \s -> case M.lookup k (ctrMap s) of
   Nothing -> throwError $

@@ -1,0 +1,13 @@
+-- #desc   Counterpart of r.commandRigidVars.fk
+-- #return failed to unify Int with Unit
+
+data Pair X Y = pair X Y
+
+interface Copy X = copy: X -> Pair X X
+
+copier: {<Copy Int>Unit -> Unit}
+copier <copy x -> k> = copier (k (pair unit x))
+copier unit = unit
+
+main: {Unit}
+main! = unit

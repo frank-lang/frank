@@ -50,11 +50,15 @@ find (MkCmdId x) =
        Just ps ->
          -- instantiation in ambient: [itf p_1 ... p_m]
          do addMark
-            qs' <- mapM makeFlexibleTyArg qs
-            rs' <- mapM makeFlexibleTyArg rs
-            ts' <- mapM makeFlexible ts
-            y' <- makeFlexible y
+            -- Localise qs, bind them to their instantiation
+            -- (according to adjustment) and localise their occurences
+            -- in ts, y
+            qs' <- mapM (makeFlexibleTyArg []) qs
+            ts' <- mapM (makeFlexible []) ts
+            y' <- makeFlexible [] y
             mapM (uncurry unifyTyArg) (zip ps qs')
+            -- Localise rs
+            rs' <- mapM (makeFlexibleTyArg []) rs
             let ty = MkSCTy $
                        MkCType (map (\x -> MkPort idAdj x) ts') (MkPeg amb y')
             logEndFindCmd x ty
@@ -116,9 +120,8 @@ lkpItfInAbMod itf v = return Nothing
 -- instantiated in "find"
 -- LC: TODO: remove this function and transfer its functionality to "find", too?
 instantiate :: Operator -> VType Desugared -> Contextual (VType Desugared)
-instantiate (MkPoly _) ty = addMark >> makeFlexible ty
+instantiate (MkPoly _) ty = addMark >> makeFlexible [] ty
 instantiate _ ty = return ty
-
 -- TODO: change output of check to Maybe String?
 
 -- infer the type of a use w.r.t. the given program
@@ -246,8 +249,8 @@ checkTm (MkDCon (MkDataCon k xs)) ty =           -- Data rule
 --    data dt arg_1 ... arg_m = k t_1 ... t_n | ...
      addMark
      -- prepare flexible ty vars and ty args
-     args' <- mapM makeFlexibleTyArg args
-     ts' <- mapM makeFlexible ts
+     args' <- mapM (makeFlexibleTyArg []) args
+     ts' <- mapM (makeFlexible []) ts
      unify ty (MkDTTy dt args')
      mapM_ (uncurry checkTm) (zip xs ts')
 
@@ -302,9 +305,9 @@ checkCls (MkCls pats tm) ports (MkPeg ab ty)
        -- Bring any bindings in to scope for checking the term then purge the
        -- marks (and suffixes) in the context created for this clause.
        case null bs of
-         True -> do -- Just purge marks
-                    checkTm tm ty
-                    purgeMarks
+         True ->  do -- Just purge marks
+                     checkTm tm ty
+                     purgeMarks
          False -> do -- Push all bindings to context, then check tm, then remove bindings,
                      -- finally purge marks.
                      foldl1 (.) (map (uncurry inScope) bs) $ checkTm tm ty
@@ -316,7 +319,7 @@ checkPat :: Pattern Desugared -> Port Desugared -> Contextual [TermBinding]
 checkPat (MkVPat vp) (MkPort _ ty) = checkVPat vp ty
 checkPat (MkCmdPat cmd xs g) (MkPort adj ty) =
 -- interface itf q_1 ... q_m =
---   cmd : forall r_1 ... r_l, t_1 -> ... -> t_n -> y | ...
+--   cmd r_1 ... r_l: t_1 -> ... -> t_n -> y | ...
 
 -- port:     <itf p_1 ... p_m> ty
 -- pattern:  <cmd x_1 ... x_n -> g>
@@ -326,14 +329,17 @@ checkPat (MkCmdPat cmd xs g) (MkPort adj ty) =
        Nothing -> throwError $
                   "command " ++ cmd ++ " not found in adjustment " ++
                   (show $ ppAdj adj)
-       Just ps -> do addMark -- localise the following type variables
-                     qs' <- mapM makeFlexibleTyArg qs
-                     rs' <- mapM makeFlexibleTyArg rs
-                     ts' <- mapM makeFlexible ts
-                     y' <- makeFlexible y
-                     -- instantiate interface (according to adjustment)
+       Just ps -> do addMark
+                     -- Flexible ty vars (corresponding to qs)
+                     nonFlexs <- getCmdTyVars cmd
+                     -- Localise qs, bind them to their instantiation
+                     -- (according to adjustment) and localise their occurences
+                     -- in ts, y
+                     qs' <- mapM (makeFlexibleTyArg nonFlexs) qs
+                     ts' <- mapM (makeFlexible nonFlexs) ts
+                     y' <- makeFlexible nonFlexs y
                      mapM (uncurry unifyTyArg) (zip ps qs')
-                     -- check command patterns against spec. in interface def.
+                     -- Check command patterns against spec. in interface def.
                      bs <- fmap concat $ mapM (uncurry checkVPat) (zip xs ts')
                      kty <- contType y' adj ty -- type of continuation:  {y' -> [adj + currentAmb]ty}
                      -- bindings: continuation + patterns
@@ -360,8 +366,8 @@ checkVPat (MkDataPat k ps) ty =                      -- P-Data rule
   do (dt, args, ts) <- getCtr k
 --   data dt arg_1 .. arg_m = k t_1 .. t_n | ...
      addMark
-     args' <- mapM makeFlexibleTyArg args
-     ts' <- mapM makeFlexible ts
+     args' <- mapM (makeFlexibleTyArg []) args
+     ts' <- mapM (makeFlexible []) ts
      unify ty (MkDTTy dt args')
      bs <- fmap concat $ mapM (uncurry checkVPat) (zip ps ts')
      return bs
@@ -371,32 +377,32 @@ checkVPat (MkIntPat _) ty = unify ty MkIntTy >> return []
 -- checkVPat p ty = throwError $ "failed to match value pattern " ++
 --                  (show p) ++ " with type " ++ (show ty)
 
--- Given a type as input, any contained rigid (val/eff) ty var is made flexible
+-- Given a list of ids and a type as input, any rigid (val/eff) ty var
+-- contained in ty which does *not* belong to the list is made flexible.
 -- The context is thereby extended.
 -- Case distinction over contained rigid (val/eff) ty var:
 -- 1) it is already part of current locality (up to the Mark)
 --    -> return its occuring name
 -- 2) it is not part of current locality
 --    -> create fresh name in context and return
-makeFlexible :: VType Desugared -> Contextual (VType Desugared)
-makeFlexible (MkDTTy id ts) = MkDTTy id <$> mapM makeFlexibleTyArg ts
-makeFlexible (MkSCTy cty) = MkSCTy <$> makeFlexibleCType cty
-makeFlexible (MkRTVar x) = MkFTVar <$> (getContext >>= find')
+makeFlexible :: [Id] -> VType Desugared -> Contextual (VType Desugared)
+makeFlexible flexs (MkDTTy id ts) = MkDTTy id <$> mapM (makeFlexibleTyArg flexs) ts
+makeFlexible flexs (MkSCTy cty) = MkSCTy <$> makeFlexibleCType flexs cty
+makeFlexible flexs (MkRTVar x) | not (x `elem` flexs) = MkFTVar <$> (getContext >>= find')
 -- find' either creates a new FlexMVar in current locality or identifies the one
 -- already existing
   where find' BEmp = freshMVar x
         find' (es :< FlexMVar y _) | trimVar x == trimVar y = return y
         find' (es :< Mark) = freshMVar x  -- only search in current locality
         find' (es :< _) = find' es
+makeFlexible flexs ty = return ty
 
-makeFlexible ty = return ty
-
-makeFlexibleAb :: Ab Desugared -> Contextual (Ab Desugared)
-makeFlexibleAb (MkAb v m) = case v of
-  MkAbRVar x -> do v' <- MkAbFVar <$> (getContext >>= (find' x))
-                   m' <- mapM (mapM makeFlexibleTyArg) m
+makeFlexibleAb :: [Id] -> Ab Desugared -> Contextual (Ab Desugared)
+makeFlexibleAb flexs (MkAb v m) = case v of
+  MkAbRVar x -> do v' <- (if not (x `elem` flexs) then (MkAbFVar <$> (getContext >>= (find' x))) else return $ MkAbRVar x)
+                   m' <- mapM (mapM (makeFlexibleTyArg flexs)) m
                    return $ MkAb v' m'
-  _ ->          do m' <- mapM (mapM makeFlexibleTyArg) m
+  _ ->          do m' <- mapM (mapM (makeFlexibleTyArg flexs)) m
                    return $ MkAb v m'
 -- find' either creates a new FlexMVar in current locality or identifies the one
 -- already existing
@@ -405,24 +411,24 @@ makeFlexibleAb (MkAb v m) = case v of
         find' x (es :< Mark) = freshMVar x
         find' x (es :< _) = find' x es
 
-makeFlexibleTyArg :: TyArg Desugared -> Contextual (TyArg Desugared)
-makeFlexibleTyArg (VArg t)  = VArg <$> makeFlexible t
-makeFlexibleTyArg (EArg ab) = EArg <$> makeFlexibleAb ab
+makeFlexibleTyArg :: [Id] -> TyArg Desugared -> Contextual (TyArg Desugared)
+makeFlexibleTyArg flexs (VArg t)  = VArg <$> makeFlexible flexs t
+makeFlexibleTyArg flexs (EArg ab) = EArg <$> makeFlexibleAb flexs ab
 
-makeFlexibleAdj :: Adj Desugared -> Contextual (Adj Desugared)
-makeFlexibleAdj (MkAdj m) = MkAdj <$> mapM (mapM makeFlexibleTyArg) m
+makeFlexibleAdj :: [Id] -> Adj Desugared -> Contextual (Adj Desugared)
+makeFlexibleAdj flexs (MkAdj m) = MkAdj <$> mapM (mapM (makeFlexibleTyArg flexs)) m
 
-makeFlexibleCType :: CType Desugared -> Contextual (CType Desugared)
-makeFlexibleCType (MkCType ps q) = MkCType <$>
-                                   mapM makeFlexiblePort ps <*>
-                                   makeFlexiblePeg q
+makeFlexibleCType :: [Id] -> CType Desugared -> Contextual (CType Desugared)
+makeFlexibleCType flexs (MkCType ps q) = MkCType <$>
+                                         mapM (makeFlexiblePort flexs) ps <*>
+                                         makeFlexiblePeg flexs q
 
-makeFlexiblePeg :: Peg Desugared -> Contextual (Peg Desugared)
-makeFlexiblePeg (MkPeg ab ty) = MkPeg <$>
-                                makeFlexibleAb ab <*>
-                                makeFlexible ty
+makeFlexiblePeg :: [Id] -> Peg Desugared -> Contextual (Peg Desugared)
+makeFlexiblePeg flexs (MkPeg ab ty) = MkPeg <$>
+                                      makeFlexibleAb flexs ab <*>
+                                      makeFlexible flexs ty
 
-makeFlexiblePort :: Port Desugared -> Contextual (Port Desugared)
-makeFlexiblePort (MkPort adj ty) = MkPort <$>
-                                   makeFlexibleAdj adj <*>
-                                   makeFlexible ty
+makeFlexiblePort :: [Id] -> Port Desugared -> Contextual (Port Desugared)
+makeFlexiblePort flexs (MkPort adj ty) = MkPort <$>
+                                         makeFlexibleAdj flexs adj <*>
+                                         makeFlexible flexs ty

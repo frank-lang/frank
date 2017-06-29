@@ -1,0 +1,13 @@
+-- #desc   Demonstrated a bug which did not keep rigidity of command ty vars
+-- #return failed to unify X with Int
+
+data Pair X Y = pair X Y
+
+interface Copy = copy X: X -> Pair X X
+
+copier: {<Copy>Unit -> Unit}
+copier <copy x -> k> = copier (k (pair x 3))
+copier unit = unit
+
+main: {Unit}
+main! = unit
