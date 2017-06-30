@@ -140,6 +140,10 @@ calcProg a b c = let p1 = async {binOp a b} in
 -- Main
 --------------------------------------------------------------------------------
 
+-- Dont delete these lines, they make this program into a unit test.
+-- #desc   examples/asyncPoly.fk
+-- #return 8
+
 main: {[RefState]Int}
 main! = let resRef = new (waiting []) in
         runZipQueue {roundRobin (step (promise resRef) (calcProg 1 2 3))} (zipq [] []);
