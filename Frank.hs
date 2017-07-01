@@ -11,7 +11,7 @@ import Debug
 
 import Debug.Trace
 
-import Shonky.Semantics
+import qualified Shonky.Semantics as Shonky
 
 import Data.IORef
 import qualified Data.Map.Strict as M
@@ -27,25 +27,27 @@ type Args = [(String,String)]
 splice :: Prog Raw -> Tm Raw -> Prog Raw
 splice (MkProg xs) tm = MkProg $ xs ++ ys
   where ys = [sig, cls]
-        sig = MkSigTm (MkSig id (MkCType [] peg))
-        peg = MkPeg ab ty
-        ty = MkTVar "%X"
-        ab = MkAb (MkAbVar "£") M.empty
-        cls = MkClsTm (MkMHCls id (MkCls [] tm))
+        sig = SigTm (Sig id (CType [] peg b) b) b
+        peg = Peg ab ty b
+        ty = TVar "%X" b
+        ab = Ab (AbVar "£" b) (ItfMap M.empty (Raw Generated)) b
+        cls = ClsTm (MHCls id (Cls [] tm b) b) b
         id = "%eval"
+        b = builtinLocRaw
 
+--TODO: LC: Fix locations
 exorcise :: Prog Desugared -> (Prog Desugared, TopTm Desugared)
-exorcise (MkProg xs) = (prog,MkDefTm (head evalDef))
-  where prog = MkProg (map MkDataTm dts ++
-                       map MkItfTm itfs ++
-                       map MkDefTm hdrs)
+exorcise (MkProg xs) = (prog, DefTm (head evalDef) builtinLocDesug)
+  where prog = MkProg (map (swap DataTm builtinLocDesug) dts ++
+                       map (swap ItfTm builtinLocDesug) itfs ++
+                       map (swap DefTm builtinLocDesug) hdrs)
         (dts,itfs,defs) = (getDataTs xs,getItfs xs,getDefs xs)
         (evalDef,hdrs) = partition isEvalTm defs
-        isEvalTm (MkDef id _ _) = id == "%eval"
+        isEvalTm (Def id _ _ _) = id == "%eval"
 
 extractEvalUse :: TopTm Desugared -> Use Desugared
-extractEvalUse (MkDefTm (MkDef _ _ [cls])) = getBody cls
-  where getBody (MkCls [] (MkUse u)) = u
+extractEvalUse (DefTm (Def _ _ [cls] _) _) = getBody cls
+  where getBody (Cls [] (Use u _) _) = u
         getBody _ = error "extractEvalUse: eval body invariant broken"
 
 glue :: Prog Desugared -> TopTm Desugared -> Prog Desugared
@@ -83,21 +85,21 @@ checkUse p use =
     Left err -> die err
     Right ty -> return ty
 
-compileProg :: String -> Prog Desugared -> [(String, String)] -> IO Env
+compileProg :: String -> Prog Desugared -> [(String, String)] -> IO Shonky.Env
 compileProg progName p args =
   do env <- if ("output-shonky","") `elem` args then
               do compileToFile p progName
-                 loadFile progName
-            else return $ load $ compile p
+                 Shonky.loadFile progName
+            else return $ Shonky.load $ compile p
      return env
 
-evalProg :: Env -> String -> IO ()
+evalProg :: Shonky.Env -> String -> IO ()
 evalProg env tm =
-  case try env tm of
-    Ret v -> putStrLn $ ppVal v
+  case Shonky.try env tm of
+    Shonky.Ret v -> putStrLn $ Shonky.ppVal v
     comp -> do -- putStrLn $ "Generated computation: " ++ show comp
-               v <- ioHandler comp
-               putStrLn $ ppVal v
+               v <- Shonky.ioHandler comp
+               putStrLn $ Shonky.ppVal v
 
 compileAndRunProg :: String -> [(String, String)] -> IO ()
 compileAndRunProg fileName args =
@@ -128,6 +130,8 @@ arguments =
    "Enable all debugging facilities"
   ,flagNone ["debug-verbose"] (("debug-verbose",""):)
    "Enable verbose variable names etc. on output"
+  ,flagNone ["debug-parser"] (("debug-parser",""):)
+    "Enable output of parser logs"
   ,flagNone ["debug-tc"] (("debug-tc",""):)
    "Enable output of type-checking logs"
   ,flagReq ["eval"] (upd "eval") "USE"
@@ -147,9 +151,11 @@ main = do
   args <- processArgs arguments
   let debugVerboseOn =   ("debug-output","") `elem` args ||
                          ("debug-verbose", "") `elem` args
+      debugParserOn =    ("debug-output","") `elem` args ||
+                         ("debug-parser", "") `elem` args
       debugTypeCheckOn = ("debug-output","") `elem` args ||
                          ("debug-tc", "") `elem` args
-  writeIORef debugMode (debugVerboseOn, debugTypeCheckOn)
+  writeIORef debugMode (debugVerboseOn, debugParserOn, debugTypeCheckOn)
   if ("help","") `elem` args then
      print $ helpText [] HelpFormatDefault arguments
   else case lookup "file" args of

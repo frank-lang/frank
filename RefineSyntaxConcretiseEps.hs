@@ -1,5 +1,6 @@
 -- Making implicit [£] explicit in data type, interface and interface alias
 -- definitions
+{-# LANGUAGE ViewPatterns,LambdaCase #-}
 module RefineSyntaxConcretiseEps (concretiseEps) where
 
 import Control.Monad
@@ -108,83 +109,83 @@ concretiseEps dts itfs itfAls =
                                  (ItfAlNode itfAl) -> hasEpsItfAl itfAl
 
   hasEpsDataT :: DataT Raw -> HasEps
-  hasEpsDataT (MkDT _ ps ctrs) = if any ((==) ("£", ET)) ps then HasEps
+  hasEpsDataT (DT _ ps ctrs a) = if any ((==) ("£", ET)) ps then HasEps
                                  else let tvs = [x | (x, VT) <- ps] in
                                       anyHasEps (map (hasEpsCtr tvs) ctrs)
 
   hasEpsItf :: Itf Raw -> HasEps
-  hasEpsItf (MkItf _ ps cmds) = if any ((==) ("£", ET)) ps then HasEps
+  hasEpsItf (Itf _ ps cmds a) = if any ((==) ("£", ET)) ps then HasEps
                                 else let tvs = [x | (x, VT) <- ps] in
                                      anyHasEps (map (hasEpsCmd tvs) cmds)
 
   hasEpsItfAl :: ItfAlias Raw -> HasEps
-  hasEpsItfAl (MkItfAlias _ ps itfMap) = if any ((==) ("£", ET)) ps then HasEps
+  hasEpsItfAl (ItfAlias _ ps itfMap a) = if any ((==) ("£", ET)) ps then HasEps
                                          else let tvs = [x | (x, VT) <- ps] in
                                               hasEpsItfMap tvs itfMap
 
   hasEpsCmd :: [Id] -> Cmd Raw -> HasEps
-  hasEpsCmd tvs (MkCmd _ ps ts t) = let tvs' = tvs ++ [x | (x, VT) <- ps] in
+  hasEpsCmd tvs (Cmd _ ps ts t a) = let tvs' = tvs ++ [x | (x, VT) <- ps] in
                                     anyHasEps $ map (hasEpsVType tvs') ts ++ [hasEpsVType tvs' t]
 
   hasEpsCtr :: [Id] -> Ctr Raw -> HasEps
-  hasEpsCtr tvs (MkCtr _ ts) = anyHasEps (map (hasEpsVType tvs) ts)
+  hasEpsCtr tvs (Ctr _ ts a) = anyHasEps (map (hasEpsVType tvs) ts)
 
   hasEpsVType :: [Id] -> VType Raw -> HasEps
-  hasEpsVType tvs (MkDTTy x ts) =
+  hasEpsVType tvs (DTTy x ts a) =
     if x `elem` ids then anyHasEps $ HasEpsIfAny [x] : map (hasEpsTyArg tvs) ts  -- indeed data type
                     else anyHasEps $ map (hasEpsTyArg tvs) ts                    -- ... or not
-  hasEpsVType tvs (MkSCTy ty)   = hasEpsCType tvs ty
-  hasEpsVType tvs (MkTVar x)    = if x `elem` tvs then HasEpsIfAny []  -- indeed type variable
+  hasEpsVType tvs (SCTy ty a)   = hasEpsCType tvs ty
+  hasEpsVType tvs (TVar x a)    = if x `elem` tvs then HasEpsIfAny []  -- indeed type variable
                                                   else HasEpsIfAny [x] -- ... or not
-  hasEpsVType tvs MkStringTy    = HasEpsIfAny []
-  hasEpsVType tvs MkIntTy       = HasEpsIfAny []
-  hasEpsVType tvs MkCharTy      = HasEpsIfAny []
+  hasEpsVType tvs (StringTy _)  = HasEpsIfAny []
+  hasEpsVType tvs (IntTy _)     = HasEpsIfAny []
+  hasEpsVType tvs (CharTy _)    = HasEpsIfAny []
 
   hasEpsCType :: [Id] -> CType Raw -> HasEps
-  hasEpsCType tvs (MkCType ports peg) = anyHasEps $ map (hasEpsPort tvs) ports ++ [hasEpsPeg tvs peg]
+  hasEpsCType tvs (CType ports peg a) = anyHasEps $ map (hasEpsPort tvs) ports ++ [hasEpsPeg tvs peg]
 
   hasEpsPort :: [Id] -> Port Raw -> HasEps
-  hasEpsPort tvs (MkPort adj ty) = anyHasEps [hasEpsAdj tvs adj, hasEpsVType tvs ty]
+  hasEpsPort tvs (Port adj ty a) = anyHasEps [hasEpsAdj tvs adj, hasEpsVType tvs ty]
 
   hasEpsAdj :: [Id] -> Adj Raw -> HasEps
-  hasEpsAdj tvs (MkAdj itfmap) = hasEpsItfMap tvs itfmap
+  hasEpsAdj tvs (Adj itfmap a) = hasEpsItfMap tvs itfmap
 
   hasEpsPeg :: [Id] -> Peg Raw -> HasEps
-  hasEpsPeg tvs (MkPeg ab ty) = anyHasEps [hasEpsAb tvs ab, hasEpsVType tvs ty]
+  hasEpsPeg tvs (Peg ab ty a) = anyHasEps [hasEpsAb tvs ab, hasEpsVType tvs ty]
 
   hasEpsAb :: [Id] -> Ab Raw -> HasEps
-  hasEpsAb tvs (MkAb v m) = anyHasEps [hasEpsAbMod tvs v, hasEpsItfMap tvs m]
+  hasEpsAb tvs (Ab v m a) = anyHasEps [hasEpsAbMod tvs v, hasEpsItfMap tvs m]
 
   hasEpsItfMap :: [Id] -> ItfMap Raw -> HasEps
-  hasEpsItfMap tvs = anyHasEps . (map (hasEpsTyArg tvs)) . concat . M.elems
+  hasEpsItfMap tvs (ItfMap m _) = (anyHasEps . (map (hasEpsTyArg tvs)) . concat . M.elems) m
 
   hasEpsAbMod :: [Id] -> AbMod Raw -> HasEps
-  hasEpsAbMod tvs MkEmpAb       = HasEpsIfAny []
-  hasEpsAbMod tvs (MkAbVar "£") = HasEps
-  hasEpsAbMod tvs (MkAbVar _)   = HasEpsIfAny []
+  hasEpsAbMod tvs (EmpAb _)     = HasEpsIfAny []
+  hasEpsAbMod tvs (AbVar "£" _) = HasEps
+  hasEpsAbMod tvs (AbVar _ _)   = HasEpsIfAny []
 
   hasEpsTyArg :: [Id] -> TyArg Raw -> HasEps
-  hasEpsTyArg tvs (VArg t)  = hasEpsVType tvs t
-  hasEpsTyArg tvs (EArg ab) = hasEpsAb tvs ab
+  hasEpsTyArg tvs (VArg t _)  = hasEpsVType tvs t
+  hasEpsTyArg tvs (EArg ab _) = hasEpsAb tvs ab
 
 concretiseEpsInDataT :: [Id] -> DataT Raw -> DataT Raw
-concretiseEpsInDataT posIds (MkDT dt ps ctrs) = (MkDT dt ps' ctrs) where
+concretiseEpsInDataT posIds (DT dt ps ctrs a) = (DT dt ps' ctrs a) where
   ps' = if not (any ((==) ("£", ET)) ps) && dt `elem` posIds then ps ++ [("£", ET)] else ps
 
 concretiseEpsInItf :: [Id] -> Itf Raw -> Itf Raw
-concretiseEpsInItf posIds (MkItf itf ps cmds) = (MkItf itf ps' cmds) where
+concretiseEpsInItf posIds (Itf itf ps cmds a) = (Itf itf ps' cmds a) where
   ps' = if not (any ((==) ("£", ET)) ps) && itf `elem` posIds then ps ++ [("£", ET)] else ps
 
 concretiseEpsInItfAl :: [Id] -> ItfAlias Raw -> ItfAlias Raw
-concretiseEpsInItfAl posIds (MkItfAlias itfAl ps itfMap) = (MkItfAlias itfAl ps' itfMap) where
+concretiseEpsInItfAl posIds (ItfAlias itfAl ps itfMap a) = (ItfAlias itfAl ps' itfMap a) where
   ps' = if not (any ((==) ("£", ET)) ps) && itfAl `elem` posIds then ps ++ [("£", ET)] else ps
 
 {- Helper functions -}
 
 nodeId :: Node -> Id
-nodeId (DtNode (MkDT id _ _)) = id
-nodeId (ItfNode (MkItf id _ _)) = id
-nodeId (ItfAlNode (MkItfAlias id _ _)) = id
+nodeId (DtNode (DT id _ _ a)) = id
+nodeId (ItfNode (Itf id _ _ a)) = id
+nodeId (ItfAlNode (ItfAlias id _ _ a)) = id
 
 -- A variant of the any-operator for HasEps results
 anyHasEps :: [HasEps] -> HasEps

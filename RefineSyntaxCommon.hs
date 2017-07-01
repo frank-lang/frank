@@ -119,14 +119,6 @@ putTopLevelCtxt ctxt = do s <- getRState
 
 {- Helper functions -}
 
-checkArgs :: Id -> Int -> Int -> Refine ()
-checkArgs x exp act =
-  if exp /= act then
-    throwError $ x ++ " expects " ++ show exp ++
-                 " argument(s) but " ++ show act ++
-                 " given."
-  else return ()
-
 isHdrCtxt :: Maybe TopLevelCtxt -> Bool
 isHdrCtxt (Just Handler) = True
 isHdrCtxt _              = False

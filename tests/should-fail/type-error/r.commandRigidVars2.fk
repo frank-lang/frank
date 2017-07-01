@@ -1,5 +1,5 @@
 -- #desc   Counterpart of r.commandRigidVars.fk
--- #return failed to unify Int with Unit
+-- #return failed to unify Int (line 8 , column 16) with Unit (line 9 , column 40)
 
 data Pair X Y = pair X Y
 

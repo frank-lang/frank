@@ -18,6 +18,7 @@ executable frank
                , DesugarSyntax
                , FreshNames
                , Parser
+               , ParserCommon
                , RefineSyntax
                , RefineSyntaxCommon
                , RefineSyntaxConcretiseEps
@@ -32,6 +33,7 @@ executable frank
 
   build-depends: Unique
                , base >= 4.7 && < 5
+               , bytestring
                , containers
                , indentation-trifecta
                , mtl

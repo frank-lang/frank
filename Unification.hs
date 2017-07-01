@@ -1,5 +1,5 @@
 -- Unification implementation inspired heavily by Adam Gundry's thesis.
-{-# LANGUAGE GADTs #-}
+{-# LANGUAGE GADTs, ViewPatterns, LambdaCase #-}
 module Unification where
 
 import qualified Data.Map as M
@@ -36,9 +36,9 @@ onTop f = popEntry >>= focus
 -- given eff var "x", find assigned ability in context and return it
 -- if not found, return "Nothing"
 findAbVar :: AbMod Desugared -> Contextual (Maybe (Ab Desugared))
-findAbVar MkEmpAb = return Nothing
-findAbVar (MkAbRVar _) = return Nothing
-findAbVar (MkAbFVar x) = getContext >>= find'
+findAbVar (EmpAb _) = return Nothing
+findAbVar (AbRVar _ _) = return Nothing
+findAbVar (AbFVar x _) = getContext >>= find'
   where find' BEmp = return Nothing
         find' (es :< FlexMVar y (AbDefn ab)) | x == y = return $ Just ab
         find' (es :< _) = find' es
@@ -52,38 +52,35 @@ unify t0 t1 = do logBeginUnify t0 t1
                  unify' t0 t1
                  logEndUnify t0 t1
   where
-  unify' (MkDTTy dt0 ts0) (MkDTTy dt1 ts1)                                        -- decompose (modified)
+  unify' (DTTy dt0 ts0 _) (DTTy dt1 ts1 _)                                        -- decompose (modified)
     | dt0 == dt1 && eqLens ts0 ts1 =
       mapM_ (uncurry unifyTyArg) (zip ts0 ts1)
-  unify' t@(MkDTTy dt0 ts0) s@(MkDTTy dt1 ts1)                                    -- decompose fails
+  unify' v1@(DTTy dt0 ts0 _) v2@(DTTy dt1 ts1 _)                                    -- decompose fails
     | not $ eqLens ts0 ts1 =
-    throwError $ "failed to unify " ++
-    (show $ ppVType t) ++ " with " ++ (show $ ppVType s) ++
-      " because they have different numbers of type arguments"
-  unify' (MkSCTy cty0) (MkSCTy cty1) = unifyCType cty0 cty1
-  unify' (MkRTVar a)  (MkRTVar b) | a == b = return ()
-  unify' MkIntTy      MkIntTy           = return ()
-  unify' MkCharTy     MkCharTy          = return ()
-  unify' (MkFTVar a)  (MkFTVar b)       = onTop $ \c d ->
+    throwError $ errorUnifDiffNumberArgs v1 v2
+  unify' (SCTy cty0 _)   (SCTy cty1 _)        = unifyCType cty0 cty1
+  unify' (RTVar a _)     (RTVar b _) | a == b = return ()
+  unify' (IntTy _)       (IntTy _)            = return ()
+  unify' (CharTy _)      (CharTy _)           = return ()
+  unify' fta@(FTVar a _) ftb@(FTVar b _)      = onTop $ \c d ->
     cmp (a == c) (b == c) d
     where cmp :: Bool -> Bool -> Decl -> Contextual Extension
           cmp True  True  _           = restore                                  -- idle
-          cmp True  False Hole        = replace [(a, TyDefn (MkFTVar b))]        -- define
-          cmp False True  Hole        = replace [(b, TyDefn (MkFTVar a))]        -- define
-          cmp True  False (TyDefn ty) = unify ty (MkFTVar b) >> restore          -- subs
-          cmp False True  (TyDefn ty) = unify (MkFTVar a) ty >> restore          -- subs
-          cmp False False _           = unify (MkFTVar a) (MkFTVar b) >> restore -- skip-ty
+          cmp True  False Hole        = replace [(a, TyDefn ftb)]        -- define
+          cmp False True  Hole        = replace [(b, TyDefn fta)]        -- define
+          cmp True  False (TyDefn ty) = unify ty ftb >> restore          -- subs
+          cmp False True  (TyDefn ty) = unify fta ty >> restore          -- subs
+          cmp False False _           = unify fta ftb >> restore             -- skip-ty
           cmp _     _     (AbDefn _)  = error "unification invariant broken"
-  unify' (MkFTVar a)  ty                = solve a [] ty                           -- inst
-  unify' ty           (MkFTVar a)       = solve a [] ty                           -- inst
-  unify' t            s                 =
-    throwError $ "failed to unify " ++
-    (show $ ppVType t) ++ " with " ++ (show $ ppVType s)
+  unify' (FTVar a _)     ty                            = solve a [] ty                           -- inst
+  unify' ty                       (FTVar a _)          = solve a [] ty                           -- inst
+  unify' t                        s                             =
+    throwError $ errorUnifTys t s
 
 -- unify 2 eff tys in current context
 unifyAb :: Ab Desugared -> Ab Desugared -> Contextual ()
-unifyAb ab0@(MkAb v0 m0)         ab1@(MkAb v1 m1) =
-  --    [v0 | m0_1, ..., m0_m]   [v1 | m1_1, ... m1_n]
+unifyAb ab0@(Ab v0 (ItfMap m0 _) a) ab1@(Ab v1 (ItfMap m1 _) b) =
+  --    [v0 | m0_1, ..., m0_m]    [v1 | m1_1, ... m1_n]
   do logBeginUnifyAb ab0 ab1
      ma0 <- findAbVar v0 -- find ability bound to flex. eff var v0
      ma1 <- findAbVar v1 -- find ability bound to flex. eff var v1
@@ -93,85 +90,80 @@ unifyAb ab0@(MkAb v0 m0)         ab1@(MkAb v1 m1) =
      --     Consider only merged:    [v0' | m1_1, ..., m1_k, m1'_1, ..., m1'_l]
      -- 2)  Unify these two.
      case (ma0, ma1) of
-       (Just (MkAb v0 m0'), Just (MkAb v1 m1')) ->
+       (Just (Ab v0 (ItfMap m0' _) _), Just (Ab v1 (ItfMap m1' _) _)) ->
+           let m0'' = M.union m0 m0' in
+           let m1'' = M.union m1 m1' in
+           unifyAb' (Ab v0 (ItfMap m0'' a) a) (Ab v1 (ItfMap m1'' b) b)
+       (Just (Ab v0 (ItfMap m0' _) loc0), Nothing) ->
          let m0'' = M.union m0 m0' in
+         unifyAb' (Ab v0 (ItfMap m0'' a) a) ab1
+       (Nothing, Just (Ab v1 (ItfMap m1' _) _)) ->
          let m1'' = M.union m1 m1' in
-         unifyAb' (MkAb v0 m0'') (MkAb v1 m1'')
-       (Just (MkAb v0 m0'), Nothing) ->
-         let m0'' = M.union m0 m0' in
-         unifyAb' (MkAb v0 m0'') ab1
-       (Nothing, Just (MkAb v1 m1')) ->
-         let m1'' = M.union m1 m1' in
-         unifyAb' ab0 (MkAb v1 m1'')
+         unifyAb' ab0 (Ab v1 (ItfMap m1'' b) b)
        (Nothing, Nothing) ->
          unifyAb' ab0 ab1
      logEndUnifyAb ab0 ab1
-  where -- Same eff ty vars leaves nothing to unify but instantiat's m0, m1
-        unifyAb' ab0@(MkAb v0 m0) ab1@(MkAb v1 m1) | v0 == v1 =
+  where unifyAb' :: Ab Desugared -> Ab Desugared -> Contextual ()
+        -- Same eff ty vars leaves nothing to unify but instantiat's m0, m1
+        unifyAb' ab0@(Ab v0 m0 _) ab1@(Ab v1 m1 _) | v0 == v1 =
           catchError (unifyItfMap m0 m1) (unifyAbError ab0 ab1)
         -- Both eff ty vars are flexible
-        unifyAb' (MkAb (MkAbFVar a0) m0) (MkAb (MkAbFVar a1) m1) =
-        --       [a0 | m0]               [a1 | m1]
+        unifyAb' (Ab (AbFVar a0 _) (ItfMap m0 _) a) (Ab (AbFVar a1 _) (ItfMap m1 _) b) =
+        --       [a0 | m0]                                           [a1 | m1]
           do -- For same occurrences of interfaces, their instantiat's must coincide
-             unifyItfMap (M.intersection m0 m1) (M.intersection m1 m0)
+             unifyItfMap (ItfMap (M.intersection m0 m1) a) (ItfMap (M.intersection m1 m0) b)
              -- Unify [a0] = [v | m1 - m0] and
              --       [a1] = [v | m0 - m1]
-             v <- MkAbFVar <$> freshMVar "£"
-             solveForEVar a0 [] (MkAb v (M.difference m1 m0))
-             solveForEVar a1 [] (MkAb v (M.difference m0 m1))
+             v <- AbFVar <$> freshMVar "£" <*> pure dummyLocDesug
+             solveForEVar a0 [] (Ab v (ItfMap (M.difference m1 m0) a) a)  -- TODO: LC: locations assigned correctly?
+             solveForEVar a1 [] (Ab v (ItfMap (M.difference m0 m1) b) b)  -- TODO: LC: fix dummyloc
         -- One eff ty var is flexible, the other one either empty or rigid
         -- ...and m0 `subsetOf` m1
-        unifyAb' (MkAb (MkAbFVar a0) m0) (MkAb v m1)
+        unifyAb' (Ab (AbFVar a0 _) (ItfMap m0 _) _) (Ab v (ItfMap m1 _) b)
           | M.null (M.difference m0 m1) =
-            do unifyItfMap (M.intersection m1 m0) (M.intersection m0 m1)
-               solveForEVar a0 [] (MkAb v (M.difference m1 m0))
+            do unifyItfMap (ItfMap (M.intersection m1 m0) a) (ItfMap (M.intersection m0 m1) b)
+               solveForEVar a0 [] (Ab v (ItfMap (M.difference m1 m0) b) b)   -- TODO: LC: locations assigned correctly?
         -- ...and m1 `subsetOf` m0
-        unifyAb' (MkAb v m0) (MkAb (MkAbFVar a1) m1)
+        unifyAb' (Ab v (ItfMap m0 _) a) (Ab (AbFVar a1 _) (ItfMap m1 _) _)
           | M.null (M.difference m1 m0) =
-            do unifyItfMap (M.intersection m0 m1) (M.intersection m1 m0)
-               solveForEVar a1 [] (MkAb v (M.difference m0 m1))
+            do unifyItfMap (ItfMap (M.intersection m0 m1) a) (ItfMap (M.intersection m1 m0) b)
+               solveForEVar a1 [] (Ab v (ItfMap (M.difference m0 m1) a) a)   -- TODO: LC: locations assigned correctly?
         -- In any other case
-        unifyAb' ab0 ab1 =
-          throwError $ "cannot unify abilities " ++ (show $ ppAb ab0) ++
-          " and " ++ (show $ ppAb ab1)
+        unifyAb' ab0 ab1 = throwError $ errorUnifAbs ab0 ab1
 
 unifyTyArg :: TyArg Desugared -> TyArg Desugared -> Contextual ()
-unifyTyArg (VArg t0) (VArg t1) = unify t0 t1
-unifyTyArg (EArg ab0) (EArg ab1) = unifyAb ab0 ab1
-unifyTyArg arg0 arg1 =
-  throwError $ "failed to unify " ++
-  (show $ ppTyArg arg0) ++ " with " ++ (show $ ppTyArg arg1)
+unifyTyArg (VArg t0 _) (VArg t1 _) = unify t0 t1
+unifyTyArg (EArg ab0 _) (EArg ab1 _) = unifyAb ab0 ab1
+unifyTyArg arg0 arg1 = throwError $ errorUnifTyArgs arg0 arg1
 
 unifyAbError :: Ab Desugared -> Ab Desugared -> String -> Contextual ()
-unifyAbError ab0 ab1 _ =
-  throwError $ "cannot unify abilities " ++ (show $ ppAb ab0) ++
-  " and " ++ (show $ ppAb ab1)
+unifyAbError ab0 ab1 _ = throwError $ errorUnifAbs ab0 ab1
 
 -- Given two abilities (ItfMap = set of instantiated interfaces), check that
 -- each instantiation has a unifiable counterpart in the other ability.
 unifyItfMap :: ItfMap Desugared -> ItfMap Desugared -> Contextual ()
-unifyItfMap m0 m1 = do mapM_ (unifyItfMap' m1) (M.toList m0)
-                       mapM_ (unifyItfMap' m0) (M.toList m1)
+unifyItfMap m0@(ItfMap m0' a) m1@(ItfMap m1' b) = do
+  mapM_ (unifyItfMap' m1) (M.toList m0')
+  mapM_ (unifyItfMap' m0) (M.toList m1')
   where unifyItfMap' :: ItfMap Desugared -> (Id,[TyArg Desugared]) ->
                         Contextual ()
-        unifyItfMap' m (itf,xs) = case M.lookup itf m of
-          Nothing -> throwError $ "failed to unify abilities " ++
-                     (show $ ppItfMap m0) ++ " and " ++ (show $ ppItfMap m1)
+        unifyItfMap' (ItfMap m _) (itf,xs) = case M.lookup itf m of
+          Nothing -> throwError $ errorUnifItfMaps m0 m1
           Just ys -> mapM_ (uncurry unifyTyArg) (zip xs ys)
 
 unifyAdj :: Adj Desugared -> Adj Desugared -> Contextual ()
-unifyAdj (MkAdj m0) (MkAdj m1) = unifyItfMap m0 m1
+unifyAdj (Adj m0 _) (Adj m1 _) = unifyItfMap m0 m1
 
 unifyCType :: CType Desugared -> CType Desugared -> Contextual ()
-unifyCType (MkCType xs p0) (MkCType ys p1) =
+unifyCType (CType xs p0 _) (CType ys p1 _) =
   mapM (uncurry unifyPort) (zip xs ys) >> unifyPeg p0 p1
 
 unifyPeg :: Peg Desugared -> Peg Desugared -> Contextual ()
-unifyPeg (MkPeg ab0 ty0) (MkPeg ab1 ty1) = unifyAb ab0 ab1 >> unify ty0 ty1
+unifyPeg (Peg ab0 ty0 _) (Peg ab1 ty1 _) = unifyAb ab0 ab1 >> unify ty0 ty1
 
 unifyPort :: Port Desugared -> Port Desugared -> Contextual ()
-unifyPort (MkPort adj0 ty0) (MkPort adj1 ty1) = unifyAdj adj0 adj1 >>
-                                                unify ty0 ty1
+unifyPort (Port adj0 ty0 _) (Port adj1 ty1 _) = unifyAdj adj0 adj1 >>
+                                                                  unify ty0 ty1
 
 -- unify a meta variable "a" with a type "ty"
 solve :: Id -> Suffix -> VType Desugared -> Contextual ()
@@ -183,12 +175,12 @@ solve a ext ty = do logBeginSolve a ext ty
     logSolveStep ((a == b), (S.member b (fmv ty)), d)
     case ((a == b), (S.member b (fmv ty)), d) of
       (_,     _,     TyDefn bty) -> modify (<>< entrify ext) >>                         -- inst-subs (val ty var)
-                                    unify (subst bty b (MkFTVar a)) (subst bty b ty) >>
+                                    unify (subst bty b (FTVar a dummyLocDesug)) (subst bty b ty) >> --TODO: LC: fix dummyLoc issue
                                     restore
       (_,     _,     AbDefn ab) ->  modify (<>< entrify ext) >>                         -- inst-subs (eff ty var)
-                                    unify (substEVar ab b (MkFTVar a)) (substEVar ab b ty) >>
+                                    unify (substEVar ab b (FTVar a dummyLocDesug)) (substEVar ab b ty) >>  --TODO: LC: fix dummyLoc issue
                                     restore
-      (True,  True,  Hole) -> throwError "solve: occurs check failure"
+      (True,  True,  Hole) -> throwError errorUnifSolveOccurCheck
       (True,  False, Hole) -> replace (ext ++ [(a, TyDefn ty)])                         -- inst-define
       (False, True,  Hole) -> solve a ((b,d):ext) ty >> replace []                         -- inst-depend
       (False, False, Hole) -> solve a ext ty >> restore                                    -- inst-skip-ty
@@ -197,11 +189,11 @@ solveForEVar :: Id -> Suffix -> Ab Desugared -> Contextual ()
 solveForEVar a ext ab = onTop $ \b d ->
   case (a == b, (S.member b (fmvAb ab)), d) of
     (_, _, AbDefn ab') ->
-      let vab = MkAb (MkAbFVar a) M.empty in
+      let vab = Ab (AbFVar a (Desugared Generated)) (ItfMap M.empty (Desugared Generated)) (Desugared Generated) in   --TODO: LC: fix dummyLoc issue
       modify (<>< entrify ext) >>
       unifyAb (substEVarAb ab' b vab) (substEVarAb ab' b ab) >>
       restore
-    (True, True, Hole) -> throwError "solveForEvar: occurs check failure"
+    (True, True, Hole) -> throwError errorUnifSolveOccurCheck
     (True, False, Hole) -> replace (ext ++ [(a, AbDefn ab)])
     (False, True, _) -> solveForEVar a ((b,d):ext) ab >> replace []
     (False, False, _) -> solveForEVar a ext ab >> restore
@@ -209,58 +201,56 @@ solveForEVar a ext ab = onTop $ \b d ->
       error "solveForEVar invariant broken: reached impossible case"
 
 subst :: VType Desugared -> Id -> VType Desugared -> VType Desugared
-subst ty x (MkDTTy dt ts) =
-  MkDTTy dt (map (substTyArg ty x) ts)
-subst ty x (MkSCTy cty) = MkSCTy $ substCType ty x cty
-subst ty x (MkFTVar y) | x == y = ty
+subst ty x (DTTy dt ts a) = DTTy dt (map (substTyArg ty x) ts) a
+subst ty x (SCTy cty a) = SCTy (substCType ty x cty) a
+subst ty x (FTVar y a) | x == y = ty
 subst _ _ ty = ty
 
 substAb :: VType Desugared -> Id -> Ab Desugared -> Ab Desugared
-substAb ty x (MkAb v m) = MkAb v (M.map (map (substTyArg ty x)) m)
+substAb ty x (Ab v (ItfMap m _) a) = Ab v (ItfMap (M.map (map (substTyArg ty x)) m) a) a
 
 substTyArg :: VType Desugared -> Id -> TyArg Desugared -> TyArg Desugared
-substTyArg ty x (VArg t) = VArg (subst ty x t)
-substTyArg ty x (EArg ab) = EArg (substAb ty x ab)
+substTyArg ty x (VArg t a) = VArg (subst ty x t) a
+substTyArg ty x (EArg ab a) = EArg (substAb ty x ab) a
 
 substAdj :: VType Desugared -> Id -> Adj Desugared -> Adj Desugared
-substAdj ty x (MkAdj m) = MkAdj (M.map (map (substTyArg ty x)) m)
+substAdj ty x (Adj (ItfMap m _) a) = Adj (ItfMap (M.map (map (substTyArg ty x)) m) a) a
 
 substCType :: VType Desugared -> Id -> CType Desugared -> CType Desugared
-substCType ty x (MkCType ps peg) =
-  MkCType (map (substPort ty x) ps) (substPeg ty x peg)
+substCType ty x (CType ps peg a) =
+  CType (map (substPort ty x) ps) (substPeg ty x peg) a
 
 substPeg :: VType Desugared -> Id -> Peg Desugared -> Peg Desugared
-substPeg ty x (MkPeg ab pty) = MkPeg (substAb ty x ab) (subst ty x pty)
+substPeg ty x (Peg ab pty a) = Peg (substAb ty x ab) (subst ty x pty) a
 
 substPort :: VType Desugared -> Id -> Port Desugared -> Port Desugared
-substPort ty x (MkPort adj pty) = MkPort (substAdj ty x adj) (subst ty x pty)
+substPort ty x (Port adj pty a) = Port (substAdj ty x adj) (subst ty x pty) a
 
 substEVar :: Ab Desugared -> Id -> VType Desugared -> VType Desugared
-substEVar ab x (MkDTTy dt ts) =
-  MkDTTy dt (map (substEVarTyArg ab x) ts)
-substEVar ab x (MkSCTy cty) = MkSCTy $ substEVarCType ab x cty
+substEVar ab x (DTTy dt ts a) = DTTy dt (map (substEVarTyArg ab x) ts) a
+substEVar ab x (SCTy cty a) = SCTy (substEVarCType ab x cty) a
 substEVar _ _ ty = ty
 
 substEVarAb :: Ab Desugared -> Id -> Ab Desugared -> Ab Desugared
-substEVarAb ab@(MkAb v m') x (MkAb (MkAbFVar y) m) | x == y =
-  MkAb v (M.union (M.map (map (substEVarTyArg ab x)) m) m')
-substEVarAb ab x (MkAb v m) = MkAb v (M.map (map (substEVarTyArg ab x)) m)
+substEVarAb ab@(Ab v (ItfMap m' _) _) x (Ab (AbFVar y a) (ItfMap m _) ann) | x == y =
+  Ab v (ItfMap (M.union (M.map (map (substEVarTyArg ab x)) m) m') ann) ann
+substEVarAb ab x (Ab v (ItfMap m _) a) = Ab v (ItfMap (M.map (map (substEVarTyArg ab x)) m) a) a
 
 substEVarTyArg :: Ab Desugared -> Id -> TyArg Desugared -> TyArg Desugared
-substEVarTyArg ab x (VArg t)  = VArg (substEVar ab x t)
-substEVarTyArg ab x (EArg ab') = EArg (substEVarAb ab x ab')
+substEVarTyArg ab x (VArg t a)  = VArg (substEVar ab x t) a
+substEVarTyArg ab x (EArg ab' a) = EArg (substEVarAb ab x ab') a
 
 substEVarAdj :: Ab Desugared -> Id -> Adj Desugared -> Adj Desugared
-substEVarAdj ab x (MkAdj m) = MkAdj (M.map (map (substEVarTyArg ab x)) m)
+substEVarAdj ab x (Adj (ItfMap m _) a) = Adj (ItfMap (M.map (map (substEVarTyArg ab x)) m) a) a
 
 substEVarCType :: Ab Desugared -> Id -> CType Desugared -> CType Desugared
-substEVarCType ab x (MkCType ps peg) =
-  MkCType (map (substEVarPort ab x) ps) (substEVarPeg ab x peg)
+substEVarCType ab x (CType ps peg a) =
+  CType (map (substEVarPort ab x) ps) (substEVarPeg ab x peg) a
 
 substEVarPeg :: Ab Desugared -> Id -> Peg Desugared -> Peg Desugared
-substEVarPeg ab' x (MkPeg ab pty) =
-  MkPeg (substEVarAb ab' x ab) (substEVar ab' x pty)
+substEVarPeg ab' x (Peg ab pty a) =
+  Peg (substEVarAb ab' x ab) (substEVar ab' x pty) a
 
 substEVarPort :: Ab Desugared -> Id -> Port Desugared -> Port Desugared
-substEVarPort ab x (MkPort adj pty) =
-  MkPort (substEVarAdj ab x adj) (substEVar ab x pty)
+substEVarPort ab x (Port adj pty a) =
+  Port (substEVarAdj ab x adj) (substEVar ab x pty) a

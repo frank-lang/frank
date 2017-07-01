@@ -1,6 +1,6 @@
 {-# LANGUAGE FlexibleInstances,StandaloneDeriving,TypeSynonymInstances,
              MultiParamTypeClasses,GeneralizedNewtypeDeriving,
-             FlexibleContexts,GADTs #-}
+             FlexibleContexts,GADTs,ViewPatterns #-}
 module TypeCheckCommon where
 
 import qualified Data.Map.Strict as M
@@ -51,7 +51,7 @@ deriving instance MonadError String Contextual
 deriving instance GenFresh Contextual
 
 data Entry = FlexMVar Id Decl
-           | TermVar Operator (VType Desugared)
+           | TermVar (Operator Desugared) (VType Desugared)
            | Mark
            deriving (Show)
 data Decl = Hole
@@ -59,7 +59,7 @@ data Decl = Hole
           | AbDefn (Ab Desugared)
           deriving (Show)
 type Context = Bwd Entry
-type TermBinding = (Operator, VType Desugared)
+type TermBinding = (Operator Desugared, VType Desugared)
 type Suffix = [(Id, Decl)]
 
 -- push fresh meta variable on context (corresponds to "freshMeta" in Gundry's thesis)
@@ -71,37 +71,37 @@ freshMVar x = do n <- fresh
 
 -- free meta variables (MkFTVar's, MkAbFVar's)
 fmv :: VType Desugared -> S.Set Id
-fmv (MkDTTy _ ts) = foldMap fmvTyArg ts
-fmv (MkSCTy cty) = fmvCType cty
-fmv (MkFTVar x) = S.singleton x
-fmv (MkRTVar x) = S.empty
-fmv MkStringTy = S.empty
-fmv MkIntTy = S.empty
-fmv MkCharTy = S.empty
+fmv (DTTy _ ts _) = foldMap fmvTyArg ts
+fmv (SCTy cty _) = fmvCType cty
+fmv (FTVar x _) = S.singleton x
+fmv (RTVar x _) = S.empty
+fmv (StringTy _) = S.empty
+fmv (IntTy _) = S.empty
+fmv (CharTy _) = S.empty
 
 fmvAb :: Ab Desugared -> S.Set Id
-fmvAb (MkAb v m) = S.union (fmvAbMod v) (foldMap (foldMap fmvTyArg) (M.elems m))
+fmvAb (Ab v (ItfMap m _) _) = S.union (fmvAbMod v) (foldMap (foldMap fmvTyArg) (M.elems m))
 
 fmvTyArg :: TyArg Desugared -> S.Set Id
-fmvTyArg (VArg t) = fmv t
-fmvTyArg (EArg ab) = fmvAb ab
+fmvTyArg (VArg t _) = fmv t
+fmvTyArg (EArg ab _) = fmvAb ab
 
 fmvAbMod :: AbMod Desugared -> S.Set Id
-fmvAbMod MkEmpAb = S.empty
-fmvAbMod (MkAbRVar _) = S.empty
-fmvAbMod (MkAbFVar x) = S.singleton x
+fmvAbMod (EmpAb _) = S.empty
+fmvAbMod (AbRVar _ _) = S.empty
+fmvAbMod (AbFVar x _) = S.singleton x
 
 fmvAdj :: Adj Desugared -> S.Set Id
-fmvAdj (MkAdj m) = foldMap (foldMap fmvTyArg) (M.elems m)
+fmvAdj (Adj (ItfMap m _) _) = foldMap (foldMap fmvTyArg) (M.elems m)
 
 fmvCType :: CType Desugared -> S.Set Id
-fmvCType (MkCType ps q) = S.union (foldMap fmvPort ps) (fmvPeg q)
+fmvCType (CType ps q _) = S.union (foldMap fmvPort ps) (fmvPeg q)
 
 fmvPeg :: Peg Desugared -> S.Set Id
-fmvPeg (MkPeg ab ty) = S.union (fmvAb ab) (fmv ty)
+fmvPeg (Peg ab ty _) = S.union (fmvAb ab) (fmv ty)
 
 fmvPort :: Port Desugared -> S.Set Id
-fmvPort (MkPort adj ty) = S.union (fmvAdj adj) (fmv ty)
+fmvPort (Port adj ty _) = S.union (fmvAdj adj) (fmv ty)
 
 entrify :: Suffix -> [Entry]
 entrify = map $ uncurry FlexMVar
@@ -159,18 +159,11 @@ getCmdTyVars cmd = do
   return $ map filterTyVar cmdTyVars
   where
     filterTyVar :: TyArg Desugared -> Id
-    filterTyVar (VArg (MkRTVar x)) = x
-    filterTyVar (EArg (MkAb (MkAbRVar x) _)) = x
+    filterTyVar (VArg (RTVar x _) _) = x
+    filterTyVar (EArg (Ab (AbRVar x _) _ _) _) = x
     -- TODO: LC: This is a terrible invariant: refactor the way in which commands
     --           (and constructors) are represented in the Contextual. Works for
     --           now though.
-
-
-getCtr :: Id -> Contextual (Id,[TyArg Desugared],[VType Desugared])
-getCtr k = get >>= \s -> case M.lookup k (ctrMap s) of
-  Nothing -> throwError $
-             "'" ++ k ++ "' is not a constructor"
-  Just (dt, ts, xs) -> return (dt, ts, xs)
 
 -- called "popL" in Gundry's thesis
 popEntry :: Contextual Entry
@@ -196,25 +189,25 @@ initContextual (MkProg ttms) =
         --                     | ...
         -- For each ctr_i add to ctrMap: ctr_i -> (dt, dt-ty-vars, xs_i)
         f :: DataT Desugared -> Contextual ()
-        f (MkDT dt ps ctrs) =
+        f (DT dt ps ctrs _) =
           let ps' = map tyVar2rigTyVarArg ps in
-            mapM_ (\(MkCtr ctr xs) -> addCtr dt ctr ps' xs) ctrs
+            mapM_ (\(Ctr ctr xs _) -> addCtr dt ctr ps' xs) ctrs
 
         -- interface itf p_1 .. p_m =
         --   cmd_1 : forall q_11 ... q_1n, x_11 -> ... -> q_1l -> y_1
         -- | ...
         -- For each cmd_i add to ctrMap: cmd_i -> (itf, itf-ty-vars, cmd-ty-vars, xs_i, y_i)
         g :: Itf Desugared -> Contextual ()
-        g (MkItf itf ps cmds) =
+        g (Itf itf ps cmds _) =
           let ps' = map tyVar2rigTyVarArg ps in
-            mapM_ (\(MkCmd cmd qs xs y) -> addCmd cmd itf ps' (map tyVar2rigTyVarArg qs) xs y) cmds
+            mapM_ (\(Cmd cmd qs xs y _) -> addCmd cmd itf ps' (map tyVar2rigTyVarArg qs) xs y) cmds
 
         -- init context for each handler id of type ty with "id := ty"
         h :: MHDef Desugared -> Contextual ()
-        h (MkDef id ty _) = modify (:< TermVar (MkPoly id) (MkSCTy ty))
+        h (Def id ty _ a) = modify (:< TermVar (Poly id a) (SCTy ty a))
 
 initTCState :: TCState
-initTCState = MkTCState BEmp (MkAb MkEmpAb M.empty) M.empty M.empty []
+initTCState = MkTCState BEmp (Ab (EmpAb dummyLocDesug) (ItfMap M.empty dummyLocDesug) dummyLocDesug) M.empty M.empty []
 
 -- Only to be used for initialising the contextual monad
 addCmd :: Id -> Id -> [TyArg Desugared] -> [TyArg Desugared] -> [VType Desugared] -> VType Desugared -> Contextual ()

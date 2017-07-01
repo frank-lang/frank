@@ -2,11 +2,72 @@
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE StandaloneDeriving #-}
 {-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE UndecidableInstances   #-}
+{-# LANGUAGE ViewPatterns #-}
+{-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE KindSignatures #-}
+{-# LANGUAGE PolyKinds #-}
+{-# LANGUAGE PatternSynonyms #-}
+
 -- The raw abstract syntax and (refined) abstract syntax for Frank
 module Syntax where
 
 import qualified Data.Map.Strict as M
 import Data.List
+
+{-------------------}
+{-- For the definition of the AST --}
+
+data Fix f = Fx (f (Fix f))
+deriving instance Show (f (Fix f)) => Show (Fix f)
+deriving instance Eq (f (Fix f)) => Eq (Fix f)
+
+data AnnotT a f r = AnnF (f r, a)
+deriving instance (Show (f r), Show a) => Show (AnnotT a f r)
+deriving instance (Eq (f r), Eq a) => Eq (AnnotT a f r)
+
+type AnnotFix f a = Fix (AnnotT a (f a))
+
+ann :: a -> f a (AnnotFix f a) -> AnnotFix f a
+ann a v = (Fx (AnnF (v, a)))
+
+unAnn :: AnnotFix f a -> (f a (AnnotFix f a), a)
+unAnn (Fx (AnnF (v, a))) = (v, a)
+
+strip :: AnnotFix f a -> f a (AnnotFix f a)
+strip = fst . unAnn
+
+attr :: AnnotFix f a -> a
+attr = snd . unAnn
+
+splitAnn :: Fix (AnnotT a f) -> (Fix (AnnotT a f), f (Fix (AnnotT a f)), a)
+splitAnn x@(Fx (AnnF (v, a))) = (x , v, a)
+
+liftAnn :: (Monad m) => (f a (AnnotFix f a) -> m (f a (AnnotFix f a))) -> AnnotFix f a -> m (AnnotFix f a)
+liftAnn f (unAnn -> (v, a)) = ann a <$> f v
+
+keepAnn :: (f a (AnnotFix f a) -> f a (AnnotFix f a)) -> AnnotFix f a -> AnnotFix f a
+keepAnn f (unAnn -> (v, a)) = ann a (f v)
+
+data Source = InCode (Integer, Integer)
+            | BuiltIn
+            | Implicit
+            | Generated
+  deriving (Show, Eq)
+
+class HasSource a where
+  getSource :: a -> Source
+instance HasSource a => HasSource (AnnotFix f a) where
+  getSource x = getSource (attr x)
+
+
+dummyLoc = Raw $ InCode (-1, -1) --TODO: Remove later
+dummyLocRef = Refined $ InCode (-8, -8)
+dummyLocDesug = Desugared $ InCode (-9, -9)
+builtinLoc = Refined $ InCode (-3, -3)
+builtinLocRaw = Raw $ InCode (-5, -5)
+builtinLocDesug = Desugared $ InCode (-6, -6)
+implicitLoc = Raw $ InCode (-4, -4)
 
 {-------------------}
 {-- Syntax description: raw syntax comes from the parser and preprocessed into
@@ -19,44 +80,55 @@ class NotDesugared a where
   idNotDesugared :: a -> a
 
 -- output from the parser
-data Raw = MkRaw
+newtype Raw = Raw Source
+  deriving (Show, Eq)
+instance NotDesugared Raw where idNotDesugared = Prelude.id
+instance HasSource Raw where getSource (Raw s) = s
 
-instance NotDesugared Raw where
-  idNotDesugared = Prelude.id
+instance NotRaw () where idNotRaw = Prelude.id
 
 -- well-formed AST (after tidying up the output from the parser)
-data Refined = MkRefined
-
-instance NotDesugared Refined where
-  idNotDesugared = Prelude.id
-
-instance NotRaw Refined where
-  idNotRaw = Prelude.id
+newtype Refined = Refined Source
+  deriving (Show, Eq)
+instance NotDesugared Refined where idNotDesugared = Prelude.id
+instance NotRaw Refined where idNotRaw = Prelude.id
+instance HasSource Refined where getSource (Refined s) = s
 
 -- desugaring of types:
 --   * type variables are given unique names
 --   * strings are lists of characters
-data Desugared = MkDesugared
-
-instance NotRaw Desugared where
-  idNotRaw = Prelude.id
+newtype Desugared = Desugared Source
+  deriving (Show, Eq)
+instance NotRaw Desugared where idNotRaw = Prelude.id
+instance HasSource Desugared where getSource (Desugared s) = s
 
 {-- The raw syntax as parsed in from the file and the refined syntax produced
     by a preprocessing stage before typechecking are simultaneously defined
     using GADT syntax. --}
 
-data Prog a = MkProg [TopTm a]
-            deriving (Show, Eq)
+data Prog t = MkProg [TopTm t]
+deriving instance Show t => Show (Prog t)
+deriving instance Eq t => Eq (Prog t)
 
 {---------------}
 {- Parts of the grammar specific to the raw syntax. -}
 
 -- A top-level multihandler signature and clause.
-data MHSig = MkSig Id (CType Raw)
-             deriving (Show, Eq)
+-- data MHSigF r = MkSig Id (CType Raw) deriving (Show, Eq)
+-- type MHSig = Fix (AnnotT Source MHSigF)
+data MHSigF :: * -> * -> * where
+  MkSig :: Id -> CType Raw -> MHSigF Raw r
+deriving instance Show (MHSigF Raw r)
+deriving instance Eq (MHSigF Raw r)
+type MHSig t = AnnotFix MHSigF t
+pattern Sig x cty a = Fx (AnnF (MkSig x cty, a))
 
-data MHCls = MkMHCls Id (Clause Raw)
-           deriving (Show, Eq)
+data MHClsF :: * -> * -> * where
+  MkMHCls :: Id -> Clause Raw -> MHClsF Raw r
+deriving instance Show (MHClsF t r)
+deriving instance Eq (MHClsF t r)
+type MHCls t = AnnotFix MHClsF t
+pattern MHCls x cls a = Fx (AnnF (MkMHCls x cls, a))
 
 {---------------}
 {- Parts of the grammar specific to the refined syntax. -}
@@ -72,22 +144,35 @@ data MHCls = MkMHCls Id (Clause Raw)
 -- recursive as they do not depend on values.
 
 -- a recursive multihandler definition
-data MHDef a = MkDef Id (CType a) [Clause a]
-           deriving (Show, Eq)
-
+data MHDefF :: * -> * -> * where
+  MkDef :: Id -> CType t -> [Clause t] -> MHDefF t r
+deriving instance Show t => Show (MHDefF t r)
+deriving instance Eq t => Eq (MHDefF t r)
+type MHDef t = AnnotFix MHDefF t
+pattern Def x cty clss a = Fx (AnnF (MkDef x cty clss, a))
 -- value bindings - not yet supported
 -- data VDef a = VDef Id (VType a) (Tm a)
 
 {- MH here = 'operator' in the paper. Operator here doesn't have a name
    in the paper. -}
 
-data Operator = MkMono Id  -- monotypic (just variable)
-              | MkPoly Id  -- polytpic  (handler expecting arguments, at least a unit (!))
-              | MkCmdId Id
-              deriving (Show, Eq)
+data OperatorF :: * -> * -> * where
+  MkMono :: Id -> OperatorF t r  -- monotypic (just variable)
+  MkPoly :: Id -> OperatorF t r  -- polytypic  (handler expecting arguments, could also be 0 args (!))
+  MkCmdId :: Id -> OperatorF t r
+deriving instance Show t => Show (OperatorF t r)
+deriving instance Eq t => Eq (OperatorF t r)
+type Operator t = AnnotFix OperatorF t
+pattern Mono x a = Fx (AnnF (MkMono x, a))
+pattern Poly x a = Fx (AnnF (MkPoly x, a))
+pattern CmdId x a = Fx (AnnF (MkCmdId x, a))
 
-data DataCon a = MkDataCon Id [Tm a]
-               deriving (Show, Eq)
+data DataConF :: * -> * -> * where
+  MkDataCon :: Id -> [Tm t] -> DataConF t r
+deriving instance Show t => Show (DataConF t r)
+deriving instance Eq t => Eq (DataConF t r)
+type DataCon t = AnnotFix DataConF t
+pattern DataCon x tms a = Fx (AnnF (MkDataCon x tms, a))
 
 {---------------}
 {- Parts of the grammar independent of the syntax. -}
@@ -95,183 +180,274 @@ data DataCon a = MkDataCon Id [Tm a]
 -- A raw term collects multihandler signatures and clauses separately. A
 -- refined top-level term collects multihandler signatures and clauses in one
 -- definition.
-data TopTm a where
-  MkDataTm :: DataT a -> TopTm a
-  MkItfTm :: Itf a -> TopTm a
-  MkItfAliasTm :: ItfAlias a -> TopTm a
-  MkSigTm :: MHSig -> TopTm Raw
-  MkClsTm :: MHCls -> TopTm Raw
-  MkDefTm :: NotRaw a => MHDef a -> TopTm a
+data TopTmF :: * -> * -> * where
+  MkDataTm :: DataT t -> TopTmF t r
+  MkItfTm :: Itf t -> TopTmF t r
+  MkItfAliasTm :: ItfAlias t -> TopTmF t r
+  MkSigTm :: MHSig Raw -> TopTmF Raw r
+  MkClsTm :: MHCls Raw -> TopTmF Raw r
+  MkDefTm :: NotRaw t => MHDef t -> TopTmF t r
+deriving instance Show t => Show (TopTmF t r)
+deriving instance Eq t => Eq (TopTmF t r)
+type TopTm t = AnnotFix TopTmF t
+pattern DataTm dt a = Fx (AnnF (MkDataTm dt, a))
+pattern ItfTm itf a = Fx (AnnF (MkItfTm itf, a))
+pattern ItfAliasTm itfAl a = Fx (AnnF (MkItfAliasTm itfAl, a))
+pattern SigTm sig a = Fx (AnnF (MkSigTm sig, a))
+pattern ClsTm cls a = Fx (AnnF (MkClsTm cls, a))
+pattern DefTm def a = Fx (AnnF (MkDefTm def, a))
 
-deriving instance (Show) (TopTm a)
-deriving instance (Eq) (TopTm a)
-
-data Use a where
-  MkRawId :: Id -> Use Raw
-  MkRawComb :: Use Raw -> [Tm Raw] -> Use Raw
-  MkOp :: NotRaw a => Operator -> Use a
-  MkApp :: NotRaw a => Use a -> [Tm a] -> Use a
-
-deriving instance (Show) (Use a)
-deriving instance (Eq) (Use a)
+data UseF :: * -> * -> * where
+  MkRawId :: Id -> UseF Raw r
+  MkRawComb :: r -> [Tm Raw] -> UseF Raw r
+  MkOp :: NotRaw t => Operator t -> UseF t r
+  MkApp :: NotRaw t => r -> [Tm t] -> UseF t r
+deriving instance (Show r, Show (Tm t), Show t) => Show (UseF t r)
+deriving instance (Eq r, Eq (Tm t), Eq t) => Eq (UseF t r)
+type Use t = AnnotFix UseF t
+pattern RawId x a = Fx (AnnF (MkRawId x, a))
+pattern RawComb f xs a = Fx (AnnF (MkRawComb f xs, a))
+pattern Op op a = Fx (AnnF (MkOp op, a))
+pattern App f xs a = Fx (AnnF (MkApp f xs, a))
 
 -- Tm here = 'construction' in the paper
 
-data Tm a where
-  MkSC :: SComp a -> Tm a
-  MkLet :: Id -> Tm Raw -> Tm Raw -> Tm Raw
-  MkStr :: String -> Tm a
-  MkInt :: Integer -> Tm a
-  MkChar :: Char -> Tm a
-  MkList :: [Tm Raw] -> Tm Raw
-  MkTmSeq :: Tm a -> Tm a -> Tm a
-  MkUse :: Use a -> Tm a
-  MkDCon :: NotRaw a => DataCon a -> Tm a
-
-deriving instance (Show) (Tm a)
-deriving instance (Eq) (Tm a)
+data TmF :: * -> * -> * where
+  MkSC :: SComp t -> TmF t r
+  MkLet :: Id -> r -> r -> TmF Raw r
+  MkStr :: String -> TmF t r
+  MkInt :: Integer -> TmF t r
+  MkChar :: Char -> TmF t r
+  MkList :: [r] -> TmF Raw r
+  MkTmSeq :: r -> r -> TmF t r
+  MkUse :: Use t -> TmF t r
+  MkDCon :: NotRaw t => DataCon t -> TmF t r
+deriving instance (Show r, Show t) => Show (TmF t r)
+deriving instance (Eq r, Eq t) => Eq (TmF t r)
+type Tm t = AnnotFix TmF t
+pattern SC sc a = Fx (AnnF (MkSC sc, a))
+pattern Let x tm1 tm2 a = Fx (AnnF (MkLet x tm1 tm2, a))
+pattern StrTm str a = Fx (AnnF (MkStr str, a))
+pattern IntTm n a = Fx (AnnF (MkInt n, a))
+pattern CharTm c a = Fx (AnnF (MkChar c, a))
+pattern ListTm xs a = Fx (AnnF (MkList xs, a))
+pattern TmSeq tm1 tm2 a = Fx (AnnF (MkTmSeq tm1 tm2, a))
+pattern Use u a = Fx (AnnF (MkUse u, a))
+pattern DCon dc a = Fx (AnnF (MkDCon dc, a))
 
 -- A clause for a multihandler definition
-data Clause a = MkCls [Pattern a] (Tm a)
-  deriving (Show, Eq)
+data ClauseF :: * -> * -> * where
+  MkCls :: [Pattern t] -> Tm t -> ClauseF t r
+deriving instance Show t => Show (ClauseF t r)
+deriving instance Eq t => Eq (ClauseF t r)
+type Clause t = AnnotFix ClauseF t
+pattern Cls ps t a = Fx (AnnF (MkCls ps t, a))
 
-data SComp a = MkSComp [Clause a]
-  deriving (Show, Eq)
+data SCompF :: * -> * -> * where
+  MkSComp :: [Clause t] -> SCompF t r
+deriving instance Show t => Show (SCompF t r)
+deriving instance Eq t => Eq (SCompF t r)
+type SComp t = AnnotFix SCompF t
+pattern SComp cls a = Fx (AnnF (MkSComp cls, a))
 
 data Kind = VT   -- value type
           | ET   -- effect type
   deriving (Show, Eq)
 
-data DataT a = MkDT Id [(Id, Kind)] [Ctr a]
-  deriving (Show, Eq)
+data DataTF :: * -> * -> * where
+  MkDT :: Id -> [(Id, Kind)] -> [Ctr t] -> DataTF t r
+deriving instance Show t => Show (DataTF t r)
+deriving instance Eq t => Eq (DataTF t r)
+type DataT t = AnnotFix DataTF t
+pattern DT x ps ctrs a = Fx (AnnF ((MkDT x ps ctrs), a))
 
-data Itf a = MkItf Id [(Id, Kind)] [Cmd a]
-  deriving (Show, Eq)
+data ItfF :: * -> * -> * where
+  MkItf :: Id -> [(Id, Kind)] -> [Cmd t] -> ItfF t r
+deriving instance Show t => Show (ItfF t r)
+deriving instance Eq t => Eq (ItfF t r)
+type Itf t = AnnotFix ItfF t
+pattern Itf x ps cmds a = Fx (AnnF (MkItf x ps cmds, a))
 
-data ItfAlias a = MkItfAlias Id [(Id, Kind)] (ItfMap a)
-  deriving (Show, Eq)
+data ItfAliasF :: * -> * -> * where
+  MkItfAlias :: Id -> [(Id, Kind)] -> (ItfMap t) -> ItfAliasF t r
+deriving instance Show t => Show (ItfAliasF t r)
+deriving instance Eq t => Eq (ItfAliasF t r)
+type ItfAlias t = AnnotFix ItfAliasF t
+pattern ItfAlias x ps itfMap a = Fx (AnnF (MkItfAlias x ps itfMap, a))
 
-data Ctr a = MkCtr Id [VType a]
-  deriving (Show, Eq)
+data CtrF :: * -> * -> * where
+  MkCtr :: Id -> [VType t] -> CtrF t r
+deriving instance Show t => Show (CtrF t r)
+deriving instance Eq t => Eq (CtrF t r)
+type Ctr t = AnnotFix CtrF t
+pattern Ctr x tys a = Fx (AnnF (MkCtr x tys, a))
 
-data Cmd a = MkCmd Id  [(Id, Kind)] [VType a] (VType a)
---                 id  ty vars      arg tys   result ty
-  deriving (Show, Eq)
+data CmdF :: * -> * -> * where
+  MkCmd :: Id -> [(Id, Kind)] -> [VType t] -> VType t -> CmdF t r
+deriving instance Show t => Show (CmdF t r)
+deriving instance Eq t => Eq (CmdF t r)
+--                    id  ty vars      arg tys   result ty
+type Cmd t = AnnotFix CmdF t
+pattern Cmd x ps tys ty a = Fx (AnnF (MkCmd x ps tys ty, a))
 
-data Pattern a where
-  MkVPat :: ValuePat a -> Pattern a
-  MkCmdPat :: Id -> [ValuePat a] -> Id -> Pattern a
-  MkThkPat :: Id -> Pattern a
-    deriving (Show, Eq)
+data PatternF :: * -> * -> * where
+  MkVPat :: ValuePat t -> PatternF t r
+  MkCmdPat :: Id -> [ValuePat t] -> Id -> PatternF t r
+  MkThkPat :: Id -> PatternF t r
+deriving instance Show t => Show (PatternF t r)
+deriving instance Eq t => Eq (PatternF t r)
+type Pattern t = AnnotFix PatternF t
+pattern VPat vp a = Fx (AnnF (MkVPat vp, a))
+pattern CmdPat x vps k a = Fx (AnnF (MkCmdPat x vps k, a))
+pattern ThkPat x a = Fx (AnnF (MkThkPat x, a))
 
 -- TODO: should we compile away string patterns into list of char patterns?
-data ValuePat a where
-  MkVarPat :: Id -> ValuePat a
-  MkDataPat :: Id -> [ValuePat a] -> ValuePat a
-  MkIntPat :: Integer -> ValuePat a
-  MkCharPat :: Char -> ValuePat a
-  MkStrPat :: String -> ValuePat a
-  MkConsPat :: ValuePat Raw -> ValuePat Raw -> ValuePat Raw
-  MkListPat :: [ValuePat Raw] -> ValuePat Raw
-
-deriving instance (Show) (ValuePat a)
-deriving instance (Eq) (ValuePat a)
+data ValuePatF :: * -> * -> * where
+  MkVarPat :: Id -> ValuePatF t r
+  MkDataPat :: Id -> [r] -> ValuePatF t r
+  MkIntPat :: Integer -> ValuePatF t r
+  MkCharPat :: Char -> ValuePatF t r
+  MkStrPat :: String -> ValuePatF t r
+  MkConsPat :: r -> r -> ValuePatF Raw r
+  MkListPat :: [r] -> ValuePatF Raw r
+deriving instance (Show r, Show t) => Show (ValuePatF t r)
+deriving instance (Eq r, Eq t) => Eq (ValuePatF t r)
+type ValuePat t = AnnotFix ValuePatF t
+pattern VarPat x a = Fx (AnnF (MkVarPat x, a))
+pattern DataPat x vps a = Fx (AnnF (MkDataPat x vps, a))
+pattern IntPat n a = Fx (AnnF (MkIntPat n, a))
+pattern CharPat c a = Fx (AnnF (MkCharPat c, a))
+pattern StrPat str a = Fx (AnnF (MkStrPat str, a))
+pattern ConsPat p1 p2 a = Fx (AnnF (MkConsPat p1 p2, a))
+pattern ListPat ps a = Fx (AnnF (MkListPat ps, a))
 
 type Id = String
 
 -- Type hierarchy
-data CType a = MkCType [Port a] (Peg a)      -- computation types
-  deriving (Show, Eq)
+data CTypeF :: * -> * -> * where
+  MkCType :: [Port t] -> Peg t -> CTypeF t r     -- computation types
+deriving instance Show t => Show (CTypeF t r)
+deriving instance Eq t => Eq (CTypeF t r)
+type CType t= AnnotFix CTypeF t
+pattern CType ports peg a = Fx (AnnF (MkCType ports peg, a))
 
-data Port a = MkPort (Adj a) (VType a)       -- ports
-  deriving (Show, Eq)
+data PortF :: * -> * -> * where
+  MkPort :: Adj t -> VType t -> PortF t r       -- ports
+deriving instance Show t => Show (PortF t r)
+deriving instance Eq t => Eq (PortF t r)
+type Port t = AnnotFix PortF t
+pattern Port adj ty a = Fx (AnnF (MkPort adj ty, a))
 
-data Peg a = MkPeg (Ab a) (VType a)          -- pegs
-  deriving (Show, Eq)
+data PegF :: * -> * -> * where
+  MkPeg :: Ab t -> VType t -> PegF t r          -- pegs
+deriving instance Show t => Show (PegF t r)
+deriving instance Eq t => Eq (PegF t r)
+type Peg t = AnnotFix PegF t
+pattern Peg ab ty a = Fx (AnnF (MkPeg ab ty, a))
 
-data VType a where                           -- value types
-  MkDTTy :: Id -> [TyArg a] -> VType a       --   data types (instant. type constr.)  may be refined to MkTVar
-  MkSCTy :: CType a -> VType a               --   suspended computation types
-  MkTVar :: NotDesugared a => Id -> VType a  --                                       may be refined to MkDTTy
-  MkRTVar :: Id -> VType Desugared           --   rigid type variable (bound)
-  MkFTVar :: Id -> VType Desugared           --   flexible type variable (free)
-  MkStringTy :: NotDesugared a => VType a    --   string type
-  MkIntTy :: VType a                         --   int type
-  MkCharTy :: VType a                        --   char type
+data VTypeF :: * -> * -> * where   -- value types
+  MkDTTy :: Id -> [TyArg t] -> VTypeF t r       --   data types (instant. type constr.)  may be refined to MkTVar
+  MkSCTy :: CType t -> VTypeF t  r              --   suspended computation types
+  MkTVar :: NotDesugared t => Id -> VTypeF t  r --                                       may be refined to MkDTTy
+  MkRTVar :: Id -> VTypeF Desugared r          --   rigid type variable (bound)
+  MkFTVar :: Id -> VTypeF Desugared r         --   flexible type variable (free)
+  MkStringTy :: NotDesugared t => VTypeF t r   --   string type
+  MkIntTy :: VTypeF t r                        --   int type
+  MkCharTy :: VTypeF t r                       --   char type
+deriving instance Show t => Show (VTypeF t r)
+deriving instance Eq t => Eq (VTypeF t r)
+type VType t = AnnotFix VTypeF t
+pattern DTTy x tyArgs a = Fx (AnnF (MkDTTy x tyArgs, a))
+pattern SCTy cty a = Fx (AnnF (MkSCTy cty, a))
+pattern TVar x a = Fx (AnnF (MkTVar x, a))
+pattern RTVar x a = Fx (AnnF (MkRTVar x, a))
+pattern FTVar x a = Fx (AnnF (MkFTVar x, a))
+pattern StringTy a = Fx (AnnF (MkStringTy, a))
+pattern IntTy a = Fx (AnnF (MkIntTy, a))
+pattern CharTy a = Fx (AnnF (MkCharTy, a))
 
-deriving instance (Show) (VType a)
-deriving instance (Eq) (VType a)
-
-type ItfMap a = M.Map Id [TyArg a]           -- interface-id  ->  list of ty arg's  (each entry an instantiation)
+data ItfMapF :: * -> * -> * where
+  MkItfMap :: M.Map Id [TyArg t] -> ItfMapF t r           -- interface-id  ->  list of ty arg's  (each entry an instantiation)
+deriving instance Show t => Show (ItfMapF t r)
+deriving instance Eq t => Eq (ItfMapF t r)
+type ItfMap t = AnnotFix ItfMapF t
+pattern ItfMap m a = Fx (AnnF (MkItfMap m, a))
 
 -- Adjustments (set of instantiated interfaces)
-data Adj a = MkAdj (ItfMap a)                -- interface-id  ->  list of ty arg's
-  deriving (Show, Eq)
+data AdjF :: * -> * -> * where
+  MkAdj :: ItfMap t -> AdjF t r                -- interface-id  ->  list of ty arg's
+deriving instance Show t => Show (AdjF t r)
+deriving instance Eq t => Eq (AdjF t r)
+type Adj t = AnnotFix AdjF t
+pattern Adj itfMap a = Fx (AnnF (MkAdj itfMap, a))
 
 -- Abilities
-data Ab a = MkAb (AbMod a) (ItfMap a)        -- interface-id  ->  list of ty arg's
-  deriving (Show, Eq)
+data AbF :: * -> * -> * where
+  MkAb :: AbMod t -> ItfMap t -> AbF t r        -- interface-id  ->  list of ty arg's
+deriving instance Show t => Show (AbF t r)
+deriving instance Eq t => Eq (AbF t r)
+type Ab t = AnnotFix AbF t
+pattern Ab abMod itfMap a = Fx (AnnF (MkAb abMod itfMap, a))
 
 -- Ability modes
-data AbMod a where
-  MkEmpAb :: AbMod a                         -- empty            (closed ability)
-  MkAbVar :: NotDesugared a => Id -> AbMod a -- non-desugared effect variable
-  MkAbRVar :: Id -> AbMod Desugared          -- rigid eff var    (open ability)
-  MkAbFVar :: Id -> AbMod Desugared          -- flexible eff var (open ability)
+data AbModF :: * -> * -> * where
+  MkEmpAb :: AbModF t r                         -- empty            (closed ability)
+  MkAbVar :: NotDesugared t => Id -> AbModF t r -- non-desugared effect variable
+  MkAbRVar :: Id -> AbModF Desugared r         -- rigid eff var    (open ability)
+  MkAbFVar :: Id -> AbModF Desugared r         -- flexible eff var (open ability)
+deriving instance Show (AbModF t r)
+deriving instance Eq (AbModF t r)
+type AbMod t = AnnotFix AbModF t
+pattern EmpAb a = Fx (AnnF (MkEmpAb, a))
+pattern AbVar x a = Fx (AnnF (MkAbVar x, a))
+pattern AbRVar x a = Fx (AnnF (MkAbRVar x, a))
+pattern AbFVar x a = Fx (AnnF (MkAbFVar x, a))
 
-deriving instance Show (AbMod a)
-deriving instance Eq (AbMod a)
+data TyArgF :: * -> * -> * where
+  MkVArg :: VType t -> TyArgF t r
+  MkEArg :: Ab t    -> TyArgF t r
+deriving instance Show t => Show (TyArgF t r)
+deriving instance Eq t => Eq (TyArgF t r)
+type TyArg t = AnnotFix TyArgF t
+pattern VArg ty a = Fx (AnnF (MkVArg ty, a))
+pattern EArg ab a = Fx (AnnF (MkEArg ab, a))
 
-data TyArg a where
-  VArg :: VType a -> TyArg a
-  EArg :: Ab a    -> TyArg a
+-- TODO: LC: Integrate this in sensible way...
+idAdjRaw :: Adj Raw
+idAdjRaw = Adj (ItfMap M.empty dummyLoc) dummyLoc
 
-deriving instance Show (TyArg a)
-deriving instance Eq (TyArg a)
+idAdjRef :: Adj Refined
+idAdjRef = Adj (ItfMap M.empty dummyLocRef) dummyLocRef
 
-idAdj :: Adj a
-idAdj = MkAdj M.empty
+idAdjDesug :: Adj Desugared
+idAdjDesug = Adj (ItfMap M.empty dummyLocDesug) dummyLocDesug
 
-desugaredStrTy :: VType Desugared
-desugaredStrTy = MkDTTy "List" [VArg MkCharTy]
+desugaredStrTy :: Desugared -> VType Desugared
+desugaredStrTy a = DTTy "List" [VArg (CharTy a) a] a
 
-getItfs :: [TopTm a] -> [Itf a]
-getItfs xs = getItfs' xs []
-  where getItfs' :: [TopTm a] -> [Itf a] -> [Itf a]
-        getItfs' ((MkItfTm itf) : xs) ys = getItfs' xs (itf : ys)
-        getItfs' (_ : xs) ys = getItfs' xs ys
-        getItfs' [] ys = ys
+getItfs :: [TopTm t] -> [Itf t]
+getItfs xs = [ itf | (ItfTm itf _) <- xs ]
 
-getCmds :: Itf a -> [Cmd a]
-getCmds (MkItf _ _ xs) = xs
+getCmds :: Itf t -> [Cmd t]
+getCmds (Itf _ _ xs _) = xs
 
-getItfAliases :: [TopTm a] -> [ItfAlias a]
-getItfAliases xs = [itfAlias | MkItfAliasTm itfAlias <- xs]
+getItfAliases :: [TopTm t] -> [ItfAlias t]
+getItfAliases xs = [itfAlias | (ItfAliasTm itfAlias _) <- xs]
 
-collectINames :: [Itf a] -> [Id]
-collectINames ((MkItf itf _ _) : xs) = itf : (collectINames xs)
-collectINames [] = []
+collectINames :: [Itf t] -> [Id]
+collectINames = map (\case (Itf itf _ _ _) -> itf)
 
-getDataTs :: [TopTm a] -> [DataT a]
-getDataTs xs = getDataTs' xs []
-  where getDataTs' :: [TopTm a] -> [DataT a] -> [DataT a]
-        getDataTs' ((MkDataTm dt) : xs) ys = getDataTs' xs (dt : ys)
-        getDataTs' (_ : xs) ys = getDataTs' xs ys
-        getDataTs' [] ys = ys
+getDataTs :: [TopTm t] -> [DataT t]
+getDataTs xs = [dt | (DataTm dt _) <- xs]
 
-getCtrs :: DataT a -> [Ctr a]
-getCtrs (MkDT _ _ xs) = xs
+getCtrs :: DataT t -> [Ctr t]
+getCtrs (DT _ _ xs _) = xs
 
-collectDTNames :: [DataT a] -> [Id]
-collectDTNames ((MkDT dt _ _) : xs) = dt : (collectDTNames xs)
-collectDTNames [] = []
+collectDTNames :: [DataT t] -> [Id]
+collectDTNames = map (\case (DT dt _ _ _) -> dt)
 
-getDefs :: NotRaw a => [TopTm a] -> [MHDef a]
-getDefs xs = getDefs' xs []
-  where getDefs' :: NotRaw a => [TopTm a] -> [MHDef a] -> [MHDef a]
-        getDefs' ((MkDefTm def) : xs) ys = getDefs' xs (def : ys)
-        getDefs' (_ : xs) ys = getDefs' xs ys
-        getDefs' [] ys = ys
+getDefs :: NotRaw t => [TopTm t] -> [MHDef t]
+getDefs xs = [ def | (DefTm def _) <- xs ]
 
 -- Convert ability to a list of interface names and effect variables
 {-
@@ -313,29 +489,29 @@ substOpenAbPort ab (MkPort adj ty) =
   MkPort (substOpenAbAdj ab adj) (substOpenAb ab ty)
 -}
 
--- ability might be overridden by adjustment
-plus :: Ab a -> Adj a -> Ab a
-plus (MkAb v m) (MkAdj m') = MkAb v (M.union m' m)
+-- ability (1st arg) might be overridden by adjustment (2nd arg)
+plus :: Ab t -> Adj t -> Ab t
+plus (Ab v (ItfMap m b) a) (Adj (ItfMap m' c) _) = Ab v (ItfMap (M.union m' m) b) a
 
-getOpName :: Operator -> Id
-getOpName (MkMono x) = x
-getOpName (MkPoly x) = x
-getOpName (MkCmdId x) = x
+getOpName :: Operator t -> Id
+getOpName (Mono x _) = x
+getOpName (Poly x _) = x
+getOpName (CmdId x _) = x
 
 -- transform type variable (+ its kind) to a raw tye variable argument
 -- (use during refinement of itf maps)
 tyVar2rawTyVarArg :: (Id, Kind) -> TyArg Raw
-tyVar2rawTyVarArg (id, VT) = VArg (MkTVar id)
-tyVar2rawTyVarArg (id, ET) = EArg (liftAbMod (MkAbVar id))
+tyVar2rawTyVarArg (id, VT) = VArg (TVar id dummyLoc) dummyLoc
+tyVar2rawTyVarArg (id, ET) = EArg (liftAbMod (AbVar id dummyLoc)) dummyLoc
 
 -- transform type variable (+ its kind) to a rigid tye variable argument
 -- (prepare for later unification)
 tyVar2rigTyVarArg :: (Id, Kind) -> TyArg Desugared
-tyVar2rigTyVarArg (id, VT) = VArg (MkRTVar id)
-tyVar2rigTyVarArg (id, ET) = EArg (liftAbMod (MkAbRVar id))
+tyVar2rigTyVarArg (id, VT) = VArg (RTVar id dummyLocDesug) dummyLocDesug
+tyVar2rigTyVarArg (id, ET) = EArg (liftAbMod (AbRVar id dummyLocDesug)) dummyLocDesug
 
-liftAbMod :: AbMod a -> Ab a
-liftAbMod v = MkAb v M.empty
+liftAbMod :: AbMod t -> Ab t
+liftAbMod abMod = Ab abMod (ItfMap M.empty (attr abMod)) (attr abMod)
 
 -- Only to be applied to identifiers representing rigid or flexible
 -- metavariables (type or effect).

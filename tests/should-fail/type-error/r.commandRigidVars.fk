@@ -1,5 +1,5 @@
 -- #desc   Demonstrated a bug which did not keep rigidity of command ty vars
--- #return failed to unify X with Int
+-- #return failed to unify X (line 6 , column 18) with Int (line 9 , column 42)
 
 data Pair X Y = pair X Y
 
