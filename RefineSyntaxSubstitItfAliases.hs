@@ -33,8 +33,9 @@ substitItfAls = substitItfAls' [] where
 --               and [£] has been explicitly added before
 --                                if 2), set t_{n+1} := [£]
           do let ts' = if length ps == length ts + 1 &&
-                          (snd (ps !! length ts) == ET) then
-                            ts ++ [EArg (Ab (AbVar "£" dummyLoc) (ItfMap M.empty dummyLoc) dummyLoc) dummyLoc]
+                          (snd (ps !! length ts) == ET)
+                       then let a = Raw Implicit in
+                            ts ++ [EArg (Ab (AbVar "£" a) (ItfMap M.empty a) a) a]
                        else ts
              checkArgs x (length ps) (length ts') (Raw Generated) -- TODO: LC: Fix annotation
              let subst = zip ps ts'

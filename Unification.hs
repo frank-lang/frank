@@ -72,8 +72,8 @@ unify t0 t1 = do logBeginUnify t0 t1
           cmp False True  (TyDefn ty) = unify fta ty >> restore          -- subs
           cmp False False _           = unify fta ftb >> restore             -- skip-ty
           cmp _     _     (AbDefn _)  = error "unification invariant broken"
-  unify' (FTVar a _)     ty                            = solve a [] ty                           -- inst
-  unify' ty                       (FTVar a _)          = solve a [] ty                           -- inst
+  unify' (FTVar x a)     ty                            = solve x a [] ty                           -- inst
+  unify' ty                       (FTVar y b)          = solve y b [] ty                           -- inst
   unify' t                        s                             =
     throwError $ errorUnifTys t s
 
@@ -108,26 +108,26 @@ unifyAb ab0@(Ab v0 (ItfMap m0 _) a) ab1@(Ab v1 (ItfMap m1 _) b) =
         unifyAb' ab0@(Ab v0 m0 _) ab1@(Ab v1 m1 _) | v0 == v1 =
           catchError (unifyItfMap m0 m1) (unifyAbError ab0 ab1)
         -- Both eff ty vars are flexible
-        unifyAb' (Ab (AbFVar a0 _) (ItfMap m0 _) a) (Ab (AbFVar a1 _) (ItfMap m1 _) b) =
+        unifyAb' (Ab (AbFVar x a') (ItfMap m0 _) a) (Ab (AbFVar y b') (ItfMap m1 _) b) =
         --       [a0 | m0]                                           [a1 | m1]
           do -- For same occurrences of interfaces, their instantiat's must coincide
              unifyItfMap (ItfMap (M.intersection m0 m1) a) (ItfMap (M.intersection m1 m0) b)
              -- Unify [a0] = [v | m1 - m0] and
              --       [a1] = [v | m0 - m1]
-             v <- AbFVar <$> freshMVar "£" <*> pure dummyLocDesug
-             solveForEVar a0 [] (Ab v (ItfMap (M.difference m1 m0) a) a)  -- TODO: LC: locations assigned correctly?
-             solveForEVar a1 [] (Ab v (ItfMap (M.difference m0 m1) b) b)  -- TODO: LC: fix dummyloc
+             v <- AbFVar <$> freshMVar "£" <*> pure (Desugared Generated)
+             solveForEVar x a' [] (Ab v (ItfMap (M.difference m1 m0) a) a)  -- TODO: LC: locations assigned correctly?
+             solveForEVar y b' [] (Ab v (ItfMap (M.difference m0 m1) b) b)
         -- One eff ty var is flexible, the other one either empty or rigid
         -- ...and m0 `subsetOf` m1
-        unifyAb' (Ab (AbFVar a0 _) (ItfMap m0 _) _) (Ab v (ItfMap m1 _) b)
+        unifyAb' (Ab (AbFVar x a') (ItfMap m0 _) _) (Ab v (ItfMap m1 _) b)
           | M.null (M.difference m0 m1) =
             do unifyItfMap (ItfMap (M.intersection m1 m0) a) (ItfMap (M.intersection m0 m1) b)
-               solveForEVar a0 [] (Ab v (ItfMap (M.difference m1 m0) b) b)   -- TODO: LC: locations assigned correctly?
+               solveForEVar x a' [] (Ab v (ItfMap (M.difference m1 m0) b) b)   -- TODO: LC: locations assigned correctly?
         -- ...and m1 `subsetOf` m0
-        unifyAb' (Ab v (ItfMap m0 _) a) (Ab (AbFVar a1 _) (ItfMap m1 _) _)
+        unifyAb' (Ab v (ItfMap m0 _) a) (Ab (AbFVar y b') (ItfMap m1 _) _)
           | M.null (M.difference m1 m0) =
             do unifyItfMap (ItfMap (M.intersection m0 m1) a) (ItfMap (M.intersection m1 m0) b)
-               solveForEVar a1 [] (Ab v (ItfMap (M.difference m0 m1) a) a)   -- TODO: LC: locations assigned correctly?
+               solveForEVar y b' [] (Ab v (ItfMap (M.difference m0 m1) a) a)   -- TODO: LC: locations assigned correctly?
         -- In any other case
         unifyAb' ab0 ab1 = throwError $ errorUnifAbs ab0 ab1
 
@@ -165,38 +165,38 @@ unifyPort :: Port Desugared -> Port Desugared -> Contextual ()
 unifyPort (Port adj0 ty0 _) (Port adj1 ty1 _) = unifyAdj adj0 adj1 >>
                                                                   unify ty0 ty1
 
--- unify a meta variable "a" with a type "ty"
-solve :: Id -> Suffix -> VType Desugared -> Contextual ()
-solve a ext ty = do logBeginSolve a ext ty
-                    solve'
-                    logEndSolve a ext ty
+-- unify a meta variable "x" with a type "ty"
+solve :: Id -> Desugared -> Suffix -> VType Desugared -> Contextual ()
+solve x a ext ty = do logBeginSolve x ext ty
+                      solve'
+                      logEndSolve x ext ty
   where
-  solve' = onTop $ \b d -> do
-    logSolveStep ((a == b), (S.member b (fmv ty)), d)
-    case ((a == b), (S.member b (fmv ty)), d) of
+  solve' = onTop $ \y d -> do
+    logSolveStep ((x == y), (S.member y (fmv ty)), d)
+    case ((x == y), (S.member y (fmv ty)), d) of
       (_,     _,     TyDefn bty) -> modify (<>< entrify ext) >>                         -- inst-subs (val ty var)
-                                    unify (subst bty b (FTVar a dummyLocDesug)) (subst bty b ty) >> --TODO: LC: fix dummyLoc issue
+                                    unify (subst bty y (FTVar x a)) (subst bty y ty) >>
                                     restore
       (_,     _,     AbDefn ab) ->  modify (<>< entrify ext) >>                         -- inst-subs (eff ty var)
-                                    unify (substEVar ab b (FTVar a dummyLocDesug)) (substEVar ab b ty) >>  --TODO: LC: fix dummyLoc issue
+                                    unify (substEVar ab y (FTVar x a)) (substEVar ab y ty) >>
                                     restore
       (True,  True,  Hole) -> throwError errorUnifSolveOccurCheck
-      (True,  False, Hole) -> replace (ext ++ [(a, TyDefn ty)])                         -- inst-define
-      (False, True,  Hole) -> solve a ((b,d):ext) ty >> replace []                         -- inst-depend
-      (False, False, Hole) -> solve a ext ty >> restore                                    -- inst-skip-ty
+      (True,  False, Hole) -> replace (ext ++ [(x, TyDefn ty)])                         -- inst-define
+      (False, True,  Hole) -> solve x a ((y, d):ext) ty >> replace []                         -- inst-depend
+      (False, False, Hole) -> solve x a ext ty >> restore                                    -- inst-skip-ty
 
-solveForEVar :: Id -> Suffix -> Ab Desugared -> Contextual ()
-solveForEVar a ext ab = onTop $ \b d ->
-  case (a == b, (S.member b (fmvAb ab)), d) of
+solveForEVar :: Id -> Desugared -> Suffix -> Ab Desugared -> Contextual ()
+solveForEVar x a ext ab = onTop $ \y d ->
+  case (x == y, (S.member y (fmvAb ab)), d) of
     (_, _, AbDefn ab') ->
-      let vab = Ab (AbFVar a (Desugared Generated)) (ItfMap M.empty (Desugared Generated)) (Desugared Generated) in   --TODO: LC: fix dummyLoc issue
+      let vab = Ab (AbFVar x a) (ItfMap M.empty a) a in
       modify (<>< entrify ext) >>
-      unifyAb (substEVarAb ab' b vab) (substEVarAb ab' b ab) >>
+      unifyAb (substEVarAb ab' y vab) (substEVarAb ab' y ab) >>
       restore
     (True, True, Hole) -> throwError errorUnifSolveOccurCheck
-    (True, False, Hole) -> replace (ext ++ [(a, AbDefn ab)])
-    (False, True, _) -> solveForEVar a ((b,d):ext) ab >> replace []
-    (False, False, _) -> solveForEVar a ext ab >> restore
+    (True, False, Hole) -> replace (ext ++ [(x, AbDefn ab)])
+    (False, True, _) -> solveForEVar x a ((y, d):ext) ab >> replace []
+    (False, False, _) -> solveForEVar x a ext ab >> restore
     (_, _, TyDefn _) ->
       error "solveForEVar invariant broken: reached impossible case"
 

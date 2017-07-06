@@ -52,6 +52,7 @@ keepAnn f (unAnn -> (v, a)) = ann a (f v)
 data Source = InCode (Integer, Integer)
             | BuiltIn
             | Implicit
+            | ImplicitNear (Integer, Integer)
             | Generated
   deriving (Show, Eq)
 
@@ -60,14 +61,9 @@ class HasSource a where
 instance HasSource a => HasSource (AnnotFix f a) where
   getSource x = getSource (attr x)
 
-
-dummyLoc = Raw $ InCode (-1, -1) --TODO: Remove later
-dummyLocRef = Refined $ InCode (-8, -8)
-dummyLocDesug = Desugared $ InCode (-9, -9)
-builtinLoc = Refined $ InCode (-3, -3)
-builtinLocRaw = Raw $ InCode (-5, -5)
-builtinLocDesug = Desugared $ InCode (-6, -6)
-implicitLoc = Raw $ InCode (-4, -4)
+implicitNear :: HasSource a => a -> Source
+implicitNear v = case getSource v of InCode (line, col) -> ImplicitNear (line, col)
+                                     _                  -> Implicit
 
 {-------------------}
 {-- Syntax description: raw syntax comes from the parser and preprocessed into
@@ -412,15 +408,14 @@ type TyArg t = AnnotFix TyArgF t
 pattern VArg ty a = Fx (AnnF (MkVArg ty, a))
 pattern EArg ab a = Fx (AnnF (MkEArg ab, a))
 
--- TODO: LC: Integrate this in sensible way...
 idAdjRaw :: Adj Raw
-idAdjRaw = Adj (ItfMap M.empty dummyLoc) dummyLoc
+idAdjRaw = Adj (ItfMap M.empty (Raw Implicit)) (Raw Implicit)
 
 idAdjRef :: Adj Refined
-idAdjRef = Adj (ItfMap M.empty dummyLocRef) dummyLocRef
+idAdjRef = Adj (ItfMap M.empty (Refined Implicit)) (Refined Implicit)
 
 idAdjDesug :: Adj Desugared
-idAdjDesug = Adj (ItfMap M.empty dummyLocDesug) dummyLocDesug
+idAdjDesug = Adj (ItfMap M.empty (Desugared Implicit)) (Desugared Implicit)
 
 desugaredStrTy :: Desugared -> VType Desugared
 desugaredStrTy a = DTTy "List" [VArg (CharTy a) a] a
@@ -501,14 +496,14 @@ getOpName (CmdId x _) = x
 -- transform type variable (+ its kind) to a raw tye variable argument
 -- (use during refinement of itf maps)
 tyVar2rawTyVarArg :: (Id, Kind) -> TyArg Raw
-tyVar2rawTyVarArg (id, VT) = VArg (TVar id dummyLoc) dummyLoc
-tyVar2rawTyVarArg (id, ET) = EArg (liftAbMod (AbVar id dummyLoc)) dummyLoc
+tyVar2rawTyVarArg (id, VT) = VArg (TVar id (Raw Generated)) (Raw Generated)
+tyVar2rawTyVarArg (id, ET) = EArg (liftAbMod (AbVar id (Raw Generated))) (Raw Generated)
 
 -- transform type variable (+ its kind) to a rigid tye variable argument
 -- (prepare for later unification)
 tyVar2rigTyVarArg :: (Id, Kind) -> TyArg Desugared
-tyVar2rigTyVarArg (id, VT) = VArg (RTVar id dummyLocDesug) dummyLocDesug
-tyVar2rigTyVarArg (id, ET) = EArg (liftAbMod (AbRVar id dummyLocDesug)) dummyLocDesug
+tyVar2rigTyVarArg (id, VT) = VArg (RTVar id (Desugared Generated)) (Desugared Generated)
+tyVar2rigTyVarArg (id, ET) = EArg (liftAbMod (AbRVar id (Desugared Generated))) (Desugared Generated)
 
 liftAbMod :: AbMod t -> Ab t
 liftAbMod abMod = Ab abMod (ItfMap M.empty (attr abMod)) (attr abMod)

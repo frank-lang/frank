@@ -207,7 +207,8 @@ initContextual (MkProg ttms) =
         h (Def id ty _ a) = modify (:< TermVar (Poly id a) (SCTy ty a))
 
 initTCState :: TCState
-initTCState = MkTCState BEmp (Ab (EmpAb dummyLocDesug) (ItfMap M.empty dummyLocDesug) dummyLocDesug) M.empty M.empty []
+initTCState = MkTCState BEmp (Ab (EmpAb a) (ItfMap M.empty a) a) M.empty M.empty []
+  where a = Desugared Generated
 
 -- Only to be used for initialising the contextual monad
 addCmd :: Id -> Id -> [TyArg Desugared] -> [TyArg Desugared] -> [VType Desugared] -> VType Desugared -> Contextual ()

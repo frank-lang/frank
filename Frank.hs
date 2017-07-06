@@ -33,17 +33,18 @@ splice (MkProg xs) tm = MkProg $ xs ++ ys
         ab = Ab (AbVar "£" b) (ItfMap M.empty (Raw Generated)) b
         cls = ClsTm (MHCls id (Cls [] tm b) b) b
         id = "%eval"
-        b = builtinLocRaw
+        b = Raw Generated
 
---TODO: LC: Fix locations
+--TODO: LC: Fix locations?
 exorcise :: Prog Desugared -> (Prog Desugared, TopTm Desugared)
-exorcise (MkProg xs) = (prog, DefTm (head evalDef) builtinLocDesug)
-  where prog = MkProg (map (swap DataTm builtinLocDesug) dts ++
-                       map (swap ItfTm builtinLocDesug) itfs ++
-                       map (swap DefTm builtinLocDesug) hdrs)
+exorcise (MkProg xs) = (prog, DefTm (head evalDef) a)
+  where prog = MkProg (map (swap DataTm a) dts ++
+                       map (swap ItfTm a) itfs ++
+                       map (swap DefTm a) hdrs)
         (dts,itfs,defs) = (getDataTs xs,getItfs xs,getDefs xs)
         (evalDef,hdrs) = partition isEvalTm defs
         isEvalTm (Def id _ _ _) = id == "%eval"
+        a = Desugared Generated
 
 extractEvalUse :: TopTm Desugared -> Use Desugared
 extractEvalUse (DefTm (Def _ _ [cls] _) _) = getBody cls

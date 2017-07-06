@@ -220,7 +220,7 @@ inferUse app@(App f xs _) =
         -- We don't need to report an error here, but rather generate
         -- appropriate fresh type variables as above.
         errTy ty = throwError $
-                   "application (" ++ show (App f xs dummyLocDesug) ++
+                   "application (" ++ show (App f xs (Desugared Generated)) ++
                    "): expected suspended computation but got " ++
                    (show $ ppVType ty)
 

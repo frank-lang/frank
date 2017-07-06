@@ -44,10 +44,11 @@ refine' (MkProg xs) = do
   putTopLevelCtxt Handler
   hdrs <- mapM (refineMH hdrDefs) hdrSigs
   if existsMain hdrs then
-    return $ MkProg (map (\dt -> DataTm dt builtinLoc) builtinDataTs ++ dtTms ++
-                     map (\itf -> ItfTm itf builtinLoc) builtinItfs ++ itfTms ++
-                     map (\hdr -> DefTm hdr builtinLoc) builtinMHDefs ++ hdrs)
+    return $ MkProg (map (\dt -> DataTm dt a) builtinDataTs ++ dtTms ++
+                     map (\itf -> ItfTm itf a) builtinItfs ++ itfTms ++
+                     map (\hdr -> DefTm hdr a) builtinMHDefs ++ hdrs)
   else throwError errorRefNoMainFunction
+  where a = Refined (BuiltIn)
 
 existsMain :: [TopTm Refined] -> Bool
 existsMain ((DefTm (Def id _ _ _) _) : xs) = id == "main" || existsMain xs
@@ -211,9 +212,10 @@ refineItfMap (ItfMap m a) = do
 --            or 2) interface x p_1 ... p_n [£] = ...
 --                  and [£] has been explicitly added before
 --                            if 2), set t_{n+1} := [£]
-                 do let ts' = if length ps == length ts + 1 &&
+                 do let a' = Raw (implicitNear a)
+                        ts' = if length ps == length ts + 1 &&
                                  (snd (ps !! length ts) == ET) then
-                                   ts ++ [EArg (Ab (AbVar "£" implicitLoc) (ItfMap M.empty a) implicitLoc) implicitLoc]
+                                   ts ++ [EArg (Ab (AbVar "£" a') (ItfMap M.empty a') a') a']
                               else ts
                     checkArgs x (length ps) (length ts') a
                     ts'' <- mapM refineTyArg ts'
@@ -248,9 +250,10 @@ refineVType (DTTy x ts a) =
 --        1) data x p_1 ... p_n
 --    or  2) data x p_1 ... p_n [£]       ([£] has been explicitly added before)
                       -- If 2), set t_{n+1} := [£]
-         let ts' = if length ps == length ts + 1 &&
+         let a' = Raw (implicitNear a)
+             ts' = if length ps == length ts + 1 &&
                       (snd (ps !! length ts) == ET)
-                   then ts ++ [EArg (Ab (AbVar "£" implicitLoc) (ItfMap M.empty a) implicitLoc) implicitLoc]
+                   then ts ++ [EArg (Ab (AbVar "£" a') (ItfMap M.empty a') a') a']
                    else ts
          checkArgs x (length ps) (length ts') a
          ts'' <- mapM refineTyArg ts'
@@ -462,7 +465,7 @@ builtinDataTs = [DT "List" [("X", VT)] [Ctr "cons" [TVar "X" b
                                          ,Ctr "nil" [] b] b
                 ,DT "Unit" [] [Ctr "unit" [] b] b
                 ,DT "Ref" [("X", VT)] [] b]
-  where b = builtinLoc
+  where b = Refined BuiltIn
 
 builtinItfs :: [Itf Refined]
 builtinItfs = [Itf "Console" [] [Cmd "inch" [] [] (CharTy b) b
@@ -475,13 +478,13 @@ builtinItfs = [Itf "Console" [] [Cmd "inch" [] [] (CharTy b) b
                                                              (DTTy "Unit" [] b) b
                                    ,Cmd "read" [("X", VT)] [DTTy "Ref" [VArg (TVar "X" b) b] b]
                                                               (TVar "X" b) b] b]
-  where b = builtinLoc
+  where b = Refined BuiltIn
 
 builtinItfAliases :: [ItfAlias Raw]
 builtinItfAliases = []
 
 builtinMHDefs :: [MHDef Refined]
-builtinMHDefs = map (makeIntBinOp builtinLoc) "+-" ++ [caseDef]
+builtinMHDefs = map (makeIntBinOp (Refined BuiltIn)) "+-" ++ [caseDef]
 
 caseDef :: MHDef Refined
 caseDef = Def
@@ -495,7 +498,7 @@ caseDef = Def
           [Cls
             [VPat (VarPat "x" b) b, VPat (VarPat "f" b) b]
             (Use (App (Op (Mono "f" b) b) [Use (Op (Mono "x" b) b) b] b) b) b] b
-  where b = builtinLoc
+  where b = Refined BuiltIn
 
 builtinMHs :: [IPair]
 builtinMHs = map add builtinMHDefs
