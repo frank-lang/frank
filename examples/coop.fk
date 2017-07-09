@@ -1,5 +1,3 @@
-{--- Cooperative concurrency ---}
-
 --- start of standard stuff ---
 data Maybe X = just X | nothing
 data Bool = true | false
@@ -79,10 +77,22 @@ scheduleDF <fork p -> k> = enqProc {scheduleDF (k unit)};
                            scheduleDF p!
 scheduleDF unit          = runAll!
 
--- Dont delete these lines, they make this program into a unit test.
--- #desc   examples/coop.fk
--- #return unit
 
--- just a stub: use --entry-point tX to do something interesting
-main : []Unit
-main! = unit
+-- queue implementation using a zipper
+
+zq : {List S -> List S -> <Queue S>Unit -> Unit}
+zq front        back <enqueue x -> k> = zq front (x :: back) (k unit)
+zq []           []   <dequeue -> k>   = zq [] [] (k nothing)
+zq []           back <dequeue -> k>   = zq (reverse back) [] (k dequeue!)
+zq (x :: front) back <dequeue -> k>   = zq front back (k (just x))
+zq front        back unit             = unit
+
+zipQueue : {{[Queue S]Unit} -> Unit}
+zipQueue m = zq [] [] m!
+
+
+
+main : {[Console]Unit}
+main! = print "BF: "; zipQueue {scheduleBF test!};
+        print "DF: "; zipQueue {scheduleDF test!}
+
