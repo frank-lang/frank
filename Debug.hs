@@ -317,6 +317,9 @@ ppSource :: Source -> Doc
 ppSource (InCode (line, col)) = text "line" <+> text (show line) <+> text ", column" <+> text (show col)
 ppSource BuiltIn = text "built-in"
 ppSource Implicit = text "implicit"
+ppSource (ImplicitNear (line, col)) = text "implicit near line" <+> text (show line) <+> text ", column" <+> text (show col)
+ppSource Generated = text "generated"
+
 
 ppHasSource :: (HasSource a) => a -> Doc
 ppHasSource x = ppSource (getSource x)

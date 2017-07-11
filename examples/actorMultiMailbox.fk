@@ -44,6 +44,13 @@ evalZipQueue t q = case (runZipQueue t q) { (pair x _) -> x }
 execZipQueue: {{[Queue S]X} -> ZipQueue S -> ZipQueue S}
 execZipQueue t q = case (runZipQueue t q) { (pair _ q) -> q }
 
+emptyZipQueue : {ZipQueue s}
+emptyZipQueue! = zipq [] []
+
+evalZipQueueEmpty : {<Queue S>X -> X}
+evalZipQueueEmpty <m> = evalZipQueue m (emptyZipQueue!)
+evalZipQueueEmpty x   = x
+
 --------------------------------------------------------------------------------
 -- Definitions of interfaces, data types
 --------------------------------------------------------------------------------
@@ -116,6 +123,14 @@ step mine         <spawn you -> k> = let yours = mbox (new (zipq [] [])) in
                                      step mine (k yours)
 step mine         x = x
 
+-- This signature suffers from the fact that so far we cannot 'overstep' a handler.
+-- Thus all the effects listed within <...> will be 'handled away' (consumed).
+-- This restriction shall be overcome in the future.
+run : {<RefState, Co [Queue (Proc [RefState]), RefState], Queue (Proc [RefState]), Actor X [Queue (Proc [RefState]), RefState, Co [Queue (Proc [RefState]), RefState]]>Unit -> [RefState]Unit}
+run <m>  = evalZipQueueEmpty (roundRobin (step (mbox (new (emptyZipQueue!))) m!))
+run unit = unit
+
+
 --------------------------------------------------------------------------------
 -- This is the process executer from coop-factored.fk, using a queue to handle
 -- multiple processes
@@ -148,5 +163,4 @@ roundRobin unit          = popProcs!
 -- #return calculating (1+1) + (2+2)... yay got 6unit
 
 main: {[Console, RefState]Unit}
-main! = let me = mbox (new (zipq [] [])) in
-        runZipQueue {roundRobin (step me divConqActor!)} (zipq [] []); unit
+main! = run divConqActor!
