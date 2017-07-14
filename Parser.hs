@@ -25,6 +25,7 @@ import qualified Text.Parser.Token.Highlight as Hi
 import Test.Tasty (TestTree, testGroup)
 import Test.Tasty.HUnit (testCase, assertEqual, assertFailure, Assertion)
 
+import BwdFwd
 import Syntax
 import ParserCommon
 import Debug
@@ -143,9 +144,9 @@ parseItfAlias = attachLoc $ do reserved "interface"
                                symbol "="
                                a <- getLocation
                                symbol "["
-                               xs <- parseItfInstances
+                               m <- parseItfInstances
                                symbol "]"
-                               return $ ItfAlias name ps (ItfMap (M.fromList xs) a)
+                               return $ ItfAlias name ps m
 
 parseCType :: MonadicParsing m => m (CType Raw)
 parseCType = attachLoc $ do ports <- many (try (parsePort <* symbol "->"))
@@ -169,10 +170,10 @@ parsePegExplicit = attachLoc $ do ab <- brackets parseAbBody
 
 parseAdj :: MonadicParsing m => m (Adj Raw)
 parseAdj = attachProvideLoc $ \a -> do
-              mxs <- optional $ angles (sepBy parseAdj' (symbol ","))
-              case mxs of
+              mItfMap <- optional $ angles (parseItfInstances)
+              case mItfMap of
                 Nothing -> return $ Adj (ItfMap M.empty a) a
-                Just xs -> return $ Adj (ItfMap (M.fromList xs) a) a
+                Just itfMap -> return $ Adj itfMap a
 
 parseAdj' :: MonadicParsing m => m (Id, [TyArg Raw])
 parseAdj' = do x <- identifier
@@ -182,20 +183,27 @@ parseAdj' = do x <- identifier
 parseDTAb :: MonadicParsing m => m (Ab Raw)
 parseDTAb = brackets parseAbBody
 
-parseItfInstances :: MonadicParsing m => m [(Id, [TyArg Raw])]
-parseItfInstances = sepBy parseItfInstance (symbol ",")
+parseItfInstances :: MonadicParsing m => m (ItfMap Raw)
+parseItfInstances = do
+  a <- getLocation
+  insts <- sepBy parseItfInstance (symbol ",")
+  let res = foldl addItfInstance (ItfMap M.empty a) insts
+  return $ res
+  where addItfInstance :: ItfMap Raw -> (Id, [TyArg Raw]) -> ItfMap Raw
+        addItfInstance (ItfMap m a) (x, args) = if M.member x m then ItfMap (M.adjust (\insts'' -> insts'' :< args) x m) a
+                                                                else ItfMap (M.insert x (BEmp :< args) m) a
 
 -- 0 | 0|Interfaces | E|Interfaces | Interfaces
 parseAbBody :: MonadicParsing m => m (Ab Raw)
 parseAbBody = attachProvideLoc $ \a ->
                 -- closed ability: [0] or [0 | i_1, ... i_n]
                 (do symbol "0"
-                    xs <- option [] (symbol "|" *> parseItfInstances)
-                    return $ Ab (EmpAb a) (ItfMap (M.fromList xs) a) a) <|>
+                    m <- option (ItfMap M.empty a) (symbol "|" *> parseItfInstances)
+                    return $ Ab (EmpAb a) m a) <|>
                 -- open ability:   [i_1, ..., i_n] (implicitly e := £) or [e | i_1, ..., i_n]
                 (do e <- option (AbVar "£" a) (try $ AbVar <$> identifier <* symbol "|" <*> pure a)
-                    xs <- parseItfInstances
-                    return $ Ab e (ItfMap (M.fromList xs) a) a)
+                    m <- parseItfInstances
+                    return $ Ab e m a)
 
 parseAb :: MonadicParsing m => m (Ab Raw)
 parseAb = do mxs <- optional $ brackets parseAbBody

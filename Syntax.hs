@@ -3,7 +3,6 @@
 {-# LANGUAGE StandaloneDeriving #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE UndecidableInstances   #-}
-{-# LANGUAGE ViewPatterns #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE KindSignatures #-}
 {-# LANGUAGE PolyKinds #-}
@@ -15,8 +14,9 @@ module Syntax where
 import qualified Data.Map.Strict as M
 import Data.List
 
-{-------------------}
-{-- For the definition of the AST --}
+import BwdFwd
+
+{-- For the definition of the AST in terms of fixed-points --}
 
 data Fix f = Fx (f (Fix f))
 deriving instance Show (f (Fix f)) => Show (Fix f)
@@ -29,7 +29,7 @@ deriving instance (Eq (f r), Eq a) => Eq (AnnotT a f r)
 type AnnotFix f a = Fix (AnnotT a (f a))
 
 ann :: a -> f a (AnnotFix f a) -> AnnotFix f a
-ann a v = (Fx (AnnF (v, a)))
+ann a v = Fx (AnnF (v, a))
 
 unAnn :: AnnotFix f a -> (f a (AnnotFix f a), a)
 unAnn (Fx (AnnF (v, a))) = (v, a)
@@ -39,15 +39,6 @@ strip = fst . unAnn
 
 attr :: AnnotFix f a -> a
 attr = snd . unAnn
-
-splitAnn :: Fix (AnnotT a f) -> (Fix (AnnotT a f), f (Fix (AnnotT a f)), a)
-splitAnn x@(Fx (AnnF (v, a))) = (x , v, a)
-
-liftAnn :: (Monad m) => (f a (AnnotFix f a) -> m (f a (AnnotFix f a))) -> AnnotFix f a -> m (AnnotFix f a)
-liftAnn f (unAnn -> (v, a)) = ann a <$> f v
-
-keepAnn :: (f a (AnnotFix f a) -> f a (AnnotFix f a)) -> AnnotFix f a -> AnnotFix f a
-keepAnn f (unAnn -> (v, a)) = ann a (f v)
 
 data Source = InCode (Integer, Integer)
             | BuiltIn
@@ -65,12 +56,12 @@ implicitNear :: HasSource a => a -> Source
 implicitNear v = case getSource v of InCode (line, col) -> ImplicitNear (line, col)
                                      _                  -> Implicit
 
-{-------------------}
 {-- Syntax description: raw syntax comes from the parser and preprocessed into
     refined syntax. --}
 
 class NotRaw a where
   idNotRaw :: a -> a
+instance NotRaw () where idNotRaw = Prelude.id
 
 class NotDesugared a where
   idNotDesugared :: a -> a
@@ -80,8 +71,6 @@ newtype Raw = Raw Source
   deriving (Show, Eq)
 instance NotDesugared Raw where idNotDesugared = Prelude.id
 instance HasSource Raw where getSource (Raw s) = s
-
-instance NotRaw () where idNotRaw = Prelude.id
 
 -- well-formed AST (after tidying up the output from the parser)
 newtype Refined = Refined Source
@@ -255,7 +244,7 @@ data DataTF :: * -> * -> * where
 deriving instance Show t => Show (DataTF t r)
 deriving instance Eq t => Eq (DataTF t r)
 type DataT t = AnnotFix DataTF t
-pattern DT x ps ctrs a = Fx (AnnF ((MkDT x ps ctrs), a))
+pattern DT x ps ctrs a = Fx (AnnF (MkDT x ps ctrs, a))
 
 data ItfF :: * -> * -> * where
   MkItf :: Id -> [(Id, Kind)] -> [Cmd t] -> ItfF t r
@@ -265,7 +254,7 @@ type Itf t = AnnotFix ItfF t
 pattern Itf x ps cmds a = Fx (AnnF (MkItf x ps cmds, a))
 
 data ItfAliasF :: * -> * -> * where
-  MkItfAlias :: Id -> [(Id, Kind)] -> (ItfMap t) -> ItfAliasF t r
+  MkItfAlias :: Id -> [(Id, Kind)] -> ItfMap t -> ItfAliasF t r
 deriving instance Show t => Show (ItfAliasF t r)
 deriving instance Eq t => Eq (ItfAliasF t r)
 type ItfAlias t = AnnotFix ItfAliasF t
@@ -345,11 +334,11 @@ data VTypeF :: * -> * -> * where   -- value types
   MkDTTy :: Id -> [TyArg t] -> VTypeF t r       --   data types (instant. type constr.)  may be refined to MkTVar
   MkSCTy :: CType t -> VTypeF t  r              --   suspended computation types
   MkTVar :: NotDesugared t => Id -> VTypeF t  r --                                       may be refined to MkDTTy
-  MkRTVar :: Id -> VTypeF Desugared r          --   rigid type variable (bound)
-  MkFTVar :: Id -> VTypeF Desugared r         --   flexible type variable (free)
-  MkStringTy :: NotDesugared t => VTypeF t r   --   string type
-  MkIntTy :: VTypeF t r                        --   int type
-  MkCharTy :: VTypeF t r                       --   char type
+  MkRTVar :: Id -> VTypeF Desugared r           --   rigid type variable (bound)
+  MkFTVar :: Id -> VTypeF Desugared r           --   flexible type variable (free)
+  MkStringTy :: NotDesugared t => VTypeF t r    --   string type
+  MkIntTy :: VTypeF t r                         --   int type
+  MkCharTy :: VTypeF t r                        --   char type
 deriving instance Show t => Show (VTypeF t r)
 deriving instance Eq t => Eq (VTypeF t r)
 type VType t = AnnotFix VTypeF t
@@ -363,7 +352,7 @@ pattern IntTy a = Fx (AnnF (MkIntTy, a))
 pattern CharTy a = Fx (AnnF (MkCharTy, a))
 
 data ItfMapF :: * -> * -> * where
-  MkItfMap :: M.Map Id [TyArg t] -> ItfMapF t r           -- interface-id  ->  list of ty arg's  (each entry an instantiation)
+  MkItfMap :: M.Map Id (Bwd [TyArg t]) -> ItfMapF t r  -- interface-id  ->  list of bwd-list of ty arg's (each entry an instantiation)
 deriving instance Show t => Show (ItfMapF t r)
 deriving instance Eq t => Eq (ItfMapF t r)
 type ItfMap t = AnnotFix ItfMapF t
@@ -371,7 +360,7 @@ pattern ItfMap m a = Fx (AnnF (MkItfMap m, a))
 
 -- Adjustments (set of instantiated interfaces)
 data AdjF :: * -> * -> * where
-  MkAdj :: ItfMap t -> AdjF t r                -- interface-id  ->  list of ty arg's
+  MkAdj :: ItfMap t -> AdjF t r                    -- interface-id  ->  list of ty arg's
 deriving instance Show t => Show (AdjF t r)
 deriving instance Eq t => Eq (AdjF t r)
 type Adj t = AnnotFix AdjF t
@@ -379,7 +368,7 @@ pattern Adj itfMap a = Fx (AnnF (MkAdj itfMap, a))
 
 -- Abilities
 data AbF :: * -> * -> * where
-  MkAb :: AbMod t -> ItfMap t -> AbF t r        -- interface-id  ->  list of ty arg's
+  MkAb :: AbMod t -> ItfMap t -> AbF t r           -- interface-id  ->  list of ty arg's
 deriving instance Show t => Show (AbF t r)
 deriving instance Eq t => Eq (AbF t r)
 type Ab t = AnnotFix AbF t
@@ -389,8 +378,8 @@ pattern Ab abMod itfMap a = Fx (AnnF (MkAb abMod itfMap, a))
 data AbModF :: * -> * -> * where
   MkEmpAb :: AbModF t r                         -- empty            (closed ability)
   MkAbVar :: NotDesugared t => Id -> AbModF t r -- non-desugared effect variable
-  MkAbRVar :: Id -> AbModF Desugared r         -- rigid eff var    (open ability)
-  MkAbFVar :: Id -> AbModF Desugared r         -- flexible eff var (open ability)
+  MkAbRVar :: Id -> AbModF Desugared r          -- rigid eff var    (open ability)
+  MkAbFVar :: Id -> AbModF Desugared r          -- flexible eff var (open ability)
 deriving instance Show (AbModF t r)
 deriving instance Eq (AbModF t r)
 type AbMod t = AnnotFix AbModF t
@@ -486,7 +475,7 @@ substOpenAbPort ab (MkPort adj ty) =
 
 -- ability (1st arg) might be overridden by adjustment (2nd arg)
 plus :: Ab t -> Adj t -> Ab t
-plus (Ab v (ItfMap m b) a) (Adj (ItfMap m' c) _) = Ab v (ItfMap (M.union m' m) b) a
+plus (Ab v m a) (Adj m' _) = Ab v (plusItfMap m m') a
 
 getOpName :: Operator t -> Id
 getOpName (Mono x _) = x
@@ -512,3 +501,22 @@ liftAbMod abMod = Ab abMod (ItfMap M.empty (attr abMod)) (attr abMod)
 -- metavariables (type or effect).
 trimVar :: Id -> Id
 trimVar = takeWhile (/= '$')
+
+-- e.g. [State Bool, State Int] and [State String, State Char] get unified to [State Bool, State Int, State String, State Char]
+-- i.e. the second ItfMap dominates (State Char is active)
+plusItfMap :: ItfMap t -> ItfMap t -> ItfMap t
+plusItfMap (ItfMap m a) (ItfMap m' _) = foldl plusInstantiation (ItfMap m a) (M.toList m')
+  where plusInstantiation :: ItfMap t -> (Id, Bwd [TyArg t]) -> ItfMap t
+        plusInstantiation (ItfMap m'' a'') (x, instants) = if M.member x m'' then ItfMap (M.adjust (\instants' -> instants' <>< bwd2fwd instants) x m'') a''
+                                                                             else ItfMap (M.insert x instants m'') a''
+
+extractLargestEqualSuffixes :: ItfMap t -> ItfMap t -> ItfMap t
+extractLargestEqualSuffixes (ItfMap m a) (ItfMap m' _) = ItfMap m'' a
+  where m'' = M.filter (not . null) $ M.intersectionWith (\args args' -> takeBwd (min (length args) (length args')) args) m m'
+
+minusItfMap :: ItfMap t -> ItfMap t -> ItfMap t
+minusItfMap (ItfMap m a) (ItfMap m' _) = ItfMap m'' a
+  where m'' = M.filter (not. null) $ M.differenceWith (\args args' -> Just $ dropBwd (length args') args) m m'
+
+emptyItfMap :: ItfMap t -> Bool
+emptyItfMap (ItfMap m _) = M.null m

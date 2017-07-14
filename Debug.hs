@@ -6,6 +6,7 @@ module Debug where
 import BwdFwd
 import Syntax
 import ParserCommon
+import RefineSyntaxCommon
 import TypeCheckCommon
 
 import qualified Data.Map.Strict as M
@@ -72,8 +73,8 @@ errorRefDuplParamCmd cmd@(Cmd x _ _ _ _) = "duplicate parameter in command " ++ 
 errorRefAbMultEffVars :: Ab Raw -> [Id] -> String
 errorRefAbMultEffVars ab@(Ab v m a) es = "ability has multiple effect variables " ++ show es ++ " (" ++ (show $ ppHasSource ab) ++ ")"
 
-errorRefEffVarNoParams :: Id -> [TyArg Raw] -> String
-errorRefEffVarNoParams x tyArgs = "effect variable " ++ x ++ " may not take parameters"
+errorRefEffVarNoParams :: Id -> String
+errorRefEffVarNoParams x = "effect variable " ++ x ++ " may not take parameters"
 
 errorRefIdNotDeclared :: String -> Id -> Raw -> String
 errorRefIdNotDeclared sort x a = "no " ++ sort ++ " named " ++ x ++ " declared (" ++ (show $ ppHasSource a) ++ ")"
@@ -206,17 +207,21 @@ logEndSolve a ext ty = ifDebugTypeCheckOnThen $ do
   ctx <- getContext
   debugTypeCheckM $ "ended solving " ++ show a ++ " = " ++ show (ppVType ty) ++ "\n under suffix\n   " ++ show (ppSuffix ext) ++ "\n\n"
 
+debugParserM :: (MonadicParsing m) => String -> m ()
+debugParserM str = do
+  traceM str
+
+debugRefineM :: String -> Refine ()
+debugRefineM str = do
+  traceM str
+
 -- Uses the hack of of first retrieving context but without printing it.
 -- This achieves that calls of this function are not cached and newly executed
 -- every time.
 debugTypeCheckM :: String -> Contextual ()
-debugTypeCheckM str = ifDebugTypeCheckOnThen $ do
+debugTypeCheckM str = do
   cxt <- getContext
   seq (ppContext cxt) traceM str
-
-debugParserM :: (MonadicParsing m) => String -> m ()
-debugParserM str = ifDebugParserOnThen $ do
-  traceM str
 
 {- Syntax pretty printers -}
 
@@ -309,9 +314,9 @@ ppAbMod (AbFVar x _) = if debugVerboseOn () then text x else text $ trimVar x
 
 ppItfMap :: (Show a, HasSource a) => ItfMap a -> Doc
 ppItfMap (ItfMap m _) = PP.hsep $ intersperse PP.comma $ map ppItfMapPair $ M.toList m
- where ppItfMapPair :: (Show a, HasSource a) => (Id, [TyArg a]) -> Doc
-       ppItfMapPair (x, args) =
-         text x <+> (foldl (<+>) PP.empty $ map ppTyArg args)
+ where ppItfMapPair :: (Show a, HasSource a) => (Id, Bwd [TyArg a]) -> Doc
+       ppItfMapPair (x, instants) =
+         PP.hsep $ intersperse PP.comma $ map (\args -> foldl (<+>) (text x) $ map ppTyArg args) (bwd2fwd instants)
 
 ppSource :: Source -> Doc
 ppSource (InCode (line, col)) = text "line" <+> text (show line) <+> text ", column" <+> text (show col)

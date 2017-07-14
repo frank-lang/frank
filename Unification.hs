@@ -79,7 +79,7 @@ unify t0 t1 = do logBeginUnify t0 t1
 
 -- unify 2 eff tys in current context
 unifyAb :: Ab Desugared -> Ab Desugared -> Contextual ()
-unifyAb ab0@(Ab v0 (ItfMap m0 _) a) ab1@(Ab v1 (ItfMap m1 _) b) =
+unifyAb ab0@(Ab v0 m0 a) ab1@(Ab v1 m1 b) =
   --    [v0 | m0_1, ..., m0_m]    [v1 | m1_1, ... m1_n]
   do logBeginUnifyAb ab0 ab1
      ma0 <- findAbVar v0 -- find ability bound to flex. eff var v0
@@ -90,16 +90,20 @@ unifyAb ab0@(Ab v0 (ItfMap m0 _) a) ab1@(Ab v1 (ItfMap m1 _) b) =
      --     Consider only merged:    [v0' | m1_1, ..., m1_k, m1'_1, ..., m1'_l]
      -- 2)  Unify these two.
      case (ma0, ma1) of
-       (Just (Ab v0 (ItfMap m0' _) _), Just (Ab v1 (ItfMap m1' _) _)) ->
-           let m0'' = M.union m0 m0' in
-           let m1'' = M.union m1 m1' in
-           unifyAb' (Ab v0 (ItfMap m0'' a) a) (Ab v1 (ItfMap m1'' b) b)
-       (Just (Ab v0 (ItfMap m0' _) loc0), Nothing) ->
-         let m0'' = M.union m0 m0' in
-         unifyAb' (Ab v0 (ItfMap m0'' a) a) ab1
-       (Nothing, Just (Ab v1 (ItfMap m1' _) _)) ->
-         let m1'' = M.union m1 m1' in
-         unifyAb' ab0 (Ab v1 (ItfMap m1'' b) b)
+       (Just (Ab v0 m0' _), Just (Ab v1 m1' _)) ->
+           let m0'' = plusItfMap m0' m0 in
+           let m1'' = plusItfMap m1' m1 in
+           unifyAb' (Ab v0 m0'' a) (Ab v1 m1'' b)
+      --  (Just (Ab v0 (ItfMap m0' _) _), Just (Ab v1 (ItfMap m1' _) _)) ->
+      --      let m0'' = M.union m0 m0' in
+      --      let m1'' = M.union m1 m1' in
+      --      unifyAb' (Ab v0 (ItfMap m0'' a) a) (Ab v1 (ItfMap m1'' b) b)
+       (Just (Ab v0 m0' loc0), Nothing) ->
+         let m0'' = plusItfMap m0' m0 in
+         unifyAb' (Ab v0 m0'' a) ab1
+       (Nothing, Just (Ab v1 m1' _)) ->
+         let m1'' = plusItfMap m1' m1 in
+         unifyAb' ab0 (Ab v1 m1'' b)
        (Nothing, Nothing) ->
          unifyAb' ab0 ab1
      logEndUnifyAb ab0 ab1
@@ -111,7 +115,7 @@ unifyAb ab0@(Ab v0 (ItfMap m0 _) a) ab1@(Ab v1 (ItfMap m1 _) b) =
         unifyAb' (Ab (AbFVar x a') (ItfMap m0 _) a) (Ab (AbFVar y b') (ItfMap m1 _) b) =
         --       [a0 | m0]                                           [a1 | m1]
           do -- For same occurrences of interfaces, their instantiat's must coincide
-             unifyItfMap (ItfMap (M.intersection m0 m1) a) (ItfMap (M.intersection m1 m0) b)
+             unifyItfMap (ItfMap (M.intersection m0 m1) a) (ItfMap (M.intersection m1 m0) b)  -- TODO: LC: FIX!!! Very urgent!!!
              -- Unify [a0] = [v | m1 - m0] and
              --       [a1] = [v | m0 - m1]
              v <- AbFVar <$> freshMVar "£" <*> pure (Desugared Generated)
@@ -119,15 +123,15 @@ unifyAb ab0@(Ab v0 (ItfMap m0 _) a) ab1@(Ab v1 (ItfMap m1 _) b) =
              solveForEVar y b' [] (Ab v (ItfMap (M.difference m0 m1) b) b)
         -- One eff ty var is flexible, the other one either empty or rigid
         -- ...and m0 `subsetOf` m1
-        unifyAb' (Ab (AbFVar x a') (ItfMap m0 _) _) (Ab v (ItfMap m1 _) b)
-          | M.null (M.difference m0 m1) =
-            do unifyItfMap (ItfMap (M.intersection m1 m0) a) (ItfMap (M.intersection m0 m1) b)
-               solveForEVar x a' [] (Ab v (ItfMap (M.difference m1 m0) b) b)   -- TODO: LC: locations assigned correctly?
+        unifyAb' (Ab (AbFVar x a') mp0@(ItfMap m0 _) _) (Ab v mp1@(ItfMap m1 _) b)
+          | emptyItfMap (minusItfMap mp0 mp1) =
+            do unifyItfMap (extractLargestEqualSuffixes mp0 mp1) (extractLargestEqualSuffixes mp1 mp0)
+               solveForEVar x a' [] (Ab v (mp1 `minusItfMap` mp0) b)   -- TODO: LC: locations assigned correctly?
         -- ...and m1 `subsetOf` m0
-        unifyAb' (Ab v (ItfMap m0 _) a) (Ab (AbFVar y b') (ItfMap m1 _) _)
-          | M.null (M.difference m1 m0) =
-            do unifyItfMap (ItfMap (M.intersection m0 m1) a) (ItfMap (M.intersection m1 m0) b)
-               solveForEVar y b' [] (Ab v (ItfMap (M.difference m0 m1) a) a)   -- TODO: LC: locations assigned correctly?
+        unifyAb' (Ab v mp0@(ItfMap m0 _) a) (Ab (AbFVar y b') mp1@(ItfMap m1 _) _)
+          | emptyItfMap (minusItfMap mp1 mp0) =
+            do unifyItfMap (extractLargestEqualSuffixes mp0 mp1) (extractLargestEqualSuffixes mp1 mp0)
+               solveForEVar y b' [] (Ab v (mp0 `minusItfMap` mp1) a)   -- TODO: LC: locations assigned correctly?
         -- In any other case
         unifyAb' ab0 ab1 = throwError $ errorUnifAbs ab0 ab1
 
@@ -140,16 +144,16 @@ unifyAbError :: Ab Desugared -> Ab Desugared -> String -> Contextual ()
 unifyAbError ab0 ab1 _ = throwError $ errorUnifAbs ab0 ab1
 
 -- Given two abilities (ItfMap = set of instantiated interfaces), check that
--- each instantiation has a unifiable counterpart in the other ability.
+-- each instantiation has a unifiable counterpart in the other ability and unify.
 unifyItfMap :: ItfMap Desugared -> ItfMap Desugared -> Contextual ()
 unifyItfMap m0@(ItfMap m0' a) m1@(ItfMap m1' b) = do
   mapM_ (unifyItfMap' m1) (M.toList m0')
   mapM_ (unifyItfMap' m0) (M.toList m1')
-  where unifyItfMap' :: ItfMap Desugared -> (Id,[TyArg Desugared]) ->
-                        Contextual ()
-        unifyItfMap' (ItfMap m _) (itf,xs) = case M.lookup itf m of
+  where unifyItfMap' :: ItfMap Desugared -> (Id, Bwd [TyArg Desugared]) -> Contextual ()
+        unifyItfMap' (ItfMap m _) (x, insts) = case M.lookup x m of
           Nothing -> throwError $ errorUnifItfMaps m0 m1
-          Just ys -> mapM_ (uncurry unifyTyArg) (zip xs ys)
+          Just insts' -> if length insts /= length insts' then throwError $ errorUnifItfMaps m0 m1
+                         else mapM_ (\(args, args') -> mapM_ (uncurry unifyTyArg) (zip args args')) (zip (bwd2fwd insts) (bwd2fwd insts'))
 
 unifyAdj :: Adj Desugared -> Adj Desugared -> Contextual ()
 unifyAdj (Adj m0 _) (Adj m1 _) = unifyItfMap m0 m1
@@ -207,14 +211,16 @@ subst ty x (FTVar y a) | x == y = ty
 subst _ _ ty = ty
 
 substAb :: VType Desugared -> Id -> Ab Desugared -> Ab Desugared
-substAb ty x (Ab v (ItfMap m _) a) = Ab v (ItfMap (M.map (map (substTyArg ty x)) m) a) a
+substAb ty x (Ab v (ItfMap m a') a) = Ab v (ItfMap m' a') a
+  where m' = fmap (fmap (map (substTyArg ty x))) m
 
 substTyArg :: VType Desugared -> Id -> TyArg Desugared -> TyArg Desugared
 substTyArg ty x (VArg t a) = VArg (subst ty x t) a
 substTyArg ty x (EArg ab a) = EArg (substAb ty x ab) a
 
 substAdj :: VType Desugared -> Id -> Adj Desugared -> Adj Desugared
-substAdj ty x (Adj (ItfMap m _) a) = Adj (ItfMap (M.map (map (substTyArg ty x)) m) a) a
+substAdj ty x (Adj (ItfMap m a') a) = Adj (ItfMap m' a') a
+  where m' = M.map (fmap (map (substTyArg ty x))) m
 
 substCType :: VType Desugared -> Id -> CType Desugared -> CType Desugared
 substCType ty x (CType ps peg a) =
@@ -231,17 +237,20 @@ substEVar ab x (DTTy dt ts a) = DTTy dt (map (substEVarTyArg ab x) ts) a
 substEVar ab x (SCTy cty a) = SCTy (substEVarCType ab x cty) a
 substEVar _ _ ty = ty
 
+-- replace eff var "x" by ability "ab"
 substEVarAb :: Ab Desugared -> Id -> Ab Desugared -> Ab Desugared
-substEVarAb ab@(Ab v (ItfMap m' _) _) x (Ab (AbFVar y a) (ItfMap m _) ann) | x == y =
-  Ab v (ItfMap (M.union (M.map (map (substEVarTyArg ab x)) m) m') ann) ann
-substEVarAb ab x (Ab v (ItfMap m _) a) = Ab v (ItfMap (M.map (map (substEVarTyArg ab x)) m) a) a
+substEVarAb ab@(Ab v m' _) x (Ab (AbFVar y a) (ItfMap m ann') ann) | x == y =
+  Ab v m'' ann
+  where m'' = plusItfMap m' (ItfMap (fmap (fmap (map (substEVarTyArg ab x))) m) ann')
+substEVarAb ab x (Ab v (ItfMap m a') a) = Ab v (ItfMap (M.map (fmap (map (substEVarTyArg ab x))) m) a') a
 
 substEVarTyArg :: Ab Desugared -> Id -> TyArg Desugared -> TyArg Desugared
 substEVarTyArg ab x (VArg t a)  = VArg (substEVar ab x t) a
 substEVarTyArg ab x (EArg ab' a) = EArg (substEVarAb ab x ab') a
 
 substEVarAdj :: Ab Desugared -> Id -> Adj Desugared -> Adj Desugared
-substEVarAdj ab x (Adj (ItfMap m _) a) = Adj (ItfMap (M.map (map (substEVarTyArg ab x)) m) a) a
+substEVarAdj ab x (Adj (ItfMap m a') a) = Adj (ItfMap m' a') a
+  where m' = M.map (fmap (map (substEVarTyArg ab x))) m
 
 substEVarCType :: Ab Desugared -> Id -> CType Desugared -> CType Desugared
 substEVarCType ab x (CType ps peg a) =

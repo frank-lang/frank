@@ -93,14 +93,14 @@ inAmbient adj m = do amb <- getAmbient
                      putAmbient amb
                      return a
 
--- Lookup the ty args of an interface "itf" in a given ability (i.e., how is
--- the interface instantiated?)
+-- Lookup the ty args of an interface "itf" in a given ability (i.e., what is
+-- the active (right-most) instantiation of this interface?)
 -- Return "Nothing" if "itf" is not part of given ability
 lkpItf :: Id -> Ab Desugared -> Contextual (Maybe [TyArg Desugared])
-lkpItf itf (Ab v (ItfMap m _) _) =
+lkpItf itf (Ab v (ItfMap m _) _) = do
   case M.lookup itf m of
-    Nothing -> lkpItfInAbMod itf v
-    Just xs -> return $ Just xs
+    Just (xr :< args) -> return $ Just args
+    _ -> lkpItfInAbMod itf v
 
 lkpItfInAbMod :: Id -> AbMod Desugared -> Contextual (Maybe [TyArg Desugared])
 lkpItfInAbMod itf (AbFVar x _) = getContext >>= find'
@@ -391,9 +391,9 @@ makeFlexible flexs ty = return ty
 makeFlexibleAb :: [Id] -> Ab Desugared -> Contextual (Ab Desugared)
 makeFlexibleAb flexs (Ab v (ItfMap m _) a) = case v of
   AbRVar x b -> do v' <- (if not (x `elem` flexs) then (AbFVar <$> (getContext >>= (find' x)) <*> pure b) else return $ AbRVar x b)
-                   m' <- mapM (mapM (makeFlexibleTyArg flexs)) m
+                   m' <- mapM (mapM (mapM (makeFlexibleTyArg flexs))) m
                    return $ Ab v' (ItfMap m' a) a
-  _ ->          do m' <- mapM (mapM (makeFlexibleTyArg flexs)) m
+  _ ->          do m' <- mapM (mapM (mapM (makeFlexibleTyArg flexs))) m
                    return $ Ab v (ItfMap m' a) a
 -- find' either creates a new FlexMVar in current locality or identifies the one
 -- already existing
@@ -407,7 +407,7 @@ makeFlexibleTyArg flexs (VArg t a)  = VArg <$> makeFlexible flexs t <*> pure a
 makeFlexibleTyArg flexs (EArg ab a) = EArg <$> makeFlexibleAb flexs ab <*> pure a
 
 makeFlexibleAdj :: [Id] -> Adj Desugared -> Contextual (Adj Desugared)
-makeFlexibleAdj flexs (Adj (ItfMap m _) a) = do m' <- mapM (mapM (makeFlexibleTyArg flexs)) m
+makeFlexibleAdj flexs (Adj (ItfMap m _) a) = do m' <- mapM (mapM (mapM (makeFlexibleTyArg flexs))) m
                                                 return $ Adj (ItfMap m' a) a
 
 makeFlexibleCType :: [Id] -> CType Desugared -> Contextual (CType Desugared)

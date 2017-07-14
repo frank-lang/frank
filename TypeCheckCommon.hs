@@ -80,7 +80,7 @@ fmv (IntTy _) = S.empty
 fmv (CharTy _) = S.empty
 
 fmvAb :: Ab Desugared -> S.Set Id
-fmvAb (Ab v (ItfMap m _) _) = S.union (fmvAbMod v) (foldMap (foldMap fmvTyArg) (M.elems m))
+fmvAb (Ab v (ItfMap m _) _) = S.union (fmvAbMod v) (foldMap (foldMap (foldMap fmvTyArg)) (M.elems m))
 
 fmvTyArg :: TyArg Desugared -> S.Set Id
 fmvTyArg (VArg t _) = fmv t
@@ -92,7 +92,7 @@ fmvAbMod (AbRVar _ _) = S.empty
 fmvAbMod (AbFVar x _) = S.singleton x
 
 fmvAdj :: Adj Desugared -> S.Set Id
-fmvAdj (Adj (ItfMap m _) _) = foldMap (foldMap fmvTyArg) (M.elems m)
+fmvAdj (Adj (ItfMap m _) _) = foldMap (foldMap (foldMap fmvTyArg)) (M.elems m)
 
 fmvCType :: CType Desugared -> S.Set Id
 fmvCType (CType ps q _) = S.union (foldMap fmvPort ps) (fmvPeg q)

@@ -189,7 +189,7 @@ desugarPeg (Peg ab ty a) = Peg <$> desugarAb ab <*> desugarVType ty <*> pure (re
 -- nothing happens on this level
 desugarAb :: Ab Refined -> Desugar (Ab Desugared)
 desugarAb (Ab v (ItfMap m b) a) = do v' <- desugarAbMod v
-                                     m' <- mapM (mapM desugarTyArg) m
+                                     m' <- mapM (mapM (mapM desugarTyArg)) m
                                      return $ Ab v' (ItfMap m' (refToDesug b)) (refToDesug a)
 
 -- explicit desugaring:
@@ -208,7 +208,7 @@ desugarAbMod (AbVar x a) =
 
 -- nothing happens on this level
 desugarAdj :: Adj Refined -> Desugar (Adj Desugared)
-desugarAdj (Adj (ItfMap m b) a) = do m' <- mapM (mapM desugarTyArg) m
+desugarAdj (Adj (ItfMap m b) a) = do m' <- mapM (mapM (mapM desugarTyArg)) m
                                      return $ Adj (ItfMap m' (refToDesug b)) (refToDesug a)
 
 -- no explicit desugaring: clauses (and constituents) unaffected between Refine/Desugar phase

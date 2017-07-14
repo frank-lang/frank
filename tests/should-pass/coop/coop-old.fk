@@ -86,7 +86,7 @@ flip unit                    = unit
 
 -- fairfk nil nil == (fairkf nil nil) o flip
 t4 : [Console]Unit
-t4! = fairkf nil nil (flip test!)
+t4! = fairkf nil nil ( test!)
 
 -- Dont delete these lines, they make this program into a unit test.
 -- #desc   examples/coop-old.fk

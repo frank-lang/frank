@@ -12,6 +12,7 @@ import Data.List
 import qualified Data.Map.Strict as M
 import qualified Data.Set as S
 
+import BwdFwd
 import Syntax
 import Debug
 
@@ -157,7 +158,7 @@ concretiseEps dts itfs itfAls =
   hasEpsAb tvs (Ab v m a) = anyHasEps [hasEpsAbMod tvs v, hasEpsItfMap tvs m]
 
   hasEpsItfMap :: [Id] -> ItfMap Raw -> HasEps
-  hasEpsItfMap tvs (ItfMap m _) = (anyHasEps . (map (hasEpsTyArg tvs)) . concat . M.elems) m
+  hasEpsItfMap tvs (ItfMap m _) = (anyHasEps . (map (hasEpsTyArg tvs)) . concat . concat . map (bwd2fwd) . M.elems) m
 
   hasEpsAbMod :: [Id] -> AbMod Raw -> HasEps
   hasEpsAbMod tvs (EmpAb _)     = HasEpsIfAny []

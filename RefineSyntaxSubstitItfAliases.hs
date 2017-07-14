@@ -13,21 +13,22 @@ import Data.List
 import qualified Data.Map.Strict as M
 import qualified Data.Set as S
 
+import BwdFwd
 import Syntax
 import RefineSyntaxCommon
 import Debug
 
 -- Given an occurrence of interface instantiation x t_1 ... t_n, determine
 -- whether it is an interface alias and if so, recursively substitute
-substitItfAls :: (Id, [TyArg Raw]) -> Refine [(Id, [TyArg Raw])]
+substitItfAls :: (Id, [TyArg Raw]) -> Refine (ItfMap Raw)
 substitItfAls = substitItfAls' [] where
-  substitItfAls' :: [Id] -> (Id, [TyArg Raw]) -> Refine [(Id, [TyArg Raw])]
+  substitItfAls' :: [Id] -> (Id, [TyArg Raw]) -> Refine (ItfMap Raw)
   substitItfAls' visited (x, ts) = do
     itfAls <- getRItfAliases
     if not (x `elem` visited) then
       case M.lookup x itfAls of
-        Nothing -> return [(x, ts)]
-        Just (ps, ItfMap itfMap _) ->
+        Nothing -> return $ ItfMap (M.singleton x (BEmp :< ts)) (Raw Generated) --TODO: LC: put meaningful annot here
+        Just (ps, ItfMap m _) ->
 --            1) interface x p_1 ... p_n     = [itf_i p_i1 ... p_ik, ...]
 --         or 2) interface x p_1 ... p_n [£] = [itf_i p_i1 ... p_ik, ...]
 --               and [£] has been explicitly added before
@@ -41,12 +42,14 @@ substitItfAls = substitItfAls' [] where
              let subst = zip ps ts'
              -- replace   x ts
              --      by   [x_1 ts_1', ..., x_n ts_n']
-             -- where ts_i' has been acted upon by subst
-             xs <- mapM (substitInTyArgs subst) (M.toList itfMap)
+             --           where ts_i' has been acted upon by subst
+             m' <- mapM (mapM (mapM (substitInTyArg subst))) m
              -- recursively replace itf als in   x_1, ..., x_n
              --                       yielding   [[x_11 x_11_ts, ...], ...]
-             xss <- mapM (substitItfAls' (x:visited)) xs
-             return $ concat xss
+             ms <- mapM (\(x', insts) -> (mapM (\inst -> substitItfAls' (x:visited) (x', inst)) insts)) (M.toList m')
+             let ms' = map (\m'' -> foldl plusItfMap (ItfMap (M.empty) (Raw Generated)) m'') ms
+             let m'' = foldl plusItfMap (ItfMap (M.empty) (Raw Generated)) ms'
+             return m''
     else throwError $ errorRefItfAlCycle x
 
 type Subst = [((Id, Kind), TyArg Raw)]
@@ -112,7 +115,7 @@ substitInAdj subst (Adj m a) = do itfMap <- substitInItfMap subst m
                                   return $ Adj itfMap a
 
 substitInItfMap :: Subst -> ItfMap Raw -> Refine (ItfMap Raw)
-substitInItfMap subst (ItfMap itfMap a) = do (ItfMap . M.fromList) <$> mapM (substitInTyArgs subst) (M.toList itfMap) <*> pure a
+substitInItfMap subst (ItfMap m a) = ItfMap <$> mapM (mapM (mapM (substitInTyArg subst))) m <*> pure a
 
 -- helpers
 

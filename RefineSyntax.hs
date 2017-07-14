@@ -7,12 +7,14 @@ module RefineSyntax where
 import Control.Monad
 import Control.Monad.Except
 import Control.Monad.State
+import Data.Foldable
 import Data.Functor.Identity
 
 import Data.List
 import qualified Data.Map.Strict as M
 import qualified Data.Set as S
 
+import BwdFwd
 import Syntax
 import RefineSyntaxCommon
 import RefineSyntaxConcretiseEps
@@ -108,7 +110,7 @@ refineItfAl i@(ItfAlias itfAl ps _ a) =
        -- interpret RHS of interface alias def. as the instantiation of itf with
        -- the generic type variables ps (this "lift" is possible as the
        -- itf map of itf is part of the RState)
-       let singletonItfMap = ItfMap (M.singleton itfAl (map tyVar2rawTyVarArg ps)) (Raw Implicit)
+       let singletonItfMap = ItfMap (M.singleton itfAl (BEmp :< (map tyVar2rawTyVarArg ps))) (Raw Implicit)
        itfMap' <- refineItfMap $ singletonItfMap
        putEVSet S.empty                                -- reset
        putTMap M.empty                                 -- reset
@@ -170,7 +172,7 @@ refineAb :: Ab Raw -> Refine (Ab Refined)
 refineAb ab@(Ab v mp@(ItfMap m _) a) =
 --       [v | itf_1 x_11 ... x_1k, ..., itf_l x_l1 ... x_ln]
   do -- Check if itf_i contains effect variable
-     es <- getEVars $ M.toList m
+     es <- getEVars mp
      if null es then do m' <- refineItfMap mp
                         return $ Ab (refineAbMod v) m' a'
      else if length es == 1 then do let u = head es
@@ -183,43 +185,46 @@ refineAb ab@(Ab v mp@(ItfMap m _) a) =
 -- If a itf_i is an already-introduced effect variable, require that there are
 --   no x_ij (else throw error)
 -- Output: all itf_i which refer to already-introduced effect variables
-getEVars :: [(Id,[TyArg Raw])] -> Refine [Id]
-getEVars ((x, ts) : ys) =
-  do p <- getEVSet
-     es <- getEVars ys
-     if S.member x p then
-       if length ts == 0 then return $ x : es
-       else throwError $ errorRefEffVarNoParams x ts
-     else return es
-getEVars [] = return []
+getEVars :: ItfMap Raw -> Refine [Id]
+getEVars (ItfMap m _) = do
+  p <- getEVSet
+  let candidates = [(itf, (maximum . map length . bwd2fwd) xs) | (itf, xs) <- M.toList m, S.member itf p]
+  let errors = filter (\(itf, n) -> n > 0) candidates
+  case errors of []             -> return $ map fst candidates
+                 ((itf, _) : _) -> throwError $ errorRefEffVarNoParams itf
 
 -- Explicit refinements:
 -- + implicit [£] ty args to interfaces are made explicit
 refineItfMap :: ItfMap Raw -> Refine (ItfMap Refined)
 refineItfMap (ItfMap m a) = do
   -- replace interface aliases by interfaces
-  xs <- concat <$> mapM substitItfAls (M.toList m)
+  ms <- mapM (\(x, insts) -> mapM (\inst -> substitItfAls (x, inst)) (bwd2fwd insts)) (M.toList m)
+  -- let n = 3+ms
+  let (ItfMap m' a') = foldl plusItfMap (ItfMap (M.empty) a) (concat ms)
+  -- xs <- concat <$> mapM substitItfAls (M.toList m)
   -- refine each interface
-  xs' <- mapM refineEntry xs
-  return $ ItfMap (M.fromList xs') (rawToRef a)
-  where refineEntry :: (Id, [TyArg Raw]) -> Refine (Id, [TyArg Refined])
-        refineEntry (x, ts) =
+  m'' <- M.fromList <$> ((mapM refineEntry) (M.toList m'))
+  return $ ItfMap m'' (rawToRef a)
+  where refineEntry :: (Id, Bwd [TyArg Raw]) -> Refine (Id, Bwd [TyArg Refined])
+        refineEntry (x, insts) =
 --                  x t_1 ... t_n
           do itfs <- getRItfs
              case M.lookup x itfs of
-               Just ps ->
---               1) interface x p_1 ... p_n     = ...
---            or 2) interface x p_1 ... p_n [£] = ...
---                  and [£] has been explicitly added before
---                            if 2), set t_{n+1} := [£]
-                 do let a' = Raw (implicitNear a)
-                        ts' = if length ps == length ts + 1 &&
-                                 (snd (ps !! length ts) == ET) then
-                                   ts ++ [EArg (Ab (AbVar "£" a') (ItfMap M.empty a') a') a']
-                              else ts
-                    checkArgs x (length ps) (length ts') a
-                    ts'' <- mapM refineTyArg ts'
-                    return (x, ts'')
+               Just ps -> do
+--                1) interface x p_1 ... p_n     = ...
+--             or 2) interface x p_1 ... p_n [£] = ...
+--                   and [£] has been explicitly added before
+--                             if 2), set t_{n+1} := [£]
+                  insts' <- mapM (\ts -> do let a' = Raw (implicitNear a)
+                                            let ts' = if length ps == length ts + 1 &&
+                                                         (snd (ps !! length ts) == ET) then
+                                                         ts ++ [EArg (Ab (AbVar "£" a') (ItfMap M.empty a') a') a']
+                                                      else ts
+                                            checkArgs x (length ps) (length ts') a
+                                            ts'' <- mapM refineTyArg ts'
+                                            return ts'')
+                                 insts
+                  return (x, insts')
                Nothing -> throwError $ errorRefIdNotDeclared "interface" x a
 
 refineAbMod :: AbMod Raw -> AbMod Refined

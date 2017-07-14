@@ -126,7 +126,7 @@ step mine         x = x
 -- This signature suffers from the fact that so far we cannot 'overstep' a handler.
 -- Thus all the effects listed within <...> will be 'handled away' (consumed).
 -- This restriction shall be overcome in the future.
-run : {<RefState, Co [Queue (Proc [RefState]), RefState], Queue (Proc [RefState]), Actor X [Queue (Proc [RefState]), RefState, Co [Queue (Proc [RefState]), RefState]]>Unit -> [RefState]Unit}
+run : {<Co [Queue (Proc [RefState]), RefState], Queue (Proc [RefState]), Actor X [Queue (Proc [RefState]), RefState, Co [Queue (Proc [RefState]), RefState]]>Unit -> [RefState]Unit}
 run <m>  = evalZipQueueEmpty (roundRobin (step (mbox (new (emptyZipQueue!))) m!))
 run unit = unit
 

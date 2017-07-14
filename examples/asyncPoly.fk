@@ -103,8 +103,7 @@ execIfNeeded (promise ref) f = case (read ref)             -- lookup status of p
 -- This signature suffers from the fact that so far we cannot 'overstep' a handler.
 -- Thus all the effects listed within <...> will be 'handled away' (consumed).
 -- This restriction shall be overcome in the future.
-run : {<RefState,
-        Co [Queue (Proc [RefState]), RefState],
+run : {<Co [Queue (Proc [RefState]), RefState],
         Queue (Proc [RefState]),
         Async[RefState, Co[Queue (Proc [RefState]), RefState], Queue (Proc [RefState])]>X ->
        [RefState] (Promise X [RefState, Co[RefState, Queue (Proc [RefState])], Queue (Proc [RefState])])}
