@@ -52,6 +52,13 @@ evalZipQueue t q = case (runZipQueue t q) { (pair x _) -> x }
 execZipQueue: {{[Queue S]X} -> ZipQueue S -> ZipQueue S}
 execZipQueue t q = case (runZipQueue t q) { (pair _ q) -> q }
 
+emptyZipQueue : {ZipQueue s}
+emptyZipQueue! = zipq [] []
+
+evalZipQueueEmpty : {<Queue S>X -> X}
+evalZipQueueEmpty <m> = evalZipQueue m (emptyZipQueue!)
+evalZipQueueEmpty x   = x
+
 --------------------------------------------------------------------------------
 -- Definitions of interfaces, data types
 --------------------------------------------------------------------------------
@@ -92,6 +99,19 @@ execIfNeeded (promise ref) f = case (read ref)             -- lookup status of p
                                                  case (read ref)
                                                  { (done v) -> map { f -> f v } fs; unit -- wake up and feed value
                                                  | _ -> unit } }                         -- invariant: should not happen
+
+-- This signature suffers from the fact that so far we cannot 'overstep' a handler.
+-- Thus all the effects listed within <...> will be 'handled away' (consumed).
+-- This restriction shall be overcome in the future.
+run : {<RefState,
+        Co [Queue (Proc [RefState]), RefState],
+        Queue (Proc [RefState]),
+        Async[RefState, Co[Queue (Proc [RefState]), RefState], Queue (Proc [RefState])]>X ->
+       [RefState] (Promise X [RefState, Co[RefState, Queue (Proc [RefState])], Queue (Proc [RefState])])}
+run <m>  = let resRef = new (waiting []) in
+           evalZipQueueEmpty (roundRobin (step (promise resRef) m!));
+           promise resRef
+run x = promise (new (waiting []))
 
 --------------------------------------------------------------------------------
 -- This is the process executer from coop-factored.fk, using a queue to handle
@@ -145,8 +165,8 @@ calcProg a b c = let p1 = async {binOp a b} in
 -- #return 8
 
 main: {[RefState]Int}
-main! = let resRef = new (waiting []) in
-        runZipQueue {roundRobin (step (promise resRef) (calcProg 1 2 3))} (zipq [] []);
-        case (read resRef)
-        { (done v) -> v
-        | _ -> 0 }  -- invariant: should not happen
+main! = case (run (calcProg 1 2 3))
+        { (promise resRef) -> case (read resRef)
+                              { (done v) -> v
+                              | _ -> 0 }  -- invariant: should not happen
+        }
