@@ -1,13 +1,6 @@
-{-# LANGUAGE DataKinds #-}
-{-# LANGUAGE GADTs #-}
-{-# LANGUAGE StandaloneDeriving,TypeSynonymInstances,FlexibleInstances #-}
-{-# LANGUAGE ViewPatterns #-}
-{-# LANGUAGE LambdaCase #-}
-
 -- Transform all type variables to unique rigid type variables.
 module DesugarSyntax where
 
-import Control.Monad
 import Control.Monad.State
 import Control.Monad.Identity
 import qualified Data.Map.Strict as M
@@ -32,7 +25,7 @@ putDState = put
 
 freshRTVar :: Id -> Desugared -> Desugar (VType Desugared)
 freshRTVar x a = do n <- fresh
-                    return $ RTVar (x ++ "$r" ++ (show n)) a
+                    return $ RTVar (x ++ "$r" ++ show n) a
 
 freshRigid :: Id -> Desugar Id
 freshRigid x = do n <- fresh
@@ -66,7 +59,7 @@ desugar :: Prog Refined -> Prog Desugared
 desugar (MkProg xs) = MkProg $ evalFresh m
   where m = evalStateT (mapM desugarTopTm' xs) initDState
         desugarTopTm' tm =
-          do putEnv $ M.empty -- purge mappings from previous context.
+          do putEnv M.empty -- purge mappings from previous context.
              desugarTopTm tm
 
 -- no explicit refinements
@@ -100,11 +93,10 @@ desugarItf :: Itf Refined -> Desugar (Itf Desugared)
 desugarItf (Itf itf ps cmds a) = do
   -- generate fresh ids for type variables
   xs' <- mapM (freshRigid . fst) ps
-  let env' = M.fromList [(x, RTVar x' a') | ((x, VT), x') <- zip ps xs']       -- map old value type variables to fresh ones
-  let abModEnv' = M.fromList [(x, AbRVar x' a') | ((x, ET), x') <- zip ps xs'] -- map old effect type variables to fresh ones
+  let env' = M.fromList [(x, RTVar x' a') | ((x, VT), x') <- zip ps xs']        -- map old value type variables to fresh ones
+  let abModEnv' = M.fromList [(x, AbRVar x' a') | ((x, ET), x') <- zip ps xs']  -- map old effect type variables to fresh ones
   -- [(new var name, val or eff)]
   let ps' = [(x', k) | ((_, k), x') <- zip ps xs']
-
   -- before desugaring each cmd, we need to reset the env
   cmds' <- mapM (\c -> do putEnv env'
                           putAbModEnv abModEnv'
@@ -201,7 +193,7 @@ desugarAbMod (AbVar x a) =
   do env <- getAbModEnv
      case M.lookup x env of
        Nothing -> do n <- fresh
-                     let var = AbRVar (x ++ "$r" ++ (show n)) (refToDesug a)
+                     let var = AbRVar (x ++ "$r" ++ show n) (refToDesug a)
                      putAbModEnv $ M.insert x var env
                      return var
        Just var -> return var

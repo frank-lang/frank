@@ -33,7 +33,6 @@ data RState = MkRState { interfaces :: IFMap
                        , handlers :: [IPair]              -- handler Id -> # of arguments
                        , ctrs :: [IPair]                  -- constructor Id -> # of arguments
                        , cmds :: [IPair]                  -- command Id -> # of arguments
-                       , program :: Prog Refined          -- LC: what is this for?
                        , tmap :: TVarMap                  -- type var Id ->   VType Raw     type vars of current context
                        , evmap :: EVarSet                 -- effect var Id                  effect vars of current context
                        , tlctxt :: Maybe TopLevelCtxt }
@@ -56,7 +55,7 @@ putRItfAliases :: IFAliasesMap -> Refine ()
 putRItfAliases xs = do s <- getRState
                        putRState $ s {interfaceAliases = xs }
 
-getRItfAliases :: Refine (IFAliasesMap)
+getRItfAliases :: Refine IFAliasesMap
 getRItfAliases = do s <- getRState
                     return $ interfaceAliases s
 

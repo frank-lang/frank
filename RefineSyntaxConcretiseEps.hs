@@ -1,6 +1,5 @@
 -- Making implicit [£] explicit in data type, interface and interface alias
 -- definitions
-{-# LANGUAGE ViewPatterns,LambdaCase #-}
 module RefineSyntaxConcretiseEps (concretiseEps) where
 
 import Control.Monad
@@ -110,17 +109,17 @@ concretiseEps dts itfs itfAls =
                                  (ItfAlNode itfAl) -> hasEpsItfAl itfAl
 
   hasEpsDataT :: DataT Raw -> HasEps
-  hasEpsDataT (DT _ ps ctrs a) = if any ((==) ("£", ET)) ps then HasEps
+  hasEpsDataT (DT _ ps ctrs a) = if ("£", ET) `elem` ps then HasEps
                                  else let tvs = [x | (x, VT) <- ps] in
                                       anyHasEps (map (hasEpsCtr tvs) ctrs)
 
   hasEpsItf :: Itf Raw -> HasEps
-  hasEpsItf (Itf _ ps cmds a) = if any ((==) ("£", ET)) ps then HasEps
+  hasEpsItf (Itf _ ps cmds a) = if ("£", ET) `elem` ps then HasEps
                                 else let tvs = [x | (x, VT) <- ps] in
                                      anyHasEps (map (hasEpsCmd tvs) cmds)
 
   hasEpsItfAl :: ItfAlias Raw -> HasEps
-  hasEpsItfAl (ItfAlias _ ps itfMap a) = if any ((==) ("£", ET)) ps then HasEps
+  hasEpsItfAl (ItfAlias _ ps itfMap a) = if ("£", ET) `elem` ps then HasEps
                                          else let tvs = [x | (x, VT) <- ps] in
                                               hasEpsItfMap tvs itfMap
 
@@ -158,7 +157,7 @@ concretiseEps dts itfs itfAls =
   hasEpsAb tvs (Ab v m a) = anyHasEps [hasEpsAbMod tvs v, hasEpsItfMap tvs m]
 
   hasEpsItfMap :: [Id] -> ItfMap Raw -> HasEps
-  hasEpsItfMap tvs (ItfMap m _) = (anyHasEps . (map (hasEpsTyArg tvs)) . concat . concat . map (bwd2fwd) . M.elems) m
+  hasEpsItfMap tvs (ItfMap m _) = (anyHasEps . map (hasEpsTyArg tvs) . concat . concatMap bwd2fwd . M.elems) m
 
   hasEpsAbMod :: [Id] -> AbMod Raw -> HasEps
   hasEpsAbMod tvs (EmpAb _)     = HasEpsIfAny []
@@ -170,16 +169,16 @@ concretiseEps dts itfs itfAls =
   hasEpsTyArg tvs (EArg ab _) = hasEpsAb tvs ab
 
 concretiseEpsInDataT :: [Id] -> DataT Raw -> DataT Raw
-concretiseEpsInDataT posIds (DT dt ps ctrs a) = (DT dt ps' ctrs a) where
-  ps' = if not (any ((==) ("£", ET)) ps) && dt `elem` posIds then ps ++ [("£", ET)] else ps
+concretiseEpsInDataT posIds (DT dt ps ctrs a) = DT dt ps' ctrs a where
+  ps' = if ("£", ET) `notElem` ps && dt `elem` posIds then ps ++ [("£", ET)] else ps
 
 concretiseEpsInItf :: [Id] -> Itf Raw -> Itf Raw
-concretiseEpsInItf posIds (Itf itf ps cmds a) = (Itf itf ps' cmds a) where
-  ps' = if not (any ((==) ("£", ET)) ps) && itf `elem` posIds then ps ++ [("£", ET)] else ps
+concretiseEpsInItf posIds (Itf itf ps cmds a) = Itf itf ps' cmds a where
+  ps' = if ("£", ET) `notElem` ps && itf `elem` posIds then ps ++ [("£", ET)] else ps
 
 concretiseEpsInItfAl :: [Id] -> ItfAlias Raw -> ItfAlias Raw
-concretiseEpsInItfAl posIds (ItfAlias itfAl ps itfMap a) = (ItfAlias itfAl ps' itfMap a) where
-  ps' = if not (any ((==) ("£", ET)) ps) && itfAl `elem` posIds then ps ++ [("£", ET)] else ps
+concretiseEpsInItfAl posIds (ItfAlias itfAl ps itfMap a) = ItfAlias itfAl ps' itfMap a where
+  ps' = if ("£", ET) `notElem` ps && itfAl `elem` posIds then ps ++ [("£", ET)] else ps
 
 {- Helper functions -}
 
@@ -190,5 +189,5 @@ nodeId (ItfAlNode (ItfAlias id _ _ a)) = id
 
 -- A variant of the any-operator for HasEps results
 anyHasEps :: [HasEps] -> HasEps
-anyHasEps xs = if any ((==) HasEps) xs then HasEps
+anyHasEps xs = if HasEps `elem` xs then HasEps
                else HasEpsIfAny (concat [ids | HasEpsIfAny ids <- xs])

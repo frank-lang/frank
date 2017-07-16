@@ -1,10 +1,7 @@
 -- Inspired by Adam Gundry et al.'s treatment of type inference in
 -- context. See Gundry's thesis (most closely aligned) or the paper ``Type
 -- inference in Context'' for more details.
-{-# LANGUAGE FlexibleInstances,StandaloneDeriving,TypeSynonymInstances,
-             MultiParamTypeClasses,GeneralizedNewtypeDeriving,
-             FlexibleContexts,GADTs #-}
-{-# LANGUAGE ViewPatterns #-}
+{-# LANGUAGE GADTs #-}
 module TypeCheck where
 
 import Control.Monad
@@ -39,7 +36,7 @@ find :: Operator Desugared -> Contextual (VType Desugared)
 find (CmdId x a) =
   do amb <- getAmbient
      (itf, qs, rs, ts, y) <- getCmd x
-     -- interface itf q_1 ... q_m = x: forall r1 ... r_l, t_1 -> ... -> t_n -> y
+     -- interface itf q_1 ... q_m = x r1 ... r_l: t_1 -> ... -> t_n -> y
      mps <- lkpItf itf amb -- how is itf instantiated in amb?
      logBeginFindCmd x itf mps
      case mps of
@@ -53,7 +50,7 @@ find (CmdId x a) =
             qs' <- mapM (makeFlexibleTyArg []) qs
             ts' <- mapM (makeFlexible []) ts
             y' <- makeFlexible [] y
-            mapM (uncurry unifyTyArg) (zip ps qs')
+            zipWithM_ unifyTyArg ps qs'
             -- Localise rs
             rs' <- mapM (makeFlexibleTyArg []) rs
             let ty = SCTy (CType (map (\x -> Port idAdjDesug x a) ts') (Peg amb y' a) a) a
@@ -97,7 +94,7 @@ inAmbient adj m = do amb <- getAmbient
 -- the active (right-most) instantiation of this interface?)
 -- Return "Nothing" if "itf" is not part of given ability
 lkpItf :: Id -> Ab Desugared -> Contextual (Maybe [TyArg Desugared])
-lkpItf itf (Ab v (ItfMap m _) _) = do
+lkpItf itf (Ab v (ItfMap m _) _) =
   case M.lookup itf m of
     Just (xr :< args) -> return $ Just args
     _ -> lkpItfInAbMod itf v
@@ -128,16 +125,15 @@ inferEvalUse p use = runExcept $ evalFreshMT $ evalStateT comp initTCState
                           inferUse use
 
 -- Main typechecking function
--- - Init TCState
--- - Check each top term
--- - If no exception is thrown during checkTopTm, return input program
+-- + Init TCState
+-- + Check each top term
+-- + If no exception is thrown during checkTopTm, return input program
 check :: Prog Desugared -> Either String (Prog Desugared)
 check p = runExcept $ evalFreshMT $ evalStateT (checkProg p) initTCState
---        "unpack" the monad
   where
     checkProg p = unCtx $ do MkProg xs <- initContextual p
                              theCtx <- getContext
-                             mapM checkTopTm xs
+                             mapM_ checkTopTm xs
                              return $ MkProg xs
 
 checkTopTm :: TopTm Desugared -> Contextual ()
@@ -146,7 +142,7 @@ checkTopTm _ = return ()
 
 checkMHDef :: MHDef Desugared -> Contextual ()
 checkMHDef (Def id ty@(CType ps q _) cs _) =
-  do mapM_ (\cls -> checkCls cls ps q) cs
+  mapM_ (\cls -> checkCls cls ps q) cs
 
 -- 1st major TC function: Infer type of a "use"
 -- Functions below implement the typing rules described in the paper.
@@ -215,7 +211,6 @@ inferUse app@(App f xs _) =
                  -- errTy ty
                Just ty' -> discriminate ty' -- 2.2)
         discriminate ty = errTy ty
-
         -- TODO: tidy.
         -- We don't need to report an error here, but rather generate
         -- appropriate fresh type variables as above.
@@ -274,7 +269,7 @@ freshPort :: Id -> Desugared -> Contextual (Port Desugared)
 freshPort x a = do ty <- FTVar <$> freshMVar x <*> pure a
                    return $ Port (Adj (ItfMap M.empty a) a) ty a
 
--- create peg [E]Y for fresh E, Y
+-- create peg [E|]Y for fresh E, Y
 freshPeg :: Id -> Id -> Desugared -> Contextual (Peg Desugared)
 freshPeg x y a = do v <- AbFVar <$> freshMVar x <*> pure a
                     ty <- FTVar <$> freshMVar y <*> pure a
@@ -294,17 +289,16 @@ checkCls cls@(Cls pats tm _) ports (Peg ab ty _)
   | length pats == length ports =
      do pushMarkCtx
         putAmbient ab  -- restrict ambient ability
-        bs <- fmap concat $ mapM (uncurry checkPat) (zip pats ports)
+        bs <- concat <$> zipWithM checkPat pats ports
         -- Bring any bindings in to scope for checking the term then purge the
         -- marks (and suffixes) in the context created for this clause.
-        case null bs of
-          True ->  do -- Just purge marks
-                      checkTm tm ty
-                      purgeMarks
-          False -> do -- Push all bindings to context, then check tm, then remove bindings,
-                      -- finally purge marks.
-                      foldl1 (.) (map (uncurry inScope) bs) $ checkTm tm ty
-                      purgeMarks
+        if null bs then -- Just purge marks
+                        do checkTm tm ty
+                           purgeMarks
+                   else -- Push all bindings to context, then check tm, then
+                        -- remove bindings, finally purge marks.
+                        do foldl1 (.) (map (uncurry inScope) bs) $ checkTm tm ty
+                           purgeMarks
   | otherwise = throwError $ errorTCPatternPortMismatch cls
 
 -- Check that given pattern matches given port
@@ -317,28 +311,29 @@ checkPat (CmdPat cmd xs g a) (Port adj ty b) =
 -- port:     <itf p_1 ... p_m> ty
 -- pattern:  <cmd x_1 ... x_n -> g>
   do (itf, qs, rs, ts, y) <- getCmd cmd
-     mps <- lkpItf itf (plus (Ab (EmpAb b) (ItfMap M.empty a) b) adj) -- how is itf instantiated in adj?
+     -- how is itf instantiated in adj?
+     mps <- lkpItf itf (plus (Ab (EmpAb b) (ItfMap M.empty a) b) adj)
      case mps of
        Nothing -> throwError $ errorTCCmdNotFoundInAdj cmd adj
        Just ps -> do addMark
                      -- Flexible ty vars (corresponding to qs)
-                     nonFlexs <- getCmdTyVars cmd
+                     skip <- getCmdTyVars cmd
                      -- Localise qs, bind them to their instantiation
                      -- (according to adjustment) and localise their occurences
                      -- in ts, y
-                     qs' <- mapM (makeFlexibleTyArg nonFlexs) qs
-                     ts' <- mapM (makeFlexible nonFlexs) ts
-                     y' <- makeFlexible nonFlexs y
-                     mapM (uncurry unifyTyArg) (zip ps qs')
+                     qs' <- mapM (makeFlexibleTyArg skip) qs
+                     ts' <- mapM (makeFlexible skip) ts
+                     y' <- makeFlexible skip y
+                     zipWithM_ unifyTyArg ps qs'
                      -- Check command patterns against spec. in interface def.
-                     bs <- fmap concat $ mapM (uncurry checkVPat) (zip xs ts')
+                     bs <- concat <$> mapM (uncurry checkVPat) (zip xs ts')
                      kty <- contType y' adj ty a -- type of continuation:  {y' -> [adj + currentAmb]ty}
                      -- bindings: continuation + patterns
                      return ((Mono g a, kty) : bs)
 checkPat (ThkPat x a) (Port adj ty b) =
 -- pattern:  x
   do amb <- getAmbient
-     return $ [(Mono x a, SCTy (CType [] (Peg (plus amb adj) ty b) b) b)]
+     return [(Mono x a, SCTy (CType [] (Peg (plus amb adj) ty b) b) b)]
 
 -- continuation type
 contType :: VType Desugared -> Adj Desugared -> VType Desugared -> Desugared ->
@@ -360,8 +355,7 @@ checkVPat (DataPat k ps a) ty =                      -- P-Data rule
      args' <- mapM (makeFlexibleTyArg []) args
      ts' <- mapM (makeFlexible []) ts
      unify ty (DTTy dt args' a)
-     bs <- fmap concat $ mapM (uncurry checkVPat) (zip ps ts')
-     return bs
+     concat <$> zipWithM checkVPat ps ts'
 checkVPat (CharPat _ a) ty = unify ty (CharTy a) >> return []
 checkVPat (StrPat _ a) ty = unify ty (desugaredStrTy a) >> return []
 checkVPat (IntPat _ a) ty = unify ty (IntTy a) >> return []
@@ -377,23 +371,23 @@ checkVPat (IntPat _ a) ty = unify ty (IntTy a) >> return []
 -- 2) it is not part of current locality
 --    -> create fresh name in context and return
 makeFlexible :: [Id] -> VType Desugared -> Contextual (VType Desugared)
-makeFlexible flexs (DTTy id ts a) = DTTy id <$> mapM (makeFlexibleTyArg flexs) ts <*> pure a
-makeFlexible flexs (SCTy cty a) = SCTy <$> makeFlexibleCType flexs cty <*> pure a
-makeFlexible flexs (RTVar x a) | not (x `elem` flexs) = FTVar <$> (getContext >>= find') <*> pure a
+makeFlexible skip (DTTy id ts a) = DTTy id <$> mapM (makeFlexibleTyArg skip) ts <*> pure a
+makeFlexible skip (SCTy cty a) = SCTy <$> makeFlexibleCType skip cty <*> pure a
+makeFlexible skip (RTVar x a) | x `notElem` skip = FTVar <$> (getContext >>= find') <*> pure a
 -- find' either creates a new FlexMVar in current locality or identifies the one
 -- already existing
   where find' BEmp = freshMVar x
         find' (es :< FlexMVar y _) | trimVar x == trimVar y = return y
         find' (es :< Mark) = freshMVar x  -- only search in current locality
         find' (es :< _) = find' es
-makeFlexible flexs ty = return ty
+makeFlexible skip ty = return ty
 
 makeFlexibleAb :: [Id] -> Ab Desugared -> Contextual (Ab Desugared)
-makeFlexibleAb flexs (Ab v (ItfMap m _) a) = case v of
-  AbRVar x b -> do v' <- (if not (x `elem` flexs) then (AbFVar <$> (getContext >>= (find' x)) <*> pure b) else return $ AbRVar x b)
-                   m' <- mapM (mapM (mapM (makeFlexibleTyArg flexs))) m
+makeFlexibleAb skip (Ab v (ItfMap m _) a) = case v of
+  AbRVar x b -> do v' <- if x `notElem` skip then AbFVar <$> (getContext >>= find' x) <*> pure b else return $ AbRVar x b
+                   m' <- mapM (mapM (mapM (makeFlexibleTyArg skip))) m
                    return $ Ab v' (ItfMap m' a) a
-  _ ->          do m' <- mapM (mapM (mapM (makeFlexibleTyArg flexs))) m
+  _ ->          do m' <- mapM (mapM (mapM (makeFlexibleTyArg skip))) m
                    return $ Ab v (ItfMap m' a) a
 -- find' either creates a new FlexMVar in current locality or identifies the one
 -- already existing
@@ -403,29 +397,29 @@ makeFlexibleAb flexs (Ab v (ItfMap m _) a) = case v of
         find' x (es :< _) = find' x es
 
 makeFlexibleTyArg :: [Id] -> TyArg Desugared -> Contextual (TyArg Desugared)
-makeFlexibleTyArg flexs (VArg t a)  = VArg <$> makeFlexible flexs t <*> pure a
-makeFlexibleTyArg flexs (EArg ab a) = EArg <$> makeFlexibleAb flexs ab <*> pure a
+makeFlexibleTyArg skip (VArg t a)  = VArg <$> makeFlexible skip t <*> pure a
+makeFlexibleTyArg skip (EArg ab a) = EArg <$> makeFlexibleAb skip ab <*> pure a
 
 makeFlexibleAdj :: [Id] -> Adj Desugared -> Contextual (Adj Desugared)
-makeFlexibleAdj flexs (Adj (ItfMap m _) a) = do m' <- mapM (mapM (mapM (makeFlexibleTyArg flexs))) m
-                                                return $ Adj (ItfMap m' a) a
+makeFlexibleAdj skip (Adj (ItfMap m _) a) = do m' <- mapM (mapM (mapM (makeFlexibleTyArg skip))) m
+                                               return $ Adj (ItfMap m' a) a
 
 makeFlexibleCType :: [Id] -> CType Desugared -> Contextual (CType Desugared)
-makeFlexibleCType flexs (CType ps q a) = CType <$>
-                                         mapM (makeFlexiblePort flexs) ps <*>
-                                         makeFlexiblePeg flexs q <*>
+makeFlexibleCType skip (CType ps q a) = CType <$>
+                                         mapM (makeFlexiblePort skip) ps <*>
+                                         makeFlexiblePeg skip q <*>
                                          pure a
 
 makeFlexiblePeg :: [Id] -> Peg Desugared -> Contextual (Peg Desugared)
-makeFlexiblePeg flexs (Peg ab ty a) = Peg <$>
-                                      makeFlexibleAb flexs ab <*>
-                                      makeFlexible flexs ty <*>
+makeFlexiblePeg skip (Peg ab ty a) = Peg <$>
+                                      makeFlexibleAb skip ab <*>
+                                      makeFlexible skip ty <*>
                                       pure a
 
 makeFlexiblePort :: [Id] -> Port Desugared -> Contextual (Port Desugared)
-makeFlexiblePort flexs (Port adj ty a) = Port <$>
-                                         makeFlexibleAdj flexs adj <*>
-                                         makeFlexible flexs ty <*>
+makeFlexiblePort skip (Port adj ty a) = Port <$>
+                                         makeFlexibleAdj skip adj <*>
+                                         makeFlexible skip ty <*>
                                          pure a
 
 -- helpers

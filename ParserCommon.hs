@@ -1,7 +1,5 @@
-{-# LANGUAGE PackageImports, ConstraintKinds #-}
-{-# LANGUAGE StandaloneDeriving #-}
-{-# LANGUAGE GeneralizedNewtypeDeriving,FlexibleInstances #-}
-
+{-# LANGUAGE PackageImports, ConstraintKinds, StandaloneDeriving,
+             GeneralizedNewtypeDeriving, FlexibleInstances #-}
 module ParserCommon where
 
 import Text.Trifecta

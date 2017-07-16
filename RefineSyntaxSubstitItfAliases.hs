@@ -1,6 +1,3 @@
-{-# LANGUAGE ViewPatterns #-}
-{-# LANGUAGE LambdaCase #-}
-
 -- Recursively substitute an interface alias occurrence by its definition
 module RefineSyntaxSubstitItfAliases (substitItfAls) where
 
@@ -25,7 +22,7 @@ substitItfAls = substitItfAls' [] where
   substitItfAls' :: [Id] -> (Id, [TyArg Raw]) -> Refine (ItfMap Raw)
   substitItfAls' visited (x, ts) = do
     itfAls <- getRItfAliases
-    if not (x `elem` visited) then
+    if x `notElem` visited then
       case M.lookup x itfAls of
         Nothing -> return $ ItfMap (M.singleton x (BEmp :< ts)) (Raw Generated) --TODO: LC: put meaningful annot here
         Just (ps, ItfMap m _) ->
@@ -36,7 +33,7 @@ substitItfAls = substitItfAls' [] where
           do let ts' = if length ps == length ts + 1 &&
                           (snd (ps !! length ts) == ET)
                        then let a = Raw Implicit in
-                            ts ++ [EArg (Ab (AbVar "£" a) (ItfMap M.empty a) a) a]
+                            ts ++ [EArg (Ab (AbVar "£" a) (emptyItfMap a) a) a]
                        else ts
              checkArgs x (length ps) (length ts') (Raw Generated) -- TODO: LC: Fix annotation
              let subst = zip ps ts'
@@ -47,8 +44,8 @@ substitItfAls = substitItfAls' [] where
              -- recursively replace itf als in   x_1, ..., x_n
              --                       yielding   [[x_11 x_11_ts, ...], ...]
              ms <- mapM (\(x', insts) -> (mapM (\inst -> substitItfAls' (x:visited) (x', inst)) insts)) (M.toList m')
-             let ms' = map (\m'' -> foldl plusItfMap (ItfMap (M.empty) (Raw Generated)) m'') ms
-             let m'' = foldl plusItfMap (ItfMap (M.empty) (Raw Generated)) ms'
+             let ms' = map (foldl plusItfMap (emptyItfMap (Raw Generated))) ms
+             let m'' = foldl plusItfMap (emptyItfMap (Raw Generated)) ms'
              return m''
     else throwError $ errorRefItfAlCycle x
 
@@ -69,8 +66,8 @@ substitInTyArgs subst (x, ts) = do ts' <- mapM (substitInTyArg subst) ts
                                    return (x, ts')
 -- Replace (x, VT/ET) by ty-arg
 substitInTyArg :: Subst -> TyArg Raw -> Refine (TyArg Raw)
-substitInTyArg subst (VArg ty a) = VArg <$> (substitInVType subst ty) <*> pure a
-substitInTyArg subst (EArg ab a) = EArg <$> (substitInAb subst ab) <*> pure a
+substitInTyArg subst (VArg ty a) = VArg <$> substitInVType subst ty <*> pure a
+substitInTyArg subst (EArg ab a) = EArg <$> substitInAb subst ab <*> pure a
 
 substitInVType :: Subst -> VType Raw -> Refine (VType Raw)
 substitInVType subst (DTTy x ts a) = do
@@ -81,14 +78,14 @@ substitInVType subst (DTTy x ts a) = do
         null ts &&
         (isHdrCtxt ctx ||
          M.member x tmap), substLookupVT subst x) of -- if so, then substitute
-    (True, Just y) -> return $ y     -- TODO: LC: Right annotation assigned?
+    (True, Just y) -> return y     -- TODO: LC: Right annotation assigned?
     _              -> do ts' <- mapM (substitInTyArg subst) ts
                          return $ DTTy x ts' a
 substitInVType subst (SCTy ty a) = do cty <- substitInCType subst ty
                                       return $ SCTy cty a
 substitInVType subst (TVar x a) =
   case substLookupVT subst x of
-    Just y -> return $ y   -- TODO: LC: Right annotation assigned?
+    Just y -> return y   -- TODO: LC: Right annotation assigned?
     _      -> return $ TVar x a
 substitInVType subst ty = return ty  -- MkStringTy, MkIntTy, MkCharTy
 
@@ -108,7 +105,7 @@ substitInPeg subst (Peg ab ty a) = do ab' <- substitInAb subst ab
                                       return $ Peg ab' ty' a
 
 substitInAb :: Subst -> Ab Raw -> Refine (Ab Raw)
-substitInAb subst a = return a
+substitInAb subst = return
 
 substitInAdj :: Subst -> Adj Raw -> Refine (Adj Raw)
 substitInAdj subst (Adj m a) = do itfMap <- substitInItfMap subst m
@@ -121,6 +118,5 @@ substitInItfMap subst (ItfMap m a) = ItfMap <$> mapM (mapM (mapM (substitInTyArg
 
 checkArgs :: Id -> Int -> Int -> Raw -> Refine ()
 checkArgs x exp act a =
-  if exp /= act then
+  when (exp /= act) $
     throwError $ errorRefNumberOfArguments x exp act a
-  else return ()

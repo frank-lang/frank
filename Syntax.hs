@@ -1,14 +1,7 @@
-{-# LANGUAGE DataKinds #-}
-{-# LANGUAGE GADTs #-}
-{-# LANGUAGE StandaloneDeriving #-}
-{-# LANGUAGE FlexibleInstances #-}
-{-# LANGUAGE UndecidableInstances   #-}
-{-# LANGUAGE LambdaCase #-}
-{-# LANGUAGE KindSignatures #-}
-{-# LANGUAGE PolyKinds #-}
-{-# LANGUAGE PatternSynonyms #-}
-
 -- The raw abstract syntax and (refined) abstract syntax for Frank
+{-# LANGUAGE DataKinds,GADTs,StandaloneDeriving, FlexibleInstances,
+             UndecidableInstances, LambdaCase, KindSignatures,
+             PatternSynonyms #-}
 module Syntax where
 
 import qualified Data.Map.Strict as M
@@ -40,6 +33,10 @@ strip = fst . unAnn
 attr :: AnnotFix f a -> a
 attr = snd . unAnn
 
+modifyAnn :: a -> AnnotFix f a -> AnnotFix f a
+modifyAnn a = ann a . strip
+
+-- To annotate a node by where it comes from
 data Source = InCode (Integer, Integer)
             | BuiltIn
             | Implicit
@@ -502,21 +499,33 @@ liftAbMod abMod = Ab abMod (ItfMap M.empty (attr abMod)) (attr abMod)
 trimVar :: Id -> Id
 trimVar = takeWhile (/= '$')
 
--- e.g. [State Bool, State Int] and [State String, State Char] get unified to [State Bool, State Int, State String, State Char]
--- i.e. the second ItfMap dominates (State Char is active)
+{- Operations on interface maps -}
+
+-- e.g. [State Bool, State Int] and [State String, State Char] get unified to
+-- [State Bool, State Int, State String, State Char], i.e. the second ItfMap
+-- possible overrides an active instance (State Char is active in the result)
 plusItfMap :: ItfMap t -> ItfMap t -> ItfMap t
-plusItfMap (ItfMap m a) (ItfMap m' _) = foldl plusInstantiation (ItfMap m a) (M.toList m')
-  where plusInstantiation :: ItfMap t -> (Id, Bwd [TyArg t]) -> ItfMap t
-        plusInstantiation (ItfMap m'' a'') (x, instants) = if M.member x m'' then ItfMap (M.adjust (\instants' -> instants' <>< bwd2fwd instants) x m'') a''
-                                                                             else ItfMap (M.insert x instants m'') a''
+plusItfMap (ItfMap m a) (ItfMap m' _) = foldl plusItfMap' (ItfMap m a) (M.toList m')
+  where plusItfMap' :: ItfMap t -> (Id, Bwd [TyArg t]) -> ItfMap t
+        plusItfMap' (ItfMap m'' a'') (x, instants) = if M.member x m'' then ItfMap (M.adjust (\instants' -> instants' <>< bwd2fwd instants) x m'') a''
+                                                                       else ItfMap (M.insert x instants m'') a''
+
+addInstanceToItfMap :: ItfMap Raw -> (Id, [TyArg Raw]) -> ItfMap Raw
+addInstanceToItfMap (ItfMap m a) (x, args) = if M.member x m then ItfMap (M.adjust (:< args) x m) a
+                                                             else ItfMap (M.insert x (BEmp :< args) m) a
 
 extractLargestEqualSuffixes :: ItfMap t -> ItfMap t -> ItfMap t
-extractLargestEqualSuffixes (ItfMap m a) (ItfMap m' _) = ItfMap m'' a
-  where m'' = M.filter (not . null) $ M.intersectionWith (\args args' -> takeBwd (min (length args) (length args')) args) m m'
+extractLargestEqualSuffixes (ItfMap m1 a) (ItfMap m2 _) = ItfMap m'' a
+  where m'  = M.intersectionWith (\args args' -> takeBwd (min (length args) (length args')) args) m1 m2
+        m'' = M.filter (not . null) m'
 
 minusItfMap :: ItfMap t -> ItfMap t -> ItfMap t
-minusItfMap (ItfMap m a) (ItfMap m' _) = ItfMap m'' a
-  where m'' = M.filter (not. null) $ M.differenceWith (\args args' -> Just $ dropBwd (length args') args) m m'
+minusItfMap (ItfMap m1 a) (ItfMap m2 _) = ItfMap m'' a
+  where m' = M.differenceWith (\args args' -> Just $ dropBwd (length args') args) m1 m2
+        m'' = M.filter (not. null) m'
 
-emptyItfMap :: ItfMap t -> Bool
-emptyItfMap (ItfMap m _) = M.null m
+emptyItfMap :: t -> ItfMap t
+emptyItfMap = ItfMap M.empty
+
+isItfMapEmpty :: ItfMap t -> Bool
+isItfMapEmpty (ItfMap m _) = M.null m

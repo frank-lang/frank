@@ -1,6 +1,5 @@
+-- Specifies communication with user: Debugging, Error reporting, ...
 {-# LANGUAGE GADTs #-}
-{-# LANGUAGE ViewPatterns #-}
-
 module Debug where
 
 import BwdFwd
@@ -9,6 +8,7 @@ import ParserCommon
 import RefineSyntaxCommon
 import TypeCheckCommon
 
+import Control.Monad
 import qualified Data.Map.Strict as M
 import Data.List
 
@@ -19,10 +19,10 @@ import System.IO.Unsafe
 
 import qualified Text.PrettyPrint as PP
 
--- Set by the main entry point if relevant flag detected.
--- 1) debugVerboseOn
--- 2) debugParserOn
--- 3) debugTypeCheckOn
+-- Is set by the main entry point if relevant flag detected.
+-- 1) isDebugVerboseOn
+-- 2) isDebugParserOn
+-- 3) isDebugTypeCheckOn
 debugMode :: IORef (Bool, Bool, Bool)
 {-# NOINLINE debugMode #-}
 debugMode = unsafePerformIO (newIORef (False, False, False))
@@ -32,26 +32,23 @@ getDebugMode :: () -> (Bool, Bool, Bool)
 {-# NOINLINE getDebugMode #-}
 getDebugMode () = unsafePerformIO (readIORef debugMode)
 
--- 1) Output full (untrimmed) ty var names
+-- Output full (untrimmed) ty var names
 -- Hack: Use () argument to prevent caching
-debugVerboseOn :: () -> Bool
-debugVerboseOn () = case getDebugMode () of (b, _, _) -> b
+isDebugVerboseOn :: () -> Bool
+isDebugVerboseOn () = case getDebugMode () of (b, _, _) -> b
 
--- 1) Output parsing process
+-- Output parsing process
 -- Hack: Use () argument to prevent caching
-debugParserOn :: () -> Bool
-debugParserOn () = case getDebugMode () of (_, b, _) -> b
+isDebugParserOn :: () -> Bool
+isDebugParserOn () = case getDebugMode () of (_, b, _) -> b
 
--- 1) Output type checking process
+-- Output type checking process
 -- Hack: Use () argument to prevent caching
-debugTypeCheckOn :: () -> Bool
-debugTypeCheckOn () = case getDebugMode () of (_, _, b) -> b
-
-ifDebugParserOnThen :: MonadicParsing m => m () -> m ()
-ifDebugParserOnThen f = if debugParserOn () then f else return ()
+isDebugTypeCheckOn :: () -> Bool
+isDebugTypeCheckOn () = case getDebugMode () of (_, _, b) -> b
 
 ifDebugTypeCheckOnThen :: Contextual () -> Contextual ()
-ifDebugTypeCheckOnThen f = if debugTypeCheckOn () then f else return ()
+ifDebugTypeCheckOnThen f = when (isDebugTypeCheckOn ()) f
 
 {- Error messages (only producing the output strings) -}
 
@@ -208,12 +205,10 @@ logEndSolve a ext ty = ifDebugTypeCheckOnThen $ do
   debugTypeCheckM $ "ended solving " ++ show a ++ " = " ++ show (ppVType ty) ++ "\n under suffix\n   " ++ show (ppSuffix ext) ++ "\n\n"
 
 debugParserM :: (MonadicParsing m) => String -> m ()
-debugParserM str = do
-  traceM str
+debugParserM = traceM
 
 debugRefineM :: String -> Refine ()
-debugRefineM str = do
-  traceM str
+debugRefineM = traceM
 
 -- Uses the hack of of first retrieving context but without printing it.
 -- This achieves that calls of this function are not cached and newly executed
@@ -277,8 +272,8 @@ ppVType :: (Show a, HasSource a) => VType a -> Doc
 ppVType (DTTy x ts _) = text x <+> foldl (<+>) PP.empty (map ppTyArg ts)
 ppVType (SCTy cty _) = ppCType cty
 ppVType (TVar x _) = text x
-ppVType (RTVar x _) = if debugVerboseOn () then text x else text $ trimVar x
-ppVType (FTVar x _) = if debugVerboseOn () then text x else text $ trimVar x
+ppVType (RTVar x _) = if isDebugVerboseOn () then text x else text $ trimVar x
+ppVType (FTVar x _) = if isDebugVerboseOn () then text x else text $ trimVar x
 ppVType (StringTy _) = text "String"
 ppVType (IntTy _) = text "Int"
 ppVType (CharTy _) = text "Char"
@@ -309,8 +304,8 @@ ppAb (Ab v m _) =
 ppAbMod :: (Show a, HasSource a) => AbMod a -> Doc
 ppAbMod (EmpAb _) = text "0"
 ppAbMod (AbVar x _) = text x
-ppAbMod (AbRVar x _) = if debugVerboseOn () then text x else text $ trimVar x
-ppAbMod (AbFVar x _) = if debugVerboseOn () then text x else text $ trimVar x
+ppAbMod (AbRVar x _) = if isDebugVerboseOn () then text x else text $ trimVar x
+ppAbMod (AbFVar x _) = if isDebugVerboseOn () then text x else text $ trimVar x
 
 ppItfMap :: (Show a, HasSource a) => ItfMap a -> Doc
 ppItfMap (ItfMap m _) = PP.hsep $ intersperse PP.comma $ map ppItfMapPair $ M.toList m

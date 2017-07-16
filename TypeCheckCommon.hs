@@ -1,6 +1,5 @@
-{-# LANGUAGE FlexibleInstances,StandaloneDeriving,TypeSynonymInstances,
-             MultiParamTypeClasses,GeneralizedNewtypeDeriving,
-             FlexibleContexts,GADTs,ViewPatterns #-}
+{-# LANGUAGE FlexibleInstances,StandaloneDeriving,
+             MultiParamTypeClasses,GeneralizedNewtypeDeriving #-}
 module TypeCheckCommon where
 
 import qualified Data.Map.Strict as M
@@ -14,8 +13,6 @@ import Control.Monad.State hiding (modify)
 import BwdFwd
 import FreshNames
 import Syntax
-
--- import Text.PrettyPrint (Doc, text, sep, nest, (<+>), ($$))
 
 newtype Contextual a = Contextual
                        { unCtx :: StateT TCState (FreshMT (Except String)) a}
@@ -65,7 +62,7 @@ type Suffix = [(Id, Decl)]
 -- push fresh meta variable on context (corresponds to "freshMeta" in Gundry's thesis)
 freshMVar :: Id -> Contextual Id
 freshMVar x = do n <- fresh
-                 let s = trimVar x ++ "$f" ++ (show n)
+                 let s = trimVar x ++ "$f" ++ show n
                  modify (:< FlexMVar s Hole)
                  return s
 
@@ -125,7 +122,7 @@ putAmbient ab = do s <- get
 -- ms:  [...]   ->    [0, ...]
 pushMarkCtx :: Contextual ()
 pushMarkCtx = do s <- get
-                 put $ s { ms = 0 : (ms s) }
+                 put $ s { ms = 0 : ms s }
 
 -- ctx: [...]   ->    [..., Mark]
 -- ms:  h:ts    ->    (succ h):ts
@@ -183,7 +180,7 @@ initContextual :: Prog Desugared -> Contextual (Prog Desugared)
 initContextual (MkProg ttms) =
   do mapM_ f (getDataTs ttms) -- init ctrMap
      mapM_ g (getItfs ttms)   -- init cmdMap
-     mapM h (getDefs ttms)    -- init ctx with [hdr: hdr-type]
+     mapM_ h (getDefs ttms)    -- init ctx with [hdr: hdr-type]
      return (MkProg ttms)
   where -- data dt p_1 ... p_n = ctr_1 x_11 ... x_1m
         --                     | ...
@@ -194,7 +191,7 @@ initContextual (MkProg ttms) =
             mapM_ (\(Ctr ctr xs _) -> addCtr dt ctr ps' xs) ctrs
 
         -- interface itf p_1 .. p_m =
-        --   cmd_1 : forall q_11 ... q_1n, x_11 -> ... -> q_1l -> y_1
+        --   cmd_1 q_11 ... q_1n: x_11 -> ... -> q_1l -> y_1
         -- | ...
         -- For each cmd_i add to ctrMap: cmd_i -> (itf, itf-ty-vars, cmd-ty-vars, xs_i, y_i)
         g :: Itf Desugared -> Contextual ()

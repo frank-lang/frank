@@ -9,8 +9,6 @@ import RefineSyntax
 import DesugarSyntax
 import Debug
 
-import Debug.Trace
-
 import qualified Shonky.Semantics as Shonky
 
 import Data.IORef
@@ -88,11 +86,10 @@ checkUse p use =
 
 compileProg :: String -> Prog Desugared -> [(String, String)] -> IO Shonky.Env
 compileProg progName p args =
-  do env <- if ("output-shonky","") `elem` args then
-              do compileToFile p progName
-                 Shonky.loadFile progName
-            else return $ Shonky.load $ compile p
-     return env
+  if ("output-shonky","") `elem` args then
+    do compileToFile p progName
+       Shonky.loadFile progName
+  else return $ Shonky.load $ compile p
 
 evalProg :: Shonky.Env -> String -> IO ()
 evalProg env tm =
@@ -104,7 +101,7 @@ evalProg env tm =
 
 compileAndRunProg :: String -> [(String, String)] -> IO ()
 compileAndRunProg fileName args =
-  do let progName = takeWhile (\c -> c /= '.') fileName
+  do let progName = takeWhile (/= '.') fileName
      prog <- parseProg fileName args
      case lookup "eval" args of
        Just v -> do tm <- parseEvalTm v
