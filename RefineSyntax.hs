@@ -161,14 +161,17 @@ refinePeg (Peg ab ty a) = do ab' <- refineAb ab
 refineAb :: Ab Raw -> Refine (Ab Refined)
 refineAb ab@(Ab v mp@(ItfMap m _) a) =
 --       [v | itf_1 x_11 ... x_1k, ..., itf_l x_l1 ... x_ln]
-  do -- Check if itf_i contains effect variable
-     es <- getIntroducedEVars mp
-     if null es then do m' <- refineItfMap mp
-                        return $ Ab (refineAbMod v) m' a'
-     else if length es == 1 then do let u = head es
-                                    m' <- refineItfMap (ItfMap (M.delete u m) a)
-                                    return $ Ab (AbVar u a') m' a'
-     else throwError $ errorRefAbMultEffVars ab es
+  do -- Check that v has been introduced before or is now implicitly introduced
+     evset <- getEVSet
+     ctx <- getTopLevelCtxt
+     case v of
+       (EmpAb b) -> do m' <- refineItfMap mp
+                       return $ Ab (EmpAb (rawToRef b)) m' a'
+       (AbVar x b) ->
+         if x `S.member` evset || isHdrCtxt ctx then
+            do m' <- refineItfMap mp
+               return $ Ab (AbVar x (rawToRef b)) m' a'
+         else throwError $ errorRefIdNotDeclared "effect type variable" x a
   where a' = rawToRef a
 
 -- Input: itf_1 x_11 ... x_1k, ..., itf_l x_l1 ... x_ln
@@ -190,7 +193,7 @@ refineItfMap (ItfMap m a) = do
   -- replace interface aliases by interfaces
   ms <- mapM (\(x, insts) -> mapM (\inst -> substitItfAls (x, inst)) (bwd2fwd insts)) (M.toList m)
   let (ItfMap m' a') = foldl plusItfMap (emptyItfMap a) (concat ms)
-  -- refine each interface
+  -- refine instantiations of each interface
   m'' <- M.fromList <$> (mapM refineEntry) (M.toList m')
   return $ ItfMap m'' (rawToRef a)
   where refineEntry :: (Id, Bwd [TyArg Raw]) -> Refine (Id, Bwd [TyArg Refined])
@@ -204,10 +207,7 @@ refineItfMap (ItfMap m a) = do
 --                   and [£] has been explicitly added before
 --                if 2), set t_{n+1} := [£]
                   insts' <- mapM (\ts -> do let a' = Raw (implicitNear a)
-                                            let ts' = if length ps == length ts + 1 &&
-                                                         (snd (ps !! length ts) == ET) then
-                                                         ts ++ [EArg (Ab (AbVar "£" a') (emptyItfMap a') a') a']
-                                                      else ts
+                                            let ts' = concretiseEpsArg ps ts a'
                                             checkArgs x (length ps) (length ts') a
                                             mapM refineTyArg ts')
                                  insts
@@ -236,32 +236,30 @@ refineAdj (Adj m a) = do m' <- refineItfMap m
 refineVType :: VType Raw -> Refine (VType Refined)
 refineVType (DTTy x ts a) =
 --           x t_1 ... t_n
-  do dtm <- getRDTs
+  do -- Check that x is datatype or introduced or just-implicitly intro'd ty var
+     dtm <- getRDTs
+     tmap <- getTMap
+     ctx <- getTopLevelCtxt
      case M.lookup x dtm of
        Just ps -> do
---        1) data x p_1 ... p_n
---    or  2) data x p_1 ... p_n [£]       ([£] has been explicitly added before)
-                      -- If 2), set t_{n+1} := [£]
+--       data x p_1 ... p_n
          let a' = Raw (implicitNear a)
-             ts' = if length ps == length ts + 1 &&
-                      (snd (ps !! length ts) == ET)
-                   then ts ++ [EArg (Ab (AbVar "£" a') (ItfMap M.empty a') a') a']
-                   else ts
+         let ts' = concretiseEpsArg ps ts a'
          checkArgs x (length ps) (length ts') a
          ts'' <- mapM refineTyArg ts'
          return $ DTTy x ts'' (rawToRef a)
-       Nothing -> do
-         m <- getTMap
-         ctx <- getTopLevelCtxt
-         if null ts &&  -- there must be no arguments to ty var
-            (isHdrCtxt ctx || -- x can be implic. poly. ty var in hdr sign.
-             M.member x m)    -- x can be in val ty contexts
+       Nothing ->
+         if null ts &&          -- there must be no arguments to ty var
+            (isHdrCtxt ctx ||   -- x can be implic. ty var in hdr sign.
+             x `M.member` tmap)    -- x can be in val ty contexts
          then return $ TVar x (rawToRef a)
-         else throwError $ errorRefIdNotDeclared "type variable" x a
+         else throwError $ errorRefIdNotDeclared "value type variable" x a
 refineVType (SCTy ty a) = refineCType ty >>= return . swap SCTy (rawToRef a)
 refineVType (TVar x a) =
-  do tmap <- getTMap
+  do -- Check that x is intro'd ty-var or datatype or just-implicitly intro'd ty var
+     tmap <- getTMap
      dtm <- getRDTs
+     ctx <- getTopLevelCtxt
      case M.lookup x tmap of
        Just _  -> return $ TVar x (rawToRef a)
        Nothing -> case M.lookup x dtm of
@@ -273,7 +271,11 @@ refineVType (TVar x a) =
               checkArgs x (length ps) (length ts) a
               ts' <- mapM refineTyArg ts
               return $ DTTy x ts' (rawToRef a)
-         Nothing -> return $ TVar x (rawToRef a)
+         Nothing ->
+           -- last possibility: x can be implic. ty var in hdr sign.
+           if isHdrCtxt ctx
+           then return $ TVar x (rawToRef a)
+           else throwError $ errorRefIdNotDeclared "value type variable" x a
 refineVType (StringTy a) = return $ StringTy (rawToRef a)
 refineVType (IntTy a) = return $ IntTy (rawToRef a)
 refineVType (CharTy a) = return $ CharTy (rawToRef a)

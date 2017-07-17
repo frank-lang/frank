@@ -398,8 +398,8 @@ getLoc = do r <- rend
             line <- line
             case delta r of
               (Lines l c _ _) -> return $ Raw $ InCode (fromIntegral l + 1, fromIntegral c + 1)
-              _ -> return $ Raw $ InCode (-2, -2) -- TODO: LC: fix this after understanding
-                                                       -- what the different Delta cases really mean
+              _ -> do return $ Raw $ InCode (-2, -2) -- TODO: LC: fix this after understanding
+                                                     -- what the different Delta cases really mean
 
 attachLoc :: (MonadicParsing m) => m (Raw -> AnnotFix f Raw) -> m (AnnotFix f Raw)
 attachLoc parser = do a <- getLoc

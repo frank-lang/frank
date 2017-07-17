@@ -1,0 +1,7 @@
+-- #desc   Type-checking error
+
+-- #return no effect type variable named E declared (line 4 , column 18)
+data Box = box {[E|](List Int)}
+
+main: {Unit}
+main! = unit

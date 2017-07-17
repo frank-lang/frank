@@ -1,6 +1,6 @@
 -- Making implicit [£] explicit in data type, interface and interface alias
 -- definitions
-module RefineSyntaxConcretiseEps (concretiseEps) where
+module RefineSyntaxConcretiseEps (concretiseEps, concretiseEpsArg) where
 
 import Control.Monad
 import Control.Monad.Except
@@ -179,6 +179,15 @@ concretiseEpsInItf posIds (Itf itf ps cmds a) = Itf itf ps' cmds a where
 concretiseEpsInItfAl :: [Id] -> ItfAlias Raw -> ItfAlias Raw
 concretiseEpsInItfAl posIds (ItfAlias itfAl ps itfMap a) = ItfAlias itfAl ps' itfMap a where
   ps' = if ("£", ET) `notElem` ps && itfAl `elem` posIds then ps ++ [("£", ET)] else ps
+
+{- This function adds an implicit [£|] *argument* if the type signature
+   requires it. -}
+
+concretiseEpsArg :: [(Id, Kind)] -> [TyArg Raw] -> Raw -> [TyArg Raw]
+concretiseEpsArg ps ts a = if length ps == length ts + 1 &&
+                              (snd (ps !! length ts) == ET)
+                           then ts ++ [EArg (Ab (AbVar "£" a) (ItfMap M.empty a) a) a]
+                           else ts
 
 {- Helper functions -}
 

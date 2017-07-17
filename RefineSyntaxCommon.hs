@@ -33,8 +33,8 @@ data RState = MkRState { interfaces :: IFMap
                        , handlers :: [IPair]              -- handler Id -> # of arguments
                        , ctrs :: [IPair]                  -- constructor Id -> # of arguments
                        , cmds :: [IPair]                  -- command Id -> # of arguments
-                       , tmap :: TVarMap                  -- type var Id ->   VType Raw     type vars of current context
-                       , evmap :: EVarSet                 -- effect var Id                  effect vars of current context
+                       , tmap :: TVarMap                  -- type var Id ->   VType Raw     val ty vars of current context
+                       , evmap :: EVarSet                 -- effect var Id                  eff ty vars of current context
                        , tlctxt :: Maybe TopLevelCtxt }
 
 getRState :: Refine RState

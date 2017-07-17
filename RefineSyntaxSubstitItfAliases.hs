@@ -13,10 +13,12 @@ import qualified Data.Set as S
 import BwdFwd
 import Syntax
 import RefineSyntaxCommon
+import RefineSyntaxConcretiseEps
 import Debug
 
--- Given an occurrence of interface instantiation x t_1 ... t_n, determine
--- whether it is an interface alias and if so, recursively substitute
+-- Given an occurrence of interface instantiation x t_1 ... t_n:
+-- 1) Implicit [£] are made explicit
+-- 2) Determine whether it is an interface alias and if so, recursiv. substitute
 substitItfAls :: (Id, [TyArg Raw]) -> Refine (ItfMap Raw)
 substitItfAls = substitItfAls' [] where
   substitItfAls' :: [Id] -> (Id, [TyArg Raw]) -> Refine (ItfMap Raw)
@@ -30,11 +32,7 @@ substitItfAls = substitItfAls' [] where
 --         or 2) interface x p_1 ... p_n [£] = [itf_i p_i1 ... p_ik, ...]
 --               and [£] has been explicitly added before
 --                                if 2), set t_{n+1} := [£]
-          do let ts' = if length ps == length ts + 1 &&
-                          (snd (ps !! length ts) == ET)
-                       then let a = Raw Implicit in
-                            ts ++ [EArg (Ab (AbVar "£" a) (emptyItfMap a) a) a]
-                       else ts
+          do let ts' = concretiseEpsArg ps ts (Raw Implicit)
              checkArgs x (length ps) (length ts') (Raw Generated) -- TODO: LC: Fix annotation
              let subst = zip ps ts'
              -- replace   x ts
