@@ -472,7 +472,7 @@ substOpenAbPort ab (MkPort adj ty) =
 
 -- ability (1st arg) might be overridden by adjustment (2nd arg)
 plus :: Ab t -> Adj t -> Ab t
-plus (Ab v m a) (Adj m' _) = Ab v (plusItfMap m m') a
+plus (Ab v m a) (Adj m' _) = Ab v (m `plusItfMap` m') a
 
 getOpName :: Operator t -> Id
 getOpName (Mono x _) = x

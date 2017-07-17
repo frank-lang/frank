@@ -1,3 +1,4 @@
+
 -- A simple parser for the Frank language
 {-# LANGUAGE PackageImports #-}
 module Parser where
@@ -396,6 +397,7 @@ runTokenProgParse = runProgParse evalTokenIndentationParserT
 getLoc :: (MonadicParsing m) => m Raw
 getLoc = do r <- rend
             line <- line
+            pos <- position
             case delta r of
               (Lines l c _ _) -> return $ Raw $ InCode (fromIntegral l + 1, fromIntegral c + 1)
               _ -> do return $ Raw $ InCode (-2, -2) -- TODO: LC: fix this after understanding

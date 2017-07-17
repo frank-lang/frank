@@ -1,0 +1,9 @@
+-- #desc   Don't add epsilon argument to Co as there is no implicit epsilon
+-- #return Co expects 1 argument(s) but 0 given (line 5 , column 31)
+
+-- cooperative concurrency interface
+interface Co [E] = fork : {[E|Co]Unit} -> Unit
+                 | yield : Unit
+
+main: {Unit}
+main! = unit

@@ -206,8 +206,13 @@ refineItfMap (ItfMap m a) = do
 --             or 2) interface x p_1 ... p_n [£] = ...
 --                   and [£] has been explicitly added before
 --                if 2), set t_{n+1} := [£]
+                  evset <- getEVSet
+                  ctx <- getTopLevelCtxt
                   insts' <- mapM (\ts -> do let a' = Raw (implicitNear a)
-                                            let ts' = concretiseEpsArg ps ts a'
+                                            let ts' = if "£" `S.member` evset ||
+                                                         isHdrCtxt ctx
+                                                      then concretiseEpsArg ps ts a'
+                                                      else ts
                                             checkArgs x (length ps) (length ts') a
                                             mapM refineTyArg ts')
                                  insts
@@ -240,11 +245,14 @@ refineVType (DTTy x ts a) =
      dtm <- getRDTs
      tmap <- getTMap
      ctx <- getTopLevelCtxt
+     evset <- getEVSet
      case M.lookup x dtm of
        Just ps -> do
 --       data x p_1 ... p_n
          let a' = Raw (implicitNear a)
-         let ts' = concretiseEpsArg ps ts a'
+         let ts' = if "£" `S.member` evset || isHdrCtxt ctx
+                   then concretiseEpsArg ps ts a'
+                   else ts
          checkArgs x (length ps) (length ts') a
          ts'' <- mapM refineTyArg ts'
          return $ DTTy x ts'' (rawToRef a)

@@ -32,7 +32,11 @@ substitItfAls = substitItfAls' [] where
 --         or 2) interface x p_1 ... p_n [£] = [itf_i p_i1 ... p_ik, ...]
 --               and [£] has been explicitly added before
 --                                if 2), set t_{n+1} := [£]
-          do let ts' = concretiseEpsArg ps ts (Raw Implicit)
+          do evset <- getEVSet
+             ctx <- getTopLevelCtxt
+             let ts' = if "£" `S.member` evset || isHdrCtxt ctx
+                       then concretiseEpsArg ps ts (Raw Implicit)
+                       else ts
              checkArgs x (length ps) (length ts') (Raw Generated) -- TODO: LC: Fix annotation
              let subst = zip ps ts'
              -- replace   x ts
