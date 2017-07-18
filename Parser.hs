@@ -19,6 +19,8 @@ import Text.Parser.Token as Tok
 import Text.Parser.Token.Style
 import qualified Text.Parser.Token.Highlight as Hi
 
+import qualified Data.ByteString.Char8 as Char8
+
 import Test.Tasty (TestTree, testGroup)
 import Test.Tasty.HUnit (testCase, assertEqual, assertFailure, Assertion)
 
@@ -368,29 +370,28 @@ evalTokenIndentationParserT :: Monad m => FrankParser Token m a ->
                                IndentationState -> m a
 evalTokenIndentationParserT = evalIndentationParserT . runFrankParser
 
+--TODO: LC: Give types, make parsing-interface clearer
 runParse ev p input =
    let indA = ev p $ mkIndentationState 0 infIndentation True Ge
-   in case parseString indA mempty input of
+   in case parseString indA (Directed Char8.empty 0 0 0 0) input of
     Failure err -> Left (show err)
     Success t -> Right t
 
 runProgParse ev input = runParse ev prog input
 
-runParseFromFileEx ev p fname =
-  let indA = ev p $ mkIndentationState 0 infIndentation True Ge in
-  do res <- parseFromFileEx indA fname
-     case res of
-       Failure err -> return $ Left (show err)
-       Success t -> return $ Right t
+-- runParseFromFileEx ev p fname =
+--   let indA = ev p $ mkIndentationState 0 infIndentation True Ge in
+--   do res <- parseFromFileEx indA fname
+--      case res of
+--        Failure err -> return $ Left (show err)
+--        Success t -> return $ Right t
 
-runProgParseFromFileEx ev fname = runParseFromFileEx ev prog fname
+-- runProgParseFromFileEx ev fname = runParseFromFileEx ev prog fname
 
---runCharParseFromFile = runParseFromFileEx evalCharIndentationParserT
-runTokenParseFromFile :: (MonadIO m, Applicative m, MonadicParsing m) =>
-                         String -> m (Either String (Prog Raw))
-runTokenParseFromFile = runProgParseFromFileEx evalTokenIndentationParserT
+-- runTokenParseFromFile :: (MonadIO m, Applicative m, MonadicParsing m) =>
+--                          String -> m (Either String (Prog Raw))
+-- runTokenParseFromFile = runProgParseFromFileEx evalTokenIndentationParserT
 
---runCharParse = runParse evalCharIndentationParserT
 runTokenParse p = runParse evalTokenIndentationParserT p
 runTokenProgParse = runProgParse evalTokenIndentationParserT
 
@@ -399,9 +400,8 @@ getLoc = do r <- rend
             line <- line
             pos <- position
             case delta r of
-              (Lines l c _ _) -> return $ Raw $ InCode (fromIntegral l + 1, fromIntegral c + 1)
-              _ -> do return $ Raw $ InCode (-2, -2) -- TODO: LC: fix this after understanding
-                                                     -- what the different Delta cases really mean
+              (Directed _ l c _ _) -> return $ Raw $ InCode (fromIntegral l + 1, fromIntegral c + 1)
+              _ -> error "precondition not fulfilled"
 
 attachLoc :: (MonadicParsing m) => m (Raw -> AnnotFix f Raw) -> m (AnnotFix f Raw)
 attachLoc parser = do a <- getLoc

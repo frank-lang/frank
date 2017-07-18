@@ -52,8 +52,10 @@ extractEvalUse (DefTm (Def _ _ [cls] _) _) = getBody cls
 glue :: Prog Desugared -> TopTm Desugared -> Prog Desugared
 glue (MkProg xs) x = MkProg (x : xs)
 
-parseProg fileName _ = runTokenProgParse <$> readFile fileName
+parseProg :: FilePath -> [(String, String)] -> IO (Either String (Prog Raw))
+parseProg fileName args = runTokenProgParse <$> readFile fileName
 
+parseEvalTm :: String -> IO (Tm Raw)
 parseEvalTm v = case runTokenParse parseRawTm v of
   Left err -> die err
   Right tm -> return tm
