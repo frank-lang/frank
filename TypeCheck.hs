@@ -239,6 +239,7 @@ checkTm (DCon (DataCon k xs _) a) ty =           -- Data rule
      -- prepare flexible ty vars and ty args
      args' <- mapM (makeFlexibleTyArg []) args
      ts' <- mapM (makeFlexible []) ts
+     -- unify with expected type
      unify ty (DTTy dt args' a)
      mapM_ (uncurry checkTm) (zip xs ts')
 
@@ -288,7 +289,7 @@ checkCls cls@(Cls pats tm _) ports (Peg ab ty _)
 -- clause:   pat_1     ...    pat_n  =  tm
   | length pats == length ports =
      do pushMarkCtx
-        putAmbient ab  -- restrict ambient ability
+        putAmbient ab  -- initialise ambient ability
         bs <- concat <$> zipWithM checkPat pats ports
         -- Bring any bindings in to scope for checking the term then purge the
         -- marks (and suffixes) in the context created for this clause.

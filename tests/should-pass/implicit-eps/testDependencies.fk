@@ -1,0 +1,23 @@
+-- #desc   A simple test to check if dependencies are resolved correctly
+-- #return unit
+
+data UnitBox [E] = ubox {[E|]Unit}
+data UnitUnitBox [F] = uubox (UnitBox [F|])
+data UnitUnitUnitBox [G] = uuubox (UnitUnitBox [G|]) (UnitBox [G|])
+
+data UnitBox' = ubox' {Unit}
+data UnitUnitBox' [F] = uubox' (UnitBox' [F|])
+data UnitUnitUnitBox' [G] = uuubox' (UnitUnitBox' [G|]) (UnitBox' [G|])
+
+data UnitBox'' = ubox'' {Unit}
+data UnitUnitBox'' = uubox'' (UnitBox'')
+data UnitUnitUnitBox'' = uuubox'' (UnitUnitBox'') (UnitBox'')
+
+test: {UnitUnitUnitBox'' -> Unit}
+test x = unit
+
+test': {UnitUnitUnitBox'' [Console] -> [Console]Unit}
+test' x = unit
+
+main: {Unit}
+main! = unit
