@@ -79,7 +79,7 @@ inScope x ty m = do modify (:< TermVar x ty)
                     return a
   where dropVar :: Context -> Context
         dropVar BEmp = error "Invariant violation"
-        dropVar (es :< TermVar y _) | x == y = es
+        dropVar (es :< TermVar y _) | strip x == strip y = es
         dropVar (es :< e) = dropVar es :< e
 
 -- Run a contextual computation in a modified ambient environment

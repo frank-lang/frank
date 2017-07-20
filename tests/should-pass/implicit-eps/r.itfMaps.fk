@@ -1,0 +1,12 @@
+-- #desc   Bug: ItfMaps are not correctly scanned for whether they demand implicit epsilon
+-- #return unit
+
+data ChoiceBoxA Y = boxA {[MonoChoiceA Y]Y}
+interface MonoChoiceA X = chooseA : {[MonoChoiceA X]X} -> {[MonoChoiceA X]X} -> X
+
+-- MonoChoiceA has implicit epsilon
+-- ... thus Bundle should have one, too.
+interface Bundle = [MonoChoiceA Int]
+
+main: {Unit}
+main! = unit

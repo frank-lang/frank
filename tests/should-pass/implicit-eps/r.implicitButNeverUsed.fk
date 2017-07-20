@@ -1,0 +1,20 @@
+-- Bug: Force has implicit \eps. But this should not be the case, because the
+-- \eps is never used. This causes an unwanted error
+-- "Force expects 2 argument(s) but 0 given (line 14 , column 9)"
+
+-- #desc   Bug of having an implicit. \eps for Force, this should not be the case.
+-- #return unit
+
+data MaybeThunk X = thunk {X}
+                  | value X
+
+data Bool = false | true
+
+interface Force [F] = force X: MaybeThunk X [F|] -> X
+                    | forceIf X: Bool -> MaybeThunk X [F|] -> MaybeThunk X [F|]
+
+test: {[Force]Int}
+test! = force (value 3)
+
+main: {Unit}
+main! = unit

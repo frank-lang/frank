@@ -18,13 +18,16 @@ import Debug
 -- Node container for the graph algorithm
 data Node = DtNode (DataT Raw) | ItfNode (Itf Raw) | ItfAlNode (ItfAlias Raw)
   deriving (Show, Eq)
+instance HasId Node where getId (DtNode d) = getId d
+                          getId (ItfNode i) = getId i
+                          getId (ItfAlNode i) = getId i
 
 -- Used as a result of inspecting a node on whether it has an
 -- (implicit/explicit) [£]
-data HasEps = HasEps |          -- "Yes" with certainty
-              HasEpsIfAny [Id]  -- "Yes" if any of the given id's (definitions)
-                                --       have implicit [£]
-                                -- (n.b. HasEpsIfAny [] corresponds to "No")
+data HasEps = HasEps |           -- "Yes" with certainty
+              HasEpsIfAny [Node] -- "Yes" if any of the given nodes (definitions)
+                                 --       have implicit [£]
+                                 -- (n.b. HasEpsIfAny [] corresponds to "No")
   deriving (Show, Eq)
 
 -- Given data type, interface and interface alias def's, determine which of them
@@ -39,17 +42,26 @@ data HasEps = HasEps |          -- "Yes" with certainty
 -- explicitly have it, are added an additional [£] eff var.
 concretiseEps :: [DataT Raw] -> [Itf Raw] -> [ItfAlias Raw] -> ([DataT Raw], [Itf Raw], [ItfAlias Raw])
 concretiseEps dts itfs itfAls =
-  let posIds = map nodeId (decideGraph (nodes, [], [])) in
-  (map (concretiseEpsInDataT posIds) dts,
-   map (concretiseEpsInItf   posIds) itfs,
-   map (concretiseEpsInItfAl posIds) itfAls)
+  let posNodes = decideGraph (nodes, [], [])
+      posDts    = map nodeId [DtNode x    | DtNode x    <- posNodes]
+      posItfs   = map nodeId [ItfNode x   | ItfNode x   <- posNodes]
+      posItfAls = map nodeId [ItfAlNode x | ItfAlNode x <- posNodes] in
+  (map (concretiseEpsInDataT posDts) dts,
+   map (concretiseEpsInItf   posItfs) itfs,
+   map (concretiseEpsInItfAl posItfAls) itfAls)
   where
 
   nodes :: [Node]
   nodes = map DtNode dts ++ map ItfNode itfs ++ map ItfAlNode itfAls
 
-  ids :: [Id]
-  ids = map nodeId nodes
+  resolveDataId :: Id -> Node
+  resolveDataId x = head [DtNode d | DtNode d <- nodes, getId d == x]  -- TODO: LC: Use Map datastructure
+
+  resolveItfId :: Id -> Node
+  resolveItfId x = case ([i | ItfNode i <- nodes, getId i == x],
+                         [i | ItfAlNode i <- nodes, getId i == x]) of
+                     ([i], []) -> ItfNode i
+                     ([], [i]) -> ItfAlNode i
 
   -- Given graph (undecided-nodes, positive-nodes, negative-nodes), decide
   -- subgraphs as long as there are unvisited nodes. Finally (base case),
@@ -77,8 +89,8 @@ concretiseEps dts itfs itfAls =
     else case hasEpsNode x of
       HasEps          -> do put (xs, x:pos, neg) -- (3)
                             return True
-      HasEpsIfAny ids ->
-        let neighbours = filter ((`elem` ids) . nodeId) (xs ++ pos ++ neg) in
+      HasEpsIfAny nodes ->
+        let neighbours = (nub nodes) `intersect` (xs ++ pos ++ neg) in
         do dec <- foldl (\dec y -> do -- Exclude neighbour from graph
                                       (xs', pos', neg') <- get
                                       put (xs' \\ [y], pos', neg')
@@ -132,14 +144,27 @@ concretiseEps dts itfs itfAls =
 
   hasEpsVType :: [Id] -> VType Raw -> HasEps
   hasEpsVType tvs (DTTy x ts a) =
-    if x `elem` ids then anyHasEps $ HasEpsIfAny [x] : map (hasEpsTyArg tvs) ts  -- indeed data type
-                    else anyHasEps $ map (hasEpsTyArg tvs) ts                    -- ... or not
+    if x `elem` dtIds then hasEpsDTTy tvs x ts                   -- indeed data type
+                      else anyHasEps $ map (hasEpsTyArg tvs) ts  -- ... or not (but type var)
+    where dtIds = [getId d | DtNode d <- nodes]
   hasEpsVType tvs (SCTy ty a)   = hasEpsCType tvs ty
-  hasEpsVType tvs (TVar x a)    = if x `elem` tvs then HasEpsIfAny []  -- indeed type variable
-                                                  else HasEpsIfAny [x] -- ... or not
+  hasEpsVType tvs (TVar x a)    = if x `elem` tvs then HasEpsIfAny []      -- indeed type variable
+                                                  else hasEpsDTTy tvs x [] -- ... or not (but data type)
   hasEpsVType tvs (StringTy _)  = HasEpsIfAny []
   hasEpsVType tvs (IntTy _)     = HasEpsIfAny []
   hasEpsVType tvs (CharTy _)    = HasEpsIfAny []
+
+  hasEpsDTTy :: [Id] -> Id -> [TyArg Raw] -> HasEps
+  hasEpsDTTy tvs x ts =
+    let -- An datatype x gives only rise to adding an eps if the number of ty
+        -- args are exactly as required by x. Thus, if x has an additional
+        -- implicit eps, it should be given as an additional parameter here, too
+        dtHE   = if isDtWithNArgs x (length ts) then [HasEpsIfAny [resolveDataId x]] else []
+        argsHE = map (hasEpsTyArg tvs) ts
+    in anyHasEps (dtHE ++ argsHE)
+    where isDtWithNArgs :: Id -> Int -> Bool
+          isDtWithNArgs x n = case resolveDataId x of
+                                (DtNode (DT _ ps _ _)) -> length ps == n
 
   hasEpsCType :: [Id] -> CType Raw -> HasEps
   hasEpsCType tvs (CType ports peg a) = anyHasEps $ map (hasEpsPort tvs) ports ++ [hasEpsPeg tvs peg]
@@ -157,7 +182,20 @@ concretiseEps dts itfs itfAls =
   hasEpsAb tvs (Ab v m a) = anyHasEps [hasEpsAbMod tvs v, hasEpsItfMap tvs m]
 
   hasEpsItfMap :: [Id] -> ItfMap Raw -> HasEps
-  hasEpsItfMap tvs (ItfMap m _) = (anyHasEps . map (hasEpsTyArg tvs) . concat . concatMap bwd2fwd . M.elems) m
+  hasEpsItfMap tvs mp@(ItfMap m _) =
+    let -- An interface i gives only rise to adding an eps if the number of ty
+        -- args are exactly as required by i. Thus, if i has an additional
+        -- implicit eps, it should be given as an additional parameter here, too
+        itfsHE = map (\(i, inst) -> if isItfWithNArgs i (length inst) then HasEpsIfAny [resolveItfId i] else HasEpsIfAny []) (flattenItfMap mp)
+        argsHE = (map (hasEpsTyArg tvs) . concat . concatMap bwd2fwd . M.elems) m
+    in anyHasEps (itfsHE ++ argsHE)
+    where flattenItfMap :: ItfMap t -> [(Id, [TyArg t])]
+          flattenItfMap (ItfMap m _) = concat $ map (\(i, insts) -> map (\inst -> (i, inst)) (bwd2fwd insts)) (M.toList m)
+
+          isItfWithNArgs :: Id -> Int -> Bool
+          isItfWithNArgs x n = case resolveItfId x of
+                                 (ItfNode (Itf _ ps _ _)) -> length ps == n
+                                 (ItfAlNode (ItfAlias _ ps _ _)) -> length ps == n
 
   hasEpsAbMod :: [Id] -> AbMod Raw -> HasEps
   hasEpsAbMod tvs (EmpAb _)     = HasEpsIfAny []

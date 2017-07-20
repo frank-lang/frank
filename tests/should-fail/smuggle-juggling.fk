@@ -39,7 +39,7 @@ catch <aborting -> _> h = h!
 -- continuation with the regular state handler
 -- NB: If we have open pegs we get an error here because the first parameter
 -- to Either does not unify with {Payload -> [e|Abort,State Payload]X}
-juggle : {Payload -> Either {Payload -> [0|State Payload]X} X -> X}
+juggle : {Payload -> Either {Payload -> [0|State Payload]X} X -> [0|]X}
 juggle a (right x) = x
 juggle a (left k) = state a (k a)
 

@@ -27,10 +27,17 @@ refine prog = evalState (runExceptT (refine' prog)) initRefine
 -- + built-in data types, interfaces, operators are added
 refine' :: Prog Raw -> Refine (Prog Refined)
 refine' (MkProg xs) = do
+  -- Make sure datatypes have unique ids
+  checkUniqueIds  [d | d@(DataTm _ _) <- xs]   (errorRefDuplTopTm "datatype")
+  -- Make sure interfaces and interface aliases have unique ids
+  checkUniqueIds ([i | i@(ItfTm _ _) <- xs] ++
+                  [i | i@(ItfAliasTm _ _) <- xs])  (errorRefDuplTopTm "interface/interface alias")
   -- Concretise epsilon vars
-  let (dts, itfs, itfAls) = concretiseEps (getDataTs xs) (getItfs xs) (getItfAliases xs)
-      hdrSigs = getHdrSigs xs
-      hdrDefs = getHdrDefs xs []
+  let (dts, itfs, itfAls) = concretiseEps [d | DataTm d _ <- xs]
+                                          [i | ItfTm i _ <- xs]
+                                          [i | ItfAliasTm i _ <- xs]
+  let hdrSigs = [s | SigTm s _ <- xs]
+  let hdrDefs = [c | ClsTm c _ <- xs]
   -- Initialise refinement state
   initialiseRState dts itfs itfAls hdrSigs
   -- Refine top level terms
@@ -548,21 +555,9 @@ collectCtrs :: [Ctr a] -> [Id]
 collectCtrs (Ctr ctr _ a : xs) = ctr : collectCtrs xs
 collectCtrs [] = []
 
-getHdrSigs :: [TopTm Raw] -> [MHSig Raw]
-getHdrSigs xs = getHdrSigs' xs []
-  where getHdrSigs' :: [TopTm Raw] -> [MHSig Raw] -> [MHSig Raw]
-        getHdrSigs' (SigTm sig a : xs) ys = getHdrSigs' xs (sig : ys)
-        getHdrSigs' (_ : xs) ys = getHdrSigs' xs ys
-        getHdrSigs' [] ys = ys
-
 collectMHNames :: [MHSig Raw] -> [Id]
 collectMHNames (Sig hdr _ a : xs) = hdr : collectMHNames xs
 collectMHNames [] = []
-
-getHdrDefs :: [TopTm Raw] -> [MHCls Raw] -> [MHCls Raw]
-getHdrDefs (ClsTm cls a : xs) ys = getHdrDefs xs (cls : ys)
-getHdrDefs (_ : xs) ys = getHdrDefs xs ys
-getHdrDefs [] ys = reverse ys
 
 -- Add the id if not already present
 addEntry :: [IPair] -> Id -> Int -> String -> Refine [IPair]
@@ -570,19 +565,13 @@ addEntry xs x n prefix = if x `mem` xs then throwError (errorRefEntryAlreadyDefi
                          else return $ (x,n) : xs
 
 addItf :: IFMap -> Itf Raw -> Refine IFMap
-addItf m (Itf x ps _ a) = if M.member x m then
-                             throwError $ errorRefDuplTopTm "interface" x a
-                           else return $ M.insert x ps m
+addItf m (Itf x ps _ a) = return $ M.insert x ps m
 
 addItfAlias :: IFAliasesMap -> ItfAlias Raw -> Refine IFAliasesMap
-addItfAlias m (ItfAlias x ps itfMap a) = if M.member x m then
-                                            throwError $ errorRefDuplTopTm "interface alias" x a
-                                         else return $ M.insert x (ps, itfMap) m
+addItfAlias m (ItfAlias x ps itfMap a) = return $ M.insert x (ps, itfMap) m
 
 addDataT :: DTMap -> DataT Raw -> Refine DTMap
-addDataT m (DT x ps _ a) = if M.member x m then
-                             throwError $ errorRefDuplTopTm "data type" x a
-                           else return $ M.insert x ps m
+addDataT m (DT x ps _ a) = return $ M.insert x ps m
 
 addCtr :: [IPair] -> Ctr a -> Refine [IPair]
 addCtr xs (Ctr x ts a) = addEntry xs x (length ts) "duplicate constructor: "

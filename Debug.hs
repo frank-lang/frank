@@ -82,8 +82,8 @@ errorRefExpectedUse tm = "expected use but got term: " ++ show tm ++ "(" ++ (sho
 errorRefEntryAlreadyDefined :: String -> Id -> String
 errorRefEntryAlreadyDefined sort x = sort ++ " " ++ x ++ " already defined"
 
-errorRefDuplTopTm :: String -> Id -> Raw -> String
-errorRefDuplTopTm sort x a = "duplicate " ++ sort ++ ": " ++ x ++ " already defined (" ++ (show $ ppHasSource a) ++ ")"
+errorRefDuplTopTm :: String -> Id -> Source -> String
+errorRefDuplTopTm sort x a = "duplicate " ++ sort ++ ": " ++ x ++ " already defined (" ++ show a ++ ")"
 
 errorRefNumberOfArguments :: Id -> Int -> Int -> Raw -> String
 errorRefNumberOfArguments x exp act a = x ++ " expects " ++ show exp ++ " argument(s) but " ++ show act ++ " given (" ++ (show $ ppHasSource a) ++ ")"
@@ -210,6 +210,9 @@ debugParserM = traceM
 debugRefineM :: String -> Refine ()
 debugRefineM = traceM
 
+debugRefine :: String -> a -> a
+debugRefine = trace
+
 -- Uses the hack of of first retrieving context but without printing it.
 -- This achieves that calls of this function are not cached and newly executed
 -- every time.
@@ -231,11 +234,11 @@ vcat = PP.vcat
 type Doc = PP.Doc
 
 ppProg :: (Show a, HasSource a) => Prog a -> Doc
-ppProg (MkProg tts) = vcat (map ((text "" $$) . ppTopTm) tts)
+ppProg (MkProg tts) = foldl (PP.$+$ ) PP.empty (map ppTopTm tts)
 
 ppTopTm :: (Show a, HasSource a) => TopTm a -> Doc
 ppTopTm (DataTm dt _) = ppDataT dt
-ppTopTm (ItfTm itf _) = text $ show itf
+ppTopTm (ItfTm itf _) = ppItf itf
 ppTopTm (SigTm sig _) = text $ show sig
 ppTopTm (ClsTm cls _) = text $ show cls
 ppTopTm (DefTm def _) = ppMHDef def
@@ -246,6 +249,13 @@ ppDataT (DT id tyVars ctrs a) = text "data" <+>
                               sep (map (text . show) tyVars) <+>
                               text "=" <+>
                               sep (map (text . show) ctrs)
+
+ppItf :: (Show a, HasSource a) => Itf a -> Doc
+ppItf (Itf id tyVars cmds a) = text "interface" <+>
+                           text id <+>
+                           sep (map (text . show) tyVars) <+>
+                           text "=" <+>
+                           sep (map (text . show) cmds)
 
 ppMHDef :: (Show a, HasSource a) => MHDef a -> Doc
 ppMHDef (Def id cty cls _) = text id <+> text ":" <+>

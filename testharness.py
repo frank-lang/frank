@@ -7,7 +7,7 @@
 
 import io
 import os
-from subprocess import Popen,PIPE
+from subprocess import Popen,PIPE,TimeoutExpired
 
 
 class TestHarnessLogger:
@@ -139,7 +139,7 @@ def run_tests_in_dir(logger, fn, d):
     if logger.is_verbose_on(d):
         logger.set_verbose(True)
     logger.verbose_log("Entering test directory {0}".format(d))
-    for x in os.listdir(d):
+    for x in sorted(os.listdir(d)):
         x = d+x
         ## Recursively go through subdirectories
         if os.path.isdir(x):
@@ -264,8 +264,12 @@ def process_directive(logger,x,desc,k,v,args):
         p = Popen(["frank", x],stderr=PIPE,stdout=PIPE)
         p.wait()
         ret = p.returncode
-        (out,err) = p.communicate()
-        out = err.decode("utf-8") + out.decode("utf-8")
+        try:
+            (out,err) = p.communicate(timeout=15)  #TODO: LC: Timeout does not work...
+            out = err.decode("utf-8") + out.decode("utf-8")
+        except TimeoutExpired:
+            p.kill()
+            out = "TIMEOUT"
         res = Result(x,desc,ret,out.strip('\n'),v,(k,v,args),isRegression)
         return res
 

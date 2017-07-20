@@ -178,9 +178,9 @@ modify f = do ctx <- getContext
 -- rigid ty var args (which can later be made flexible for unification)
 initContextual :: Prog Desugared -> Contextual (Prog Desugared)
 initContextual (MkProg ttms) =
-  do mapM_ f (getDataTs ttms) -- init ctrMap
-     mapM_ g (getItfs ttms)   -- init cmdMap
-     mapM_ h (getDefs ttms)    -- init ctx with [hdr: hdr-type]
+  do mapM_ f [d | DataTm d _ <- ttms] -- init ctrMap
+     mapM_ g [i | ItfTm i _ <- ttms]   -- init cmdMap
+     mapM_ h [d | DefTm d _ <- ttms]    -- init ctx with [hdr: hdr-type]
      return (MkProg ttms)
   where -- data dt p_1 ... p_n = ctr_1 x_11 ... x_1m
         --                     | ...

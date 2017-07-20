@@ -9,6 +9,13 @@ import Data.List
 
 import BwdFwd
 
+{-- Elementary definitions --}
+type Id = String
+
+-- Top level definitions instantiate this class
+class HasId a where
+  getId :: a -> Id
+
 {-- For the definition of the AST in terms of fixed-points --}
 
 data Fix f = Fx (f (Fix f))
@@ -104,6 +111,7 @@ deriving instance Show (MHSigF Raw r)
 deriving instance Eq (MHSigF Raw r)
 type MHSig t = AnnotFix MHSigF t
 pattern Sig x cty a = Fx (AnnF (MkSig x cty, a))
+instance HasId (MHSig t) where getId (Sig x _ _) = x
 
 data MHClsF :: * -> * -> * where
   MkMHCls :: Id -> Clause Raw -> MHClsF Raw r
@@ -111,6 +119,7 @@ deriving instance Show (MHClsF t r)
 deriving instance Eq (MHClsF t r)
 type MHCls t = AnnotFix MHClsF t
 pattern MHCls x cls a = Fx (AnnF (MkMHCls x cls, a))
+instance HasId (MHCls t) where getId (MHCls x _ _) = x
 
 {---------------}
 {- Parts of the grammar specific to the refined syntax. -}
@@ -132,6 +141,8 @@ deriving instance Show t => Show (MHDefF t r)
 deriving instance Eq t => Eq (MHDefF t r)
 type MHDef t = AnnotFix MHDefF t
 pattern Def x cty clss a = Fx (AnnF (MkDef x cty clss, a))
+instance HasId (MHDef t) where getId (Def x _ _ _) = x
+
 -- value bindings - not yet supported
 -- data VDef a = VDef Id (VType a) (Tm a)
 
@@ -178,6 +189,13 @@ pattern ItfAliasTm itfAl a = Fx (AnnF (MkItfAliasTm itfAl, a))
 pattern SigTm sig a = Fx (AnnF (MkSigTm sig, a))
 pattern ClsTm cls a = Fx (AnnF (MkClsTm cls, a))
 pattern DefTm def a = Fx (AnnF (MkDefTm def, a))
+-- TODO: LC: Automatic generation of the following? Should be possible somehow
+instance HasId (TopTm t) where getId (DataTm dt _) = getId dt
+                               getId (ItfTm itf _) = getId itf
+                               getId (ItfAliasTm itfAl _) = getId itfAl
+                               getId (SigTm sig _) = getId sig
+                               getId (ClsTm cls _) = getId cls
+                               getId (DefTm def _) = getId def
 
 data UseF :: * -> * -> * where
   MkRawId :: Id -> UseF Raw r
@@ -242,6 +260,7 @@ deriving instance Show t => Show (DataTF t r)
 deriving instance Eq t => Eq (DataTF t r)
 type DataT t = AnnotFix DataTF t
 pattern DT x ps ctrs a = Fx (AnnF (MkDT x ps ctrs, a))
+instance HasId (DataT t) where getId (DT x _ _ _) = x
 
 data ItfF :: * -> * -> * where
   MkItf :: Id -> [(Id, Kind)] -> [Cmd t] -> ItfF t r
@@ -249,6 +268,7 @@ deriving instance Show t => Show (ItfF t r)
 deriving instance Eq t => Eq (ItfF t r)
 type Itf t = AnnotFix ItfF t
 pattern Itf x ps cmds a = Fx (AnnF (MkItf x ps cmds, a))
+instance HasId (Itf t) where getId (Itf x _ _ _) = x
 
 data ItfAliasF :: * -> * -> * where
   MkItfAlias :: Id -> [(Id, Kind)] -> ItfMap t -> ItfAliasF t r
@@ -256,6 +276,7 @@ deriving instance Show t => Show (ItfAliasF t r)
 deriving instance Eq t => Eq (ItfAliasF t r)
 type ItfAlias t = AnnotFix ItfAliasF t
 pattern ItfAlias x ps itfMap a = Fx (AnnF (MkItfAlias x ps itfMap, a))
+instance HasId (ItfAlias t) where getId (ItfAlias x _ _ _) = x
 
 data CtrF :: * -> * -> * where
   MkCtr :: Id -> [VType t] -> CtrF t r
@@ -302,8 +323,6 @@ pattern CharPat c a = Fx (AnnF (MkCharPat c, a))
 pattern StrPat str a = Fx (AnnF (MkStrPat str, a))
 pattern ConsPat p1 p2 a = Fx (AnnF (MkConsPat p1 p2, a))
 pattern ListPat ps a = Fx (AnnF (MkListPat ps, a))
-
-type Id = String
 
 -- Type hierarchy
 data CTypeF :: * -> * -> * where
@@ -406,29 +425,17 @@ idAdjDesug = Adj (ItfMap M.empty (Desugared Implicit)) (Desugared Implicit)
 desugaredStrTy :: Desugared -> VType Desugared
 desugaredStrTy a = DTTy "List" [VArg (CharTy a) a] a
 
-getItfs :: [TopTm t] -> [Itf t]
-getItfs xs = [ itf | (ItfTm itf _) <- xs ]
-
 getCmds :: Itf t -> [Cmd t]
 getCmds (Itf _ _ xs _) = xs
 
-getItfAliases :: [TopTm t] -> [ItfAlias t]
-getItfAliases xs = [itfAlias | (ItfAliasTm itfAlias _) <- xs]
-
 collectINames :: [Itf t] -> [Id]
 collectINames = map (\case (Itf itf _ _ _) -> itf)
-
-getDataTs :: [TopTm t] -> [DataT t]
-getDataTs xs = [dt | (DataTm dt _) <- xs]
 
 getCtrs :: DataT t -> [Ctr t]
 getCtrs (DT _ _ xs _) = xs
 
 collectDTNames :: [DataT t] -> [Id]
 collectDTNames = map (\case (DT dt _ _ _) -> dt)
-
-getDefs :: NotRaw t => [TopTm t] -> [MHDef t]
-getDefs xs = [ def | (DefTm def _) <- xs ]
 
 -- Convert ability to a list of interface names and effect variables
 {-

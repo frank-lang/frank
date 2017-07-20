@@ -7,6 +7,7 @@ import Control.Monad.State
 import Data.Functor.Identity
 
 import Data.List
+import Data.Maybe
 import qualified Data.Map.Strict as M
 import qualified Data.Set as S
 
@@ -121,3 +122,15 @@ putTopLevelCtxt ctxt = do s <- getRState
 isHdrCtxt :: Maybe TopLevelCtxt -> Bool
 isHdrCtxt (Just Handler) = True
 isHdrCtxt _              = False
+
+-- Check if ids are unique, if not throw error using the function "f"
+checkUniqueIds :: (HasId a, HasSource a) => [a] -> (Id -> Source -> String) -> Refine ()
+checkUniqueIds xs f =
+  let (_, mErr) = foldl (\(ys, mErr) x -> if isNothing mErr
+                                          then if getId x `elem` ys
+                                               then ([], Just $ f (getId x) (getSource x))
+                                               else (getId x : ys, Nothing)
+                                          else ([], mErr))
+                        ([], Nothing) xs
+  in case mErr of Nothing -> return ()
+                  Just err -> throwError err

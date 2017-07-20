@@ -89,7 +89,7 @@ unifyAb ab0@(Ab v0 m0 a) ab1@(Ab v1 m1 b) =
      unifyAb' ab0' ab1'
   where unifyAb' :: Ab Desugared -> Ab Desugared -> Contextual ()
         -- Same eff ty vars leaves nothing to unify but instantiat's m0, m1
-        unifyAb' ab0@(Ab v0 m1 _) ab1@(Ab v1 m2 _) | v0 == v1 =
+        unifyAb' ab0@(Ab v0 m1 _) ab1@(Ab v1 m2 _) | strip v0 == strip v1 =
           catchError (unifyItfMap m1 m2) (unifyAbError ab0 ab1)
         -- Both eff ty vars are flexible
         unifyAb' (Ab (AbFVar x a') m1 a) (Ab (AbFVar y b') m2 b) =

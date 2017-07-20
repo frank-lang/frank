@@ -58,7 +58,7 @@ compileToFile p dst = writeFile (dst ++ ".uf") (S.ppProg $ compile p)
 compile :: NotRaw a => Prog a -> [S.Def S.Exp]
 compile (MkProg xs) = res
   where res = reverse $ evalState (compile' xs) st
-        st = initialiseItfMap initCState (getItfs xs)
+        st = initialiseItfMap initCState [i | ItfTm i _ <- xs]
 
 compile' :: NotRaw a => [TopTm a] -> Compile [S.Def S.Exp]
 compile' xs = do liftM concat $ mapM compileTopTm xs
