@@ -1,5 +1,5 @@
--- #desc   Shadowing of active abilities does not eliminate their history (shadowed instantiations)
--- #return cannot unify abilities [£ | State Int] (line 19 , column 8) and [£ | State ( Bool ) , State Int] (line 11 , column 8)
+-- #desc   Due to only considering active fragments on APP, shadowed instantiations are not regarded
+-- #return unit
 
 --- start of standard stuff ---
 data Bool = true | false

@@ -1,0 +1,20 @@
+-- #desc   [Console, Console] and [Console] need not be unified anymore since it suffices that their active fragments are unifiable
+-- #return unit
+
+data Bool = true | false
+interface Choice = choice : Bool
+
+not : {Bool -> Bool}
+not true  = false
+not false = true
+
+negChoice: {<Choice>X -> [Choice]X}
+negChoice <choice -> k> = negChoice (k (not choice!))
+negChoice x = x
+
+doubleNegChoice: {<Choice>X -> [Choice]X}
+doubleNegChoice <m> = negChoice (negChoice m!)
+doubleNegChoice x = x
+
+main: {[E|]Unit}
+main! = unit

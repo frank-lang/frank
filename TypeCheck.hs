@@ -159,27 +159,19 @@ checkMHDef (Def id ty@(CType ps q _) cs _) =
 --    - If this susp. comp. type is known, check the arguments are well-typed
 --    - If not, create fresh type pattern and unify (constraining for future)
 inferUse :: Use Desugared -> Contextual (VType Desugared)
-inferUse u@(Op x _) =
+inferUse u@(Op x _) =                                                           -- Var, PolyVar, Command rules
   do logBeginInferUse u
      ty <- find x
      res <- instantiate x ty
      logEndInferUse u res
      return res
-inferUse app@(App f xs _) =
+inferUse app@(App f xs _) =                                                     -- App rule
   do logBeginInferUse app
      ty <- inferUse f
      res <- discriminate ty
      logEndInferUse app res
      return res
-  where -- Check typings of x_i for port p_i
-        checkArgs :: [Port Desugared] -> [Tm Desugared] -> Contextual ()
-        checkArgs ps xs = mapM_ (uncurry checkArg) (zip ps xs)
-
-        -- Check typing tm: ty in ambient [adj]
-        checkArg :: Port Desugared -> Tm Desugared -> Contextual ()
-        checkArg (Port adj ty _) tm = inAmbient adj (checkTm tm ty)
-
-        -- Case distinction on operator's type ty
+  where -- Case distinction on operator's type ty
         -- 1) ty is susp. comp. type
         --    - Check that required abilities of f are admitted (unify with amb)
         --    - Check typings of arguments x_i: p_i in [amb + adj_i] for all i
@@ -194,8 +186,10 @@ inferUse app@(App f xs _) =
         discriminate ty@(SCTy (CType ps (Peg ab ty' _) _) _) =
         -- {p_1 -> ... p_n -> [ab] ty'}
           do amb <- getAmbient
-             unifyAb amb ab   -- require [amb] = [ab]
-             checkArgs ps xs
+             -- require active(amb) = active(ab)
+             unifyAbActive amb ab
+             -- Check typings of x_i for port p_i
+             zipWithM_ checkArg ps xs
              return ty'
         discriminate ty@(FTVar y a) =
           do mty <- findFTVar y  -- find definition of y in context
@@ -211,6 +205,7 @@ inferUse app@(App f xs _) =
                  -- errTy ty
                Just ty' -> discriminate ty' -- 2.2)
         discriminate ty = errTy ty
+
         -- TODO: tidy.
         -- We don't need to report an error here, but rather generate
         -- appropriate fresh type variables as above.
@@ -219,9 +214,13 @@ inferUse app@(App f xs _) =
                    "): expected suspended computation but got " ++
                    (show $ ppVType ty)
 
+        -- Check typing tm: ty in ambient [adj]
+        checkArg :: Port Desugared -> Tm Desugared -> Contextual ()
+        checkArg (Port adj ty _) tm = inAmbient adj (checkTm tm ty)
+
 -- 2nd major TC function: Check that term (construction) has given type
 checkTm :: Tm Desugared -> VType Desugared -> Contextual ()
-checkTm (SC sc _) ty = checkSComp sc ty          -- Thunk rule
+checkTm (SC sc _) ty = checkSComp sc ty                                         -- Thunk rule
 checkTm (StrTm _ a) ty = unify (desugaredStrTy a) ty
 checkTm (IntTm _ a) ty = unify (IntTy a) ty
 checkTm (CharTm _ a) ty = unify (CharTy a) ty
@@ -230,9 +229,9 @@ checkTm (TmSeq tm1 tm2 a) ty =
   do ftvar <- freshMVar "seq"
      checkTm tm1 (FTVar ftvar a)
      checkTm tm2 ty
-checkTm (Use u a) t = do s <- inferUse u         -- Switch rule
+checkTm (Use u a) t = do s <- inferUse u                                        -- Switch rule
                          unify t s
-checkTm (DCon (DataCon k xs _) a) ty =           -- Data rule
+checkTm (DCon (DataCon k xs _) a) ty =                                          -- Data rule
   do (dt, args, ts) <- getCtr k
 --    data dt arg_1 ... arg_m = k t_1 ... t_n | ...
      addMark
@@ -251,7 +250,7 @@ checkTm (DCon (DataCon k xs _) a) ty =           -- Data rule
 --      - Check against a type of the right shape (of fresh flex. var.s which
 --        then get bound via checking
 --      - Unify the obtained type for cls_i with overall type ty
-checkSComp :: SComp Desugared -> VType Desugared -> Contextual ()
+checkSComp :: SComp Desugared -> VType Desugared -> Contextual ()               -- Comp rule
 checkSComp (SComp xs _) (SCTy (CType ps q _) _) =
   mapM_ (\cls -> checkCls cls ps q) xs
 checkSComp (SComp xs a) ty = mapM_ (checkCls' ty) xs
@@ -305,7 +304,7 @@ checkCls cls@(Cls pats tm _) ports (Peg ab ty _)
 -- Check that given pattern matches given port
 checkPat :: Pattern Desugared -> Port Desugared -> Contextual [TermBinding]
 checkPat (VPat vp _) (Port _ ty _) = checkVPat vp ty
-checkPat (CmdPat cmd xs g a) (Port adj ty b) =
+checkPat (CmdPat cmd xs g a) (Port adj ty b) =                                  -- P-Request rule
 -- interface itf q_1 ... q_m =
 --   cmd r_1 ... r_l: t_1 -> ... -> t_n -> y | ...
 
@@ -328,10 +327,11 @@ checkPat (CmdPat cmd xs g a) (Port adj ty b) =
                      zipWithM_ unifyTyArg ps qs'
                      -- Check command patterns against spec. in interface def.
                      bs <- concat <$> mapM (uncurry checkVPat) (zip xs ts')
-                     kty <- contType y' adj ty a -- type of continuation:  {y' -> [adj + currentAmb]ty}
+                     -- type of continuation:  {y' -> [adj + currentAmb]ty}
+                     kty <- contType y' adj ty a
                      -- bindings: continuation + patterns
                      return ((Mono g a, kty) : bs)
-checkPat (ThkPat x a) (Port adj ty b) =
+checkPat (ThkPat x a) (Port adj ty b) =                                         -- P-CatchAll rule
 -- pattern:  x
   do amb <- getAmbient
      return [(Mono x a, SCTy (CType [] (Peg (plus amb adj) ty b) b) b)]
@@ -346,9 +346,9 @@ contType x adj y a =
 -- Check that a value pattern has a given type (corresponding to rules)
 -- Return its bindings (id -> value type)
 checkVPat :: ValuePat Desugared -> VType Desugared -> Contextual [TermBinding]
-checkVPat (VarPat x a) ty = return [(Mono x a, ty)]  -- P-Var rule
+checkVPat (VarPat x a) ty = return [(Mono x a, ty)]                             -- P-Var rule
 --         x
-checkVPat (DataPat k ps a) ty =                      -- P-Data rule
+checkVPat (DataPat k ps a) ty =                                                 -- P-Data rule
 --         k p_1 .. p_n
   do (dt, args, ts) <- getCtr k
 --   data dt arg_1 .. arg_m = k t_1 .. t_n | ...

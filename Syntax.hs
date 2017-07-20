@@ -514,11 +514,17 @@ addInstanceToItfMap :: ItfMap Raw -> (Id, [TyArg Raw]) -> ItfMap Raw
 addInstanceToItfMap (ItfMap m a) (x, args) = if M.member x m then ItfMap (M.adjust (:< args) x m) a
                                                              else ItfMap (M.insert x (BEmp :< args) m) a
 
-extractLargestEqualSuffixes :: ItfMap t -> ItfMap t -> ItfMap t
-extractLargestEqualSuffixes (ItfMap m1 a) (ItfMap m2 _) = ItfMap m'' a
+extractLargestEqualSuffixesOfItfMap :: ItfMap t -> ItfMap t -> ItfMap t
+extractLargestEqualSuffixesOfItfMap (ItfMap m1 a) (ItfMap m2 _) = ItfMap m'' a
   where m'  = M.intersectionWith (\args args' -> takeBwd (min (length args) (length args')) args) m1 m2
         m'' = M.filter (not . null) m'
 
+stripInactiveOffItfMap :: ItfMap t -> ItfMap t
+stripInactiveOffItfMap (ItfMap m a) = ItfMap m' a
+  where m' = M.map (\case BEmp -> error "invariant broken"
+                          (_ :< x) -> BEmp :< x) m
+
+-- Given m1 and m2, cutt off entry suffixes of m1 of length determined by m2's entries' lengths
 minusItfMap :: ItfMap t -> ItfMap t -> ItfMap t
 minusItfMap (ItfMap m1 a) (ItfMap m2 _) = ItfMap m'' a
   where m' = M.differenceWith (\args args' -> Just $ dropBwd (length args') args) m1 m2
