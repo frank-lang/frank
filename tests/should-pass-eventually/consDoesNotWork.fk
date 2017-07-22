@@ -1,0 +1,38 @@
+-- program does not typecheck, but should
+
+map : {{X -> Y} -> List X -> List Y}
+map f []        = []
+map f (x :: xs) = f x :: map f xs
+
+print : {String -> [Console]Unit}
+print s = map ouch s; unit
+
+data Bool = false | true
+data Pair X Y = pair X Y
+
+if : Bool -> {X} -> {X} -> X
+if true  t f = t!
+if false t f = f!
+-- end standard stuff
+
+interface BChoice = bchoose: Bool
+interface IChoice = ichoose: Int
+
+cons2bool: {<BChoice>X -> [Console]X}
+cons2bool x = x
+cons2bool <bchoose -> k> = print "true (t) or false (f)? "; case inch!
+                             { 't' -> print "t\n"; cons2bool (k true)
+                             | c   -> print (c :: "f\n"); cons2bool (k false) }
+
+bool2int: {<IChoice>X -> [BChoice]X}
+bool2int x = x
+bool2int <ichoose -> k> = let n = if bchoose! { if bchoose! {3} {2} }
+                                              { if bchoose! {1} {0} }
+                          in bool2int (k n)
+
+cons2int: {<BChoice,IChoice>X -> [Console]X}
+cons2int x = x
+cons2int <m> = cons2bool (bool2int m!)
+
+main: {[Console]Int}
+main! = cons2int ichoose!
