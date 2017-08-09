@@ -1,0 +1,57 @@
+-- Begin Prelude ---------------------------------------------------------------
+-- Data types
+data Bool = false | true
+data Maybe X = nothing | just X
+data Pair X Y = pair X Y
+
+not: {Bool -> Bool}
+not false = true
+not true  = false
+
+-- Control structures
+if : Bool -> {X} -> {X} -> X
+if true  t f = t!
+if false t f = f!
+
+-- Pair operations
+fst: Pair X Y -> X
+fst (pair x _) = x
+
+snd: Pair X Y -> Y
+snd (pair _ y) = y
+
+-- List operations
+rev' : {List X -> List X -> List X}
+rev' []        ys = ys
+rev' (x :: xs) ys = rev' xs (x :: ys)
+
+rev : {List X -> List X}
+rev xs = rev' xs []
+
+app : {List X -> List X -> List X}
+app []        ys = ys
+app (x :: xs) ys = x :: (app xs ys)
+
+map : {{X -> Y} -> List X -> List Y}
+map f []        = []
+map f (x :: xs) = f x :: map f xs
+
+elem : {{X -> X -> Bool} -> List X -> X -> Bool}
+elem _ [] _ = false
+elem eq (x::xr) y = if (eq x y) {true} {elem eq xr y}
+
+find: {{X -> Bool} -> List X -> Maybe X}
+find _ [] = nothing
+find p (x::xr) = if (p x) {just x} {find p xr}
+
+lookup: {{X -> X -> Bool} -> X -> List (Pair X Y) -> Maybe Y}
+lookup _ _ [] = nothing
+lookup eq x' ((pair x y)::xr) = if (eq x x') {just y} {lookup eq x' xr}
+
+-- I/O
+print : {String -> [Console]Unit}
+print s = map ouch s; unit
+-- End Prelude -----------------------------------------------------------------
+
+main: {Unit}
+main! = unit

@@ -403,11 +403,11 @@ getLoc = do r <- rend
               (Directed _ l c _ _) -> return $ Raw $ InCode (fromIntegral l + 1, fromIntegral c + 1)
               _ -> error "precondition not fulfilled"
 
-attachLoc :: (MonadicParsing m) => m (Raw -> AnnotFix f Raw) -> m (AnnotFix f Raw)
+attachLoc :: (MonadicParsing m) => m (Raw -> AnnotTFix Raw f) -> m (AnnotTFix Raw f)
 attachLoc parser = do a <- getLoc
                       parser <*> pure a
 
-provideLoc :: (MonadicParsing m) => (Raw -> m (AnnotFix f Raw)) -> m (AnnotFix f Raw)
+provideLoc :: (MonadicParsing m) => (Raw -> m (AnnotTFix Raw f)) -> m (AnnotTFix Raw f)
 provideLoc parser = do a <- getLoc
                        parser a
 
