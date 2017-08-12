@@ -1,0 +1,31 @@
+-- #desc   Unification order used to matter for this example. Now any order provokes a type-error. Part 2/2
+-- #return cannot unify abilities [R | A , B] (line 27 , column 35) and [R | A] (line 24 , column 40)
+
+-- In the current version of the compiler, both of the following definitions
+-- do not type-check.
+-- Problem: In version 4b7cb52, whether the definition type-checks depends on
+-- unification order.
+
+interface A = a: Int
+interface B = b: Int
+data Pair X Y = pair X Y
+
+-- In version 4b7cb52, the following definition type-checks.
+-- test: {[R|]Unit}
+-- test! = consumepair mkpairWorks!; unit
+
+-- In version 4b7cb52, the following definition does not type-check.
+test: {[R|]Unit}
+test! = consumepair mkpairFails!; unit
+
+mkpairWorks: {[U|](Pair {[P|A]Int} {[P|A,B]Int})}
+mkpairWorks! = pair {3} {3}
+
+mkpairFails: {[U|](Pair {[P|A,B]Int} {[P|A]Int})}
+mkpairFails! = pair {3} {3}
+
+consumepair: {Pair {[Q|A,B]Int} {[Q|A,B]Int} -> [Q|]Unit}
+consumepair x = unit
+
+main: {Unit}
+main! = unit

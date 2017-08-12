@@ -392,7 +392,7 @@ pattern ListPat ps a = Fx (AnnF (MkListPat ps, a))
 
 -- Type hierarchy
 data CTypeF :: ((* -> *) -> (* -> *)) -> * -> * where
-  MkCType :: [TFix t PortF] -> TFix t PegF -> CTypeF t r     -- computation types
+  MkCType :: [TFix t PortF] -> TFix t PegF -> CTypeF t r        -- computation types
 deriving instance (Show (TFix t PortF),
                    Show (TFix t PegF),
                    Show r, Show (TFix t CTypeF)) => Show (CTypeF t r)
@@ -403,7 +403,7 @@ type CType a = AnnotTFix a CTypeF
 pattern CType ports peg a = Fx (AnnF (MkCType ports peg, a))
 
 data PortF :: ((* -> *) -> (* -> *)) -> * -> * where
-  MkPort :: TFix t AdjF -> TFix t VTypeF -> PortF t r       -- ports
+  MkPort :: TFix t AdjF -> TFix t VTypeF -> PortF t r           -- ports
 deriving instance (Show (TFix t AdjF),
                    Show (TFix t VTypeF),
                    Show r, Show (TFix t PortF)) => Show (PortF t r)
@@ -414,7 +414,7 @@ type Port a = AnnotTFix a PortF
 pattern Port adj ty a = Fx (AnnF (MkPort adj ty, a))
 
 data PegF :: ((* -> *) -> (* -> *)) -> * -> * where
-  MkPeg :: TFix t AbF -> TFix t VTypeF -> PegF t r          -- pegs
+  MkPeg :: TFix t AbF -> TFix t VTypeF -> PegF t r              -- pegs
 deriving instance (Show (TFix t AbF),
                    Show (TFix t VTypeF),
                    Show r, Show (TFix t PegF)) => Show (PegF t r)
@@ -424,15 +424,15 @@ deriving instance (Eq (TFix t AbF),
 type Peg a = AnnotTFix a PegF
 pattern Peg ab ty a = Fx (AnnF (MkPeg ab ty, a))
 
-data VTypeF :: ((* -> *) -> (* -> *)) -> * -> * where   -- value types
-  MkDTTy :: Id -> [TFix t TyArgF] -> VTypeF t r       --   data types (instant. type constr.)  may be refined to MkTVar
-  MkSCTy :: TFix t CTypeF -> VTypeF t  r              --   suspended computation types
-  MkTVar :: NotDesugared (t Identity ()) => Id -> VTypeF t  r --                                       may be refined to MkDTTy
-  MkRTVar :: Id -> VTypeF (AnnotT Desugared)  r           --   rigid type variable (bound)
-  MkFTVar :: Id -> VTypeF (AnnotT Desugared)  r           --   flexible type variable (free)
-  MkStringTy :: NotDesugared (t Identity ()) => VTypeF t r    --   string type
-  MkIntTy :: VTypeF t r                         --   int type
-  MkCharTy :: VTypeF t r                        --   char type
+data VTypeF :: ((* -> *) -> (* -> *)) -> * -> * where           -- value types
+  MkDTTy :: Id -> [TFix t TyArgF] -> VTypeF t r                 --   data types (instant. type constr.)  may be refined to MkTVar
+  MkSCTy :: TFix t CTypeF -> VTypeF t  r                        --   suspended computation types
+  MkTVar :: NotDesugared (t Identity ()) => Id -> VTypeF t  r   --                                       may be refined to MkDTTy
+  MkRTVar :: Id -> VTypeF (AnnotT Desugared)  r                 --   rigid type variable (bound)
+  MkFTVar :: Id -> VTypeF (AnnotT Desugared)  r                 --   flexible type variable (free)
+  MkStringTy :: NotDesugared (t Identity ()) => VTypeF t r      --   string type
+  MkIntTy :: VTypeF t r                                         --   int type
+  MkCharTy :: VTypeF t r                                        --   char type
 deriving instance (Show (TFix t TyArgF),
                    Show (TFix t CTypeF),
                    Show r, Show (TFix t VTypeF)) => Show (VTypeF t r)
@@ -450,7 +450,7 @@ pattern IntTy a = Fx (AnnF (MkIntTy, a))
 pattern CharTy a = Fx (AnnF (MkCharTy, a))
 
 data ItfMapF :: ((* -> *) -> (* -> *)) -> * -> * where
-  MkItfMap :: M.Map Id (Bwd [TFix t TyArgF]) -> ItfMapF t r  -- interface-id  ->  list of bwd-list of ty arg's (each entry an instantiation)
+  MkItfMap :: M.Map Id (Bwd [TFix t TyArgF]) -> ItfMapF t r     -- interface-id  ->  list of bwd-list of ty arg's (each entry an instantiation)
 deriving instance (Show (TFix t TyArgF),
                    Show r, Show (TFix t ItfMapF)) => Show (ItfMapF t r)
 deriving instance (Eq (TFix t TyArgF),
@@ -460,7 +460,7 @@ pattern ItfMap m a = Fx (AnnF (MkItfMap m, a))
 
 -- Adjustments (set of instantiated interfaces)
 data AdjF :: ((* -> *) -> (* -> *)) -> * -> * where
-  MkAdj :: TFix t ItfMapF -> AdjF t r                    -- interface-id  ->  list of ty arg's
+  MkAdj :: TFix t ItfMapF -> AdjF t r                           -- interface-id  ->  list of ty arg's
 deriving instance (Show (TFix t ItfMapF),
                    Show r, Show (TFix t AdjF)) => Show (AdjF t r)
 deriving instance (Eq (TFix t ItfMapF),
@@ -470,7 +470,7 @@ pattern Adj itfMap a = Fx (AnnF (MkAdj itfMap, a))
 
 -- Abilities
 data AbF :: ((* -> *) -> (* -> *)) -> * -> * where
-  MkAb :: TFix t AbModF -> TFix t ItfMapF -> AbF t r           -- interface-id  ->  list of ty arg's
+  MkAb :: TFix t AbModF -> TFix t ItfMapF -> AbF t r            -- interface-id  ->  list of ty arg's
 deriving instance (Show (TFix t AbModF),
                    Show (TFix t ItfMapF),
                    Show r, Show (TFix t AbF)) => Show (AbF t r)
@@ -482,10 +482,10 @@ pattern Ab abMod itfMap a = Fx (AnnF (MkAb abMod itfMap, a))
 
 -- Ability modes
 data AbModF :: ((* -> *) -> (* -> *)) -> * -> * where
-  MkEmpAb :: AbModF t r                         -- empty            (closed ability)
-  MkAbVar :: NotDesugared (t Identity ()) => Id -> AbModF t r -- non-desugared effect variable
-  MkAbRVar :: Id -> AbModF (AnnotT Desugared)  r          -- rigid eff var    (open ability)
-  MkAbFVar :: Id -> AbModF (AnnotT Desugared)  r          -- flexible eff var (open ability)
+  MkEmpAb :: AbModF t r                                         -- empty            (closed ability)
+  MkAbVar :: NotDesugared (t Identity ()) => Id -> AbModF t r   -- non-desugared effect variable
+  MkAbRVar :: Id -> AbModF (AnnotT Desugared)  r                -- rigid eff var    (open ability)
+  MkAbFVar :: Id -> AbModF (AnnotT Desugared)  r                -- flexible eff var (open ability)
 deriving instance (Show r, Show (TFix t AbModF)) => Show (AbModF t r)
 deriving instance (Eq r, Eq (TFix t AbModF)) => Eq (AbModF t r)
 type AbMod a = AnnotTFix a AbModF

@@ -78,11 +78,13 @@ interface Async = async X: {[Async]X} -> Promise X
 -- Transform an async process into fork/yield process
 --------------------------------------------------------------------------------
 
-step: {Promise X [RefState, Co[RefState]] -> <Async[RefState, Co[RefState]]>X -> [RefState, Co[RefState]]Unit}
+step: {Promise X [RefState, Co[RefState]] ->
+       <Async[RefState, Co[RefState]]>X ->
+       [RefState, Co[RefState]]Unit}
 step (promise ref) v = write ref (done v)                         -- fulfill promise
 step p <async c -> k> = let ref' = new (waiting []) in            -- new blank promise
                         let job = {step (promise ref') c!} in     -- new job which fulfills promise
-                        fork { execIfNeeded (promise ref') job }; -- push job
+                        fork { execWakeUp (promise ref') job };  -- push job
                         step p (k (promise ref'))                 -- continue with given promise
 step p <await (promise ref') -> k> = case (read ref')             -- lookup status of promise
                                      { (done v) -> step p (k v)   -- if fulfilled, continue with value
@@ -90,12 +92,10 @@ step p <await (promise ref') -> k> = case (read ref')             -- lookup stat
                                          let job = { v -> step p (k v) } in
                                          write ref' (waiting (job::js)) }
 
-execIfNeeded: {Promise X [RefState, Co[RefState]] -> {[RefState, Co[RefState]]Unit} -> [RefState, Co[RefState]]Unit}
-execIfNeeded (promise ref) f = case (read ref)             -- lookup status of promise
+execWakeUp: {Promise X [RefState, Co[RefState]] -> {[RefState, Co[RefState]]Unit} -> [RefState, Co[RefState]]Unit}
+execWakeUp (promise ref) f = case (read ref)             -- lookup status of promise
                                { (done _) -> unit          -- invariant: should not happen
-                               | (waiting []) -> yield!;   -- if noone is waiting for it, idle
-                                                 execIfNeeded (promise ref) f
-                               | (waiting fs) -> f!;       -- if there is demand, execute
+                               | (waiting fs) -> f!;       -- invariant: should happen
                                                  case (read ref)
                                                  { (done v) -> map { f -> f v } fs; unit -- wake up and feed value
                                                  | _ -> unit } }                         -- invariant: should not happen
@@ -103,14 +103,18 @@ execIfNeeded (promise ref) f = case (read ref)             -- lookup status of p
 -- This signature suffers from the fact that so far we cannot 'overstep' a handler.
 -- Thus all the effects listed within <...> will be 'handled away' (consumed).
 -- This restriction shall be overcome in the future.
-run : {<Co [Queue (Proc [RefState]), RefState],
-        Queue (Proc [RefState]),
-        Async[RefState, Co[Queue (Proc [RefState]), RefState], Queue (Proc [RefState])]>X ->
-       [RefState] (Promise X [RefState, Co[RefState, Queue (Proc [RefState])], Queue (Proc [RefState])])}
-run <m>  = let resRef = new (waiting []) in
-           evalZipQueueEmpty (roundRobin (step (promise resRef) m!));
-           promise resRef
-run x = promise (new (waiting []))
+runAsync : {<Co [Queue (Proc [RefState]), RefState],
+             Queue (Proc [RefState]),
+             Async[RefState,
+                   Co[Queue (Proc [RefState]), RefState],
+                   Queue (Proc [RefState])]>X ->
+            [RefState] (Promise X [RefState,
+                                   Co[RefState,
+                                      Queue (Proc [RefState])],
+                                   Queue (Proc [RefState])])}
+runAsync <m>  = let resRef = new (waiting []) in
+                evalZipQueueEmpty (roundRobin (step (promise resRef) m!));
+                promise resRef
 
 --------------------------------------------------------------------------------
 -- This is the process executer from coop-factored.fk, using a queue to handle
@@ -145,7 +149,7 @@ roundRobin unit          = popProcs!
 -- Concurrent Async programs
 --------------------------------------------------------------------------------
 
-binOp : {Int -> Int -> [Async]Int}
+binOp : {Int -> Int -> Int}
 binOp m n = m + n
 
 calcProg : {Int -> Int -> Int -> [Async]Int}
@@ -164,7 +168,7 @@ calcProg a b c = let p1 = async {binOp a b} in
 -- #return 8
 
 main: {[RefState]Int}
-main! = case (run (calcProg 1 2 3))
+main! = case (runAsync (calcProg 1 2 3))
         { (promise resRef) -> case (read resRef)
                               { (done v) -> v
                               | _ -> 0 }  -- invariant: should not happen

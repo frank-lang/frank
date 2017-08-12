@@ -2,12 +2,12 @@
 data Maybe X = nothing | just X
 data Pair X Y = pair X Y
 
-reverse' : {List X -> List X -> List X}
-reverse' []        ys = ys
-reverse' (x :: xs) ys = reverse' xs (x :: ys)
+rev' : {List X -> List X -> List X}
+rev' []        ys = ys
+rev' (x :: xs) ys = rev' xs (x :: ys)
 
-reverse : {List X -> List X}
-reverse xs = reverse' xs []
+rev : {List X -> List X}
+rev xs = rev' xs []
 
 map : {{X -> Y} -> List X -> List Y}
 map f []        = []
@@ -21,35 +21,29 @@ print s = map ouch s; unit
 -- Queue interface and fast queue implementation
 --------------------------------------------------------------------------------
 
-interface Queue S = enqueue : S -> Unit
-                  | dequeue : Maybe S
+interface Queue S = enq : S -> Unit
+                  | deq : Maybe S
 
 -- Execute a computation along with a queue as state (generalisation of
 -- zipQueue from coop-factored.fk)
-data ZipQueue S = zipq (List S) (List S)
+data ZipQ S = zipq (List S) (List S)
 
-runZipQueue: {{[Queue S]X} -> ZipQueue S -> Pair X (ZipQueue S)}
-runZipQueue t q = runZipQueue' t! q
+runZipQ: {<Queue S>X -> ZipQ S -> Pair X (ZipQ S)}
+runZipQ <enq q -> k> (zipq ps        qs) = runZipQ (k unit)     (zipq ps (q :: qs))
+runZipQ <deq -> k>   (zipq []        []) = runZipQ (k nothing)  (zipq [] [])
+runZipQ <deq -> k>   (zipq []        qs) = runZipQ (k deq!) (zipq (rev qs) [])
+runZipQ <deq -> k>   (zipq (p :: ps) qs) = runZipQ (k (just p)) (zipq ps qs)
+runZipQ x            (zipq ps        qs) = pair x (zipq ps qs)
 
-runZipQueue': {<Queue S>X -> ZipQueue S -> Pair X (ZipQueue S)}
-runZipQueue' <enqueue q -> k> (zipq ps        qs) = runZipQueue' (k unit)     (zipq ps (q :: qs))
-runZipQueue' <dequeue -> k>   (zipq []        []) = runZipQueue' (k nothing)  (zipq [] [])
-runZipQueue' <dequeue -> k>   (zipq []        qs) = runZipQueue' (k dequeue!) (zipq (reverse qs) [])
-runZipQueue' <dequeue -> k>   (zipq (p :: ps) qs) = runZipQueue' (k (just p)) (zipq ps qs)
-runZipQueue' x                (zipq ps        qs) = pair x (zipq ps qs)
+evalZipQ: {<Queue S>X -> ZipQ S -> X}
+evalZipQ <t> q = case (runZipQ t! q) { (pair x _) -> x }
 
-evalZipQueue: {{[Queue S]X} -> ZipQueue S -> X}
-evalZipQueue t q = case (runZipQueue t q) { (pair x _) -> x }
+evalZipQEmpty : {<Queue S>X -> X}
+evalZipQEmpty <m> = evalZipQ m! (zipq [] [])
+evalZipQEmpty x   = x
 
-execZipQueue: {{[Queue S]X} -> ZipQueue S -> ZipQueue S}
-execZipQueue t q = case (runZipQueue t q) { (pair _ q) -> q }
-
-emptyZipQueue : {ZipQueue s}
-emptyZipQueue! = zipq [] []
-
-evalZipQueueEmpty : {<Queue S>X -> X}
-evalZipQueueEmpty <m> = evalZipQueue m (emptyZipQueue!)
-evalZipQueueEmpty x   = x
+execZipQ: {<Queue S>X -> ZipQ S -> ZipQ S}
+execZipQ <t> q = case (runZipQ t! q) { (pair _ q) -> q }
 
 --------------------------------------------------------------------------------
 -- Definitions of interfaces, data types
@@ -59,10 +53,10 @@ interface Co = fork : {[Co]Unit} -> Unit
              | yield : Unit
 
 -- Multi-item mailbox
-data Mailbox X = mbox (Ref (ZipQueue X))
+data Mailbox X = mbox (Ref (ZipQ X))
 
-interface Actor X = spawn Y: {[Actor Y]Unit} -> Mailbox Y
-                  | self:    Mailbox X
+interface Actor X = self:    Mailbox X
+                  | spawn Y: {[Actor Y]Unit} -> Mailbox Y
                   | recv:    X
                   | send Y:  Mailbox Y -> Y -> Unit
 
@@ -75,20 +69,20 @@ data WithSender X Y = withSender (Mailbox X) Y
 doubleActor: {[Actor (WithSender Int Int)]Unit}
 doubleActor! = case recv! { (withSender sender n) -> send sender (n + n) }
 
+divConqActor: {[Actor Int [Console], Console]Unit}
+divConqActor! = let childA = spawn doubleActor in
+                let childB = spawn doubleActor in
+                send childA (withSender self! 1);
+                send childB (withSender self! 2);
+                print "calculating (1+1) + (2+2)... ";
+                case (recv! + recv!) { 6 -> print "6 "
+                                     | _ -> print "not 6 " }
+
 doubleSpawningActor: {[Actor Int [Console], Console]Unit}
 doubleSpawningActor! = let doubler = spawn doubleActor in
                        send doubler (withSender self! 3);
                        case recv! { 6 -> print "you truly know how to double"
                                   | _ -> print "naw" }
-
-divConqActor: {[Actor Int [Console], Console]Unit}
-divConqActor! = let doublerA = spawn doubleActor in
-                let doublerB = spawn doubleActor in
-                send doublerA (withSender self! 1);
-                send doublerB (withSender self! 2);
-                print "calculating (1+1) + (2+2)... ";
-                case (recv! + recv!) { 6 -> print "yay got 6"
-                                     | _ -> print "naw" }
 
 soliloquistActor: {[Actor Int [Console], Console]Unit}
 soliloquistActor! = send self! 42;
@@ -109,27 +103,32 @@ writingActor! = let you = spawn nicePrintActor in
 
 step: {Mailbox X -> <Actor X [RefState, Co[RefState]]>Unit -> [RefState, Co [RefState]]Unit}
 step mine         <self -> k> = step mine (k mine)
-step (mbox mine') <recv -> k> = case (runZipQueue {dequeue!} (read mine'))
-                              { (pair nothing _)  -> yield!;
-                                                     step (mbox mine') (k recv!)
-                              | (pair (just x) q) -> write mine' q;
-                                                     step (mbox mine') (k x) }
-step mine         <send (mbox yours') x -> k> = let q  = read yours' in
-                                            case (execZipQueue {enqueue x} q)
-                                            { q' -> write yours' q';
-                                                    step mine (k unit) }
 step mine         <spawn you -> k> = let yours = mbox (new (zipq [] [])) in
                                      fork {step yours you!};
                                      step mine (k yours)
-step mine         x = x
+step (mbox mine') <recv -> k> = case (runZipQ deq! (read mine'))
+                                { (pair nothing _)  -> yield!;
+                                                       step (mbox mine') (k recv!)
+                                | (pair (just x) q) -> write mine' q;
+                                                       step (mbox mine') (k x) }
+step mine         <send (mbox yours') x -> k> = let q  = read yours' in
+                                                case (execZipQ (enq x) q)
+                                                { q' -> write yours' q';
+                                                        step mine (k unit) }
+step mine         unit = unit
 
--- This signature suffers from the fact that so far we cannot 'overstep' a handler.
--- Thus all the effects listed within <...> will be 'handled away' (consumed).
--- This restriction shall be overcome in the future.
-run : {<Co [Queue (Proc [RefState]), RefState], Queue (Proc [RefState]), Actor X [Queue (Proc [RefState]), RefState, Co [Queue (Proc [RefState]), RefState]]>Unit -> [RefState]Unit}
-run <m>  = evalZipQueueEmpty (roundRobin (step (mbox (new (emptyZipQueue!))) m!))
-run unit = unit
-
+-- This signature suffers from the issue of unintentially exposed intermediate
+-- effects. Thus all the effects listed within <...> will be 'handled away'
+-- (consumed). This restriction shall be overcome in the future.
+runActor : {<RefState,
+             Queue (Proc [RefState]),
+             Co [Queue (Proc [RefState]), RefState],
+             Actor X [RefState,
+                      Queue (Proc [RefState]),
+                      Co [Queue (Proc [RefState]), RefState]]>Unit ->
+            [RefState]Unit}
+runActor <m>  = evalZipQEmpty (roundRobin (step (mbox (new (zipq [] []))) m!))
+runActor unit = unit
 
 --------------------------------------------------------------------------------
 -- This is the process executer from coop-factored.fk, using a queue to handle
@@ -139,20 +138,26 @@ run unit = unit
 data Proc = proc {[Queue Proc]Unit}
 
 pushProc : {{[Queue Proc]Unit} -> [Queue Proc]Unit}
-pushProc p = enqueue (proc p)
+pushProc p = enq (proc p)
 
-popProc : {[Queue Proc]Maybe Unit}
-popProc! = case dequeue! { (just (proc x)) -> just x!
-                         | nothing         -> nothing }
+popRunProc : {[Queue Proc]Unit}
+popRunProc! = case deq! { (just (proc x)) -> x!
+                            | nothing         -> unit }
 
-popProcs : {[Queue Proc]Unit}
-popProcs! = case popProc! { (just unit) -> popProcs!
-                          | nothing     -> unit }
+popRunAllProcs : {[Queue Proc]Unit}
+popRunAllProcs! = case deq! { (just (proc x)) -> x!; popRunAllProcs!
+                                | nothing         -> unit }
 
 roundRobin : {<Co [Queue Proc]>Unit -> [Queue Proc]Unit}
-roundRobin <yield -> k>  = pushProc {roundRobin (k unit)}; popProcs!
+roundRobin <yield -> k>  = pushProc {roundRobin (k unit)}; popRunProc!
 roundRobin <fork p -> k> = pushProc {roundRobin p!}; roundRobin (k unit)
-roundRobin unit          = popProcs!
+roundRobin unit          = popRunAllProcs!
+
+scheduleDF : {<Co [Queue Proc]>Unit -> [Queue Proc]Unit}
+scheduleDF <yield -> k>  = pushProc {scheduleDF (k unit)}; popRunProc!
+scheduleDF <fork p -> k> = pushProc {scheduleDF (k unit)};
+                           scheduleDF p!
+scheduleDF unit          = popRunAllProcs!
 
 --------------------------------------------------------------------------------
 -- Test an example actor
@@ -163,4 +168,4 @@ roundRobin unit          = popProcs!
 -- #return calculating (1+1) + (2+2)... yay got 6unit
 
 main: {[Console, RefState]Unit}
-main! = run divConqActor!
+main! = runActor divConqActor!
