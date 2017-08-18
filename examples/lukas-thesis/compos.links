@@ -1,0 +1,97 @@
+# Thanks to Daniel Hillerstroem for helping me on this one.
+
+typename Comp(e::Row,a) = () { |e}~> a;
+
+sig run : (Comp({ }, a)) {}~> a
+fun run(m) { m() }
+
+
+sig boolFix : (Comp({BChoose:Bool |e}, a)) -> Comp({BChoose{_} |e}, a)
+fun boolFix(m)() {
+   handle (m()) {
+     case Return(x) -> x
+     case BChoose(k) -> k(false)
+   }
+}
+
+sig intFix : (Comp({IChoose:Int |e}, a)) -> Comp({IChoose{_} |e}, a)
+fun intFix(m)() {
+   handle (m()) {
+     case Return(x) -> x
+     case IChoose(k) -> k(42)
+   }
+}
+
+# Scenario 1: Accumulating Effects
+sig boolIntFix : (Comp({BChoose:Bool,IChoose:Int |e}, a)) -> Comp({BChoose {_},IChoose{_} |e}, a)
+fun boolIntFix(m) {
+   boolFix (intFix (m))
+}
+
+sig intBoolFix : (Comp({BChoose:Bool,IChoose:Int |e}, a)) -> Comp({BChoose {_},IChoose{_} |e}, a)
+fun intBoolFix(m) {
+   intFix (boolFix (m))
+}
+
+# Scenario 2: Unintentionally Exposed Intermediate Effects
+sig intByBool : (Comp({BChoose:Bool,IChoose:Int |e}, Int)) -> Comp({BChoose:Bool,IChoose{_} |e}, Int)
+fun intByBool(m)() {
+  handle(m()) {
+    case Return(x) -> x
+    case IChoose(k) -> k(if (do BChoose) {if (do BChoose) {3} else {2}}
+                         else            {if (do BChoose) {1} else {0}})
+  }
+}
+
+# Bad: BChoice gets exposed.
+# The following signature is desired but cannot be achieved this way:
+#   sig intFix_composed2 : (Comp({IChoose:Int |e}, Int)) -> Comp({IChoose{_} |e}, Int)
+# So we settle with this one:
+sig intFix_composed : (Comp({BChoose:Bool,IChoose:Int |e}, Int)) -> Comp({BChoose{_},IChoose{_} |e}, Int)
+fun intFix_composed(m) {
+   var a = intByBool (m);
+   boolFix (a)
+}
+
+# Scenario 3: Intentionally Exposed Intermediate Effects
+sig boolIntFix_composed : (Comp({BChoose:Bool,IChoose:Int |e}, Int)) -> Comp({BChoose {_},IChoose{_} |e}, Int)
+fun boolIntFix_composed(m) {
+   boolFix (intByBool (m))
+}
+
+# Scenario 4: Intermediate Handling Without Introducing New Effects
+sig incrInt : (Comp({IChoose:Int |e}, a)) -> Comp({IChoose:Int |e}, a)
+fun incrInt(m)() {
+   handle (m()) {
+     case Return(x) -> x
+     case IChoose(k) -> k((do IChoose) + 1)
+   }
+}
+
+sig doubleIncrInt : (Comp({IChoose:Int |e}, a)) -> Comp({IChoose:Int |e}, a)
+fun doubleIncrInt(m) {
+   incrInt (incrInt (m))
+}
+
+# For testing
+sig booluser: Comp({BChoose:Bool | e}, Int)
+fun booluser() {
+  if (do BChoose) 3 else 7
+}
+
+sig intuser: Comp({IChoose:Int | e}, Int)
+fun intuser() {
+  (do IChoose)
+}
+
+sig boolintuser: Comp({BChoose:Bool,IChoose:Int | e}, Int)
+fun boolintuser() {
+  if (do BChoose)
+    ((do IChoose) + 1)
+  else
+    ((do IChoose) + 100)
+}
+
+fun doIChoose () { do IChoose }
+
+run(intFix(doubleIncrInt(doIChoose)))
