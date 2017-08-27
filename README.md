@@ -2,8 +2,9 @@
 
 An implementation of the Frank programming language described in the
 paper ``Do be do be do'' by Sam Lindley, Conor McBride, and Craig
-McLaughlin, to appear at POPL 2017; preprint:
-https://arxiv.org/abs/1611.09259
+McLaughlin, appeared at POPL 2017: http://homepages.inf.ed.ac.uk/slindley/papers/frankly.pdf
+
+Further enhancements are described by Lukas Convent in his MSc thesis of 2017: http://lukas.convnet.de/proj/master/index.html
 
 #### Installation procedure
 
