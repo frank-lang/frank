@@ -1,0 +1,9 @@
+-- #desc parser error with a prefix minus operator
+-- #return -42
+
+-- the (previously) offending code: "{-" was comment syntax!
+err : {{Int}}
+err! = {-42}
+
+main : {Int}
+main! = (err!)!

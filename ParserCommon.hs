@@ -27,8 +27,11 @@ deriving instance (DeltaParsing m) => (CharParsing (FrankParser Char m))
 deriving instance (DeltaParsing m) => (CharParsing (FrankParser Token m))
 deriving instance (DeltaParsing m) => (TokenParsing (FrankParser Char m))
 
+frankCommentStyle :: CommentStyle
+frankCommentStyle = CommentStyle "{--" "--}" "--" True
+
 instance DeltaParsing m => TokenParsing (FrankParser Token m) where
-  someSpace = FrankParser $ buildSomeSpaceParser someSpace haskellCommentStyle
+  someSpace = FrankParser $ buildSomeSpaceParser someSpace frankCommentStyle
   nesting = FrankParser . nesting . runFrankParser
   semi = FrankParser $ runFrankParser semi
   highlight h = FrankParser . highlight h . runFrankParser

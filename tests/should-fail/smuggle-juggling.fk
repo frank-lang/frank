@@ -43,7 +43,7 @@ juggle : {Payload -> Either {Payload -> [0|State Payload]X} X -> [0|]X}
 juggle a (right x) = x
 juggle a (left k) = state a (k a)
 
-{- now
+{-- now
 ** juggle a (catch (smuggle (get! ; abort!)) {...})
    becomes
 ** juggle a (catch (left {x -> abort!}) {...})
@@ -54,7 +54,7 @@ juggle a (left k) = state a (k a)
 
 The typechecker should report an error between the result ability of smuggle
 and the ambient.
--}
+--}
 
 -- #return cannot unify abilities [0 | Abort] (line 60 , column 10) and [0] (line 27 , column 33)
 main : {[0]Payload}
