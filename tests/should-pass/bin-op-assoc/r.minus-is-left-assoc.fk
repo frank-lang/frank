@@ -1,0 +1,8 @@
+-- #desc Minus - is left-assoc.
+-- #return 12
+
+myVal : {Int}
+myVal!  = 42-20-5-5
+
+main: {Int}
+main! = myVal!

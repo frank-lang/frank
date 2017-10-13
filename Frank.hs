@@ -56,7 +56,7 @@ parseProg :: FilePath -> [(String, String)] -> IO (Either String (Prog Raw))
 parseProg fileName args = runTokenProgParse <$> readFile fileName
 
 parseEvalTm :: String -> IO (Tm Raw)
-parseEvalTm v = case runTokenParse parseRawTm v of
+parseEvalTm v = case runTokenParse tm v of
   Left err -> die err
   Right tm -> return tm
 

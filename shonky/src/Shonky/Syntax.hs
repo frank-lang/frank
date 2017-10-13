@@ -7,41 +7,46 @@ import Data.Char
 import Data.List
 import qualified Data.Map as M
 
+-- A program is of type [Def Exp]
+
 data Exp
   = EV String                     -- variable
   | EI Integer                    -- integer
   | EA String                     -- atom
   | Exp :& Exp                    -- cons
-  | Exp :$ [Exp]                  -- application
+  | Exp :$ [Exp]                  -- n-ary application
   | Exp :! Exp                    -- composition (;)
   | Exp :// Exp                   -- composition (o)
-  | EF [[String]] [([Pat], Exp)]  -- operator
+  | EF [[String]] [([Pat], Exp)]  -- handler
+                                  --   [[String]]:     for each arg pos, which commands are handled?
+                                  --   [([Pat], Exp)]: pattern matching rules
   | [Def Exp] :- Exp              -- ? (not used by Frank)
   | EX [Either Char Exp]          -- string concatenation expression
-                                  -- (only used for characters in source Frank (Left c), but used by strcat)
+                                  -- (used only for characters in source Frank (Left c), but used by strcat)
+  | ES [String]                   -- shift commands
   deriving (Show, Eq)
 infixr 6 :&
 infixl 5 :$
 infixr 4 :!
 
 data Def v
-  = String := v
-  | DF String [[String]] [([Pat], Exp)]
+  = String := v                          -- value def
+  | DF String [[String]] [([Pat], Exp)]  -- function def
   deriving (Show, Eq)
 
 data Pat
-  = PV VPat
-  | PT String
-  | PC String [VPat] String
+  = PV VPat                   -- value pattern
+  | PT String                 -- variable pattern
+  | PC String [VPat] String   -- command pattern: cmd-id, arg-patterns, continuation-var
   deriving (Show, Eq)
 
 data VPat
-  = VPV String
-  | VPI Integer
-  | VPA String
-  | VPat :&: VPat
-  | VPX [Either Char VPat]
-  | VPQ String
+  = VPV String              -- LC: ?
+  | VPI Integer             -- int value
+  | VPA String              -- atom value
+  | VPat :&: VPat           -- cons value
+  | VPX [Either Char VPat]  -- LC: ?
+  | VPQ String              -- LC: ?
   deriving (Show, Eq)
 
 pProg :: P [Def Exp]
@@ -123,7 +128,7 @@ pRules f = DF f <$>
   pCSep (pP f *> pClause) ""
   <|> DF f [] <$> ((:) <$> pClause <*>
        many (id <$ pGap <* pP "," <* pGap <* pP f <*> pClause))
-    
+
 pPat :: P Pat
 pPat = PT <$ pP "{" <* pGap <*> pId <* pGap <* pP "}"
    <|> PC <$ pP "{" <* pGap <* pP "'" <*> pId <* pP "(" <*> pCSep pVPat ")"
@@ -150,6 +155,8 @@ escape :: String -> String
 escape = (>>= help) where
   help c | elem c "\\[|]`" = ['\\',c]
   help c = [c]
+
+-- Parser Monad
 
 newtype P x = P {parse :: String -> Maybe (x, String)}
 

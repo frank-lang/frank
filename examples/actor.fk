@@ -165,7 +165,7 @@ scheduleDF unit          = popRunAllProcs!
 
 -- Dont delete these lines, they make this program into a unit test.
 -- #desc   examples/actorMultiMailbox.fk
--- #return calculating (1+1) + (2+2)... yay got 6unit
+-- #return calculating (1+1) + (2+2)... 6 unit
 
 main: {[Console, RefState]Unit}
 main! = runActor divConqActor!

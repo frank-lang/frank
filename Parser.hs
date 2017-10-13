@@ -1,7 +1,7 @@
 
 -- A simple parser for the Frank language
 {-# LANGUAGE PackageImports #-}
-module Parser where
+module Parser (runTokenProgParse, runTokenParse, tm) where
 
 import Control.Applicative
 import Control.Monad
@@ -29,48 +29,52 @@ import Syntax
 import ParserCommon
 import Debug
 
+---------------------------
+-- Top-level definitions --
+---------------------------
+
 -- the eof disallows gibberish at the end of the file!
-prog :: (Applicative m, MonadicParsing m) => m (Prog Raw)
-prog = MkProg <$ whiteSpace <*> do tts <- many tterm; eof; return tts
+prog :: (MonadicParsing m) => m (Prog Raw)
+prog = MkProg <$ whiteSpace <*> do tts <- many def; eof; return tts
 
-tterm :: MonadicParsing m => m (TopTm Raw)
-tterm = attachLoc (DataTm <$> parseDataT <|>
-                   SigTm <$> try parseMHSig <|>
-                   ClsTm <$> parseMHCls <|>
-                   ItfTm <$> try parseItf <|>
-                   ItfAliasTm <$> parseItfAlias)
+def :: MonadicParsing m => m (TopTm Raw)
+def = attachLoc (DataTm <$> dataDef <|>
+                 SigTm <$> try handlerTopSig <|>
+                 ClsTm <$> handlerTopCls <|>
+                 ItfTm <$> try itfDef <|>
+                 ItfAliasTm <$> itfAliasDef)
 
-parseTyVar :: MonadicParsing m => m (Id, Kind)
-parseTyVar = (\x -> (x, ET)) <$> brackets parseEVar <|>
-             (\x -> (x, VT)) <$> identifier
+dataDef :: MonadicParsing m => m (DataT Raw)
+dataDef = attachLoc $ do reserved "data"
+                         name <- identifier
+                         ps <- many tyVar
+                         symbol "="
+                         cs <- localIndentation Gt ctrList
+                         return $ DT name ps cs
 
-parseDataT :: MonadicParsing m => m (DataT Raw)
-parseDataT = attachLoc $ do reserved "data"
-                            name <- identifier
-                            ps <- many parseTyVar
-                            symbol "="
-                            cs <- localIndentation Gt ctrlist
-                            return $ DT name ps cs
+tyVar :: MonadicParsing m => m (Id, Kind)
+tyVar = (\x -> (x, ET)) <$> brackets evar <|>
+        (\x -> (x, VT)) <$> identifier
 
-parseEVar :: MonadicParsing m => m Id
-parseEVar = do mx <- optional identifier
-               case mx of
-                 Nothing -> return "£"
-                 Just x -> return x
+evar :: MonadicParsing m => m Id
+evar = do mx <- optional identifier
+          case mx of
+            Nothing -> return "£"
+            Just x -> return x
 
-ctrlist :: MonadicParsing m => m [Ctr Raw]
-ctrlist = sepBy parseCtr (symbol "|")
+ctrList :: MonadicParsing m => m [Ctr Raw]
+ctrList = sepBy ctr (symbol "|")
 
-parseCtr :: MonadicParsing m => m (Ctr Raw)
-parseCtr = attachLoc $ do name <- identifier
-                          args <- many parseVType'
-                          return $ Ctr name args
+ctr :: MonadicParsing m => m (Ctr Raw)
+ctr = attachLoc $ do name <- identifier
+                     args <- many vtype'
+                     return $ Ctr name args
 
-parseMHSig :: MonadicParsing m => m (MHSig Raw)
-parseMHSig = attachLoc $ do name <- identifier
-                            symbol ":"
-                            ty <- parseSigType
-                            return (Sig name ty)
+handlerTopSig :: MonadicParsing m => m (MHSig Raw)
+handlerTopSig = attachLoc $ do name <- identifier
+                               symbol ":"
+                               ty <- sigType
+                               return (Sig name ty)
 
 -- As the outer braces are optional in top-level signatures we require
 -- that plain pegs must have explicit ability brackets.
@@ -88,279 +92,320 @@ parseMHSig = attachLoc $ do name <- identifier
 -- will become valid, but will not mean the same thing as:
 --
 --   x : []Int
-parseSigType :: MonadicParsing m => m (CType Raw)
-parseSigType = (do a <- getLoc
-                   symbol "{"
-                   ct <- parseCType
-                   symbol "}"
-                   rest <- optional (symbol "->" *> parseCType)
-                   return $
-                     case rest of
-                       Nothing -> modifyAnn a ct
-                       Just (CType ports peg a') ->
-                         CType (Port idAdjRaw (SCTy ct a') a' : ports) peg a) <|>
-               attachLoc (do ports <- some (try (parsePort <* symbol "->"))
-                             peg <- parsePeg
-                             return $ CType ports peg) <|>
-               attachLoc (do peg <- parsePegExplicit
-                             return $ CType [] peg)
+sigType :: MonadicParsing m => m (CType Raw)
+sigType = (do a <- getLoc
+              symbol "{"
+              ct <- ctype
+              symbol "}"
+              rest <- optional (symbol "->" *> ctype)
+              return $
+                case rest of
+                  Nothing -> modifyAnn a ct
+                  Just (CType ports peg a') ->
+                        CType (Port idAdjRaw (SCTy ct a') a' : ports) peg a) <|>
+          attachLoc (do ports <- some (try (port <* symbol "->"))
+                        peg <- peg
+                        return $ CType ports peg) <|>
+          attachLoc (do peg <- pegExplicit
+                        return $ CType [] peg)
 
-parseMHCls :: MonadicParsing m => m (MHCls Raw)
-parseMHCls = provideLoc $ \a -> do
-               name <- identifier
-               ps <- choice [some parsePattern, symbol "!" >> return []]
-               symbol "="
-               seq <- localIndentation Gt parseRawTmSeq
-               return $ MHCls name (Cls ps seq a) a
+handlerTopCls :: MonadicParsing m => m (MHCls Raw)
+handlerTopCls = provideLoc $ \a -> do
+                  name <- identifier
+                  ps <- choice [some pattern, symbol "!" >> return []]
+                  symbol "="
+                  seq <- localIndentation Gt tm
+                  return $ MHCls name (Cls ps seq a) a
 
-parseItf :: MonadicParsing m => m (Itf Raw)
-parseItf = attachLoc $ do
+itfDef :: MonadicParsing m => m (Itf Raw)
+itfDef = attachLoc $ do
              reserved "interface"
              name <- identifier
-             ps <- many parseTyVar
+             ps <- many tyVar
              symbol "="
-             xs <- localIndentation Gt $ sepBy1 parseCmd (symbol "|")
+             xs <- localIndentation Gt $ sepBy1 cmdDef (symbol "|")
              return (Itf name ps xs)
 
-parseCmd :: MonadicParsing m => m (Cmd Raw)
-parseCmd = attachLoc $ do cmd <- identifier
-                          ps <- many parseTyVar  -- polymorphic commands
-                          symbol ":"
-                          (xs,y) <- parseCmdType
-                          return (Cmd cmd ps xs y)
+cmdDef :: MonadicParsing m => m (Cmd Raw)
+cmdDef = attachLoc $ do cmd <- identifier
+                        ps <- many tyVar  -- polymorphic commands
+                        symbol ":"
+                        (xs,y) <- cmdDefType
+                        return (Cmd cmd ps xs y)
 
--- type vars, input types, output type
-parseCmdType :: MonadicParsing m => m ([VType Raw], VType Raw)
-parseCmdType = do vs <- sepBy1 parseVType (symbol "->")
-                  if length vs == 1 then return ([],head vs)
-                  else return (init vs, last vs)
+-- input types, output type
+cmdDefType :: MonadicParsing m => m ([VType Raw], VType Raw)
+cmdDefType = do vs <- sepBy1 vtype (symbol "->")
+                if length vs == 1 then return ([],head vs)
+                else return (init vs, last vs)
 
-parseItfAlias :: MonadicParsing m => m (ItfAlias Raw)
-parseItfAlias = attachLoc $ do reserved "interface"
-                               name <- identifier
-                               ps <- many parseTyVar
-                               symbol "="
-                               a <- getLoc
-                               symbol "["
-                               m <- parseItfInstances
-                               symbol "]"
-                               return $ ItfAlias name ps m
+itfAliasDef :: MonadicParsing m => m (ItfAlias Raw)
+itfAliasDef = attachLoc $ do reserved "interface"
+                             name <- identifier
+                             ps <- many tyVar
+                             symbol "="
+                             symbol "["
+                             m <- itfInstances
+                             symbol "]"
+                             return $ ItfAlias name ps m
 
-parseCType :: MonadicParsing m => m (CType Raw)
-parseCType = attachLoc $ do ports <- many (try (parsePort <* symbol "->"))
-                            peg <- parsePeg
-                            return $ CType ports peg
+-----------
+-- Types --
+-----------
 
-parsePort :: MonadicParsing m => m (Port Raw)
-parsePort = attachLoc $ do adj <- parseAdj
-                           ty <- parseVType
-                           return $ Port adj ty
+ctype :: MonadicParsing m => m (CType Raw)
+ctype = attachLoc $ do ports <- many (try (port <* symbol "->"))
+                       peg <- peg
+                       return $ CType ports peg
 
-parsePeg :: MonadicParsing m => m (Peg Raw)
-parsePeg = attachLoc $ do ab <- parseAb
-                          ty <- parseVType
-                          return $ Peg ab ty
+port :: MonadicParsing m => m (Port Raw)
+port = attachLoc $ do adj <- adj
+                      ty <- vtype
+                      return $ Port adj ty
 
-parsePegExplicit :: MonadicParsing m => m (Peg Raw)
-parsePegExplicit = attachLoc $ do ab <- brackets parseAbBody
-                                  ty <- parseVType
-                                  return $ Peg ab ty
+peg :: MonadicParsing m => m (Peg Raw)
+peg = attachLoc $ do ab <- ab
+                     ty <- vtype
+                     return $ Peg ab ty
 
-parseAdj :: MonadicParsing m => m (Adj Raw)
-parseAdj = provideLoc $ \a -> do
-              mItfMap <- optional $ angles parseItfInstances
+pegExplicit :: MonadicParsing m => m (Peg Raw)
+pegExplicit = attachLoc $ do ab <- abExplicit
+                             ty <- vtype
+                             return $ Peg ab ty
+
+adj :: MonadicParsing m => m (Adj Raw)
+adj = provideLoc $ \a -> do
+              mItfMap <- optional $ angles itfInstances
               case mItfMap of
                 Nothing -> return $ Adj (ItfMap M.empty a) a
                 Just itfMap -> return $ Adj itfMap a
 
-parseDTAb :: MonadicParsing m => m (Ab Raw)
-parseDTAb = brackets parseAbBody
-
-parseItfInstances :: MonadicParsing m => m (ItfMap Raw)
-parseItfInstances = do
+-- TODO: LC: Name consistently `instances` or `instantiations`
+itfInstances :: MonadicParsing m => m (ItfMap Raw)
+itfInstances = do
   a <- getLoc
-  insts <- sepBy parseItfInstance (symbol ",")
+  insts <- sepBy itfInstance (symbol ",")
   return $ foldl addInstanceToItfMap (ItfMap M.empty a) insts
 
+ab :: MonadicParsing m => m (Ab Raw)
+ab = do mxs <- optional $ abExplicit
+        case mxs of
+          Nothing -> provideLoc $ \a ->
+            return $ Ab (AbVar "£" a) (ItfMap M.empty a) a
+          Just ab -> return ab
+
+abExplicit :: MonadicParsing m => m (Ab Raw)
+abExplicit = brackets abBody
+
 -- 0 | 0|Interfaces | E|Interfaces | Interfaces
-parseAbBody :: MonadicParsing m => m (Ab Raw)
-parseAbBody = provideLoc $ \a ->
-                -- closed ability: [0] or [0 | i_1, ... i_n]
-                (do symbol "0"
-                    m <- option (ItfMap M.empty a) (symbol "|" *> parseItfInstances)
-                    return $ Ab (EmpAb a) m a) <|>
-                -- open ability:   [i_1, ..., i_n] (implicitly e := £) or [e | i_1, ..., i_n]
-                (do e <- option (AbVar "£" a) (try $ AbVar <$> identifier <* symbol "|" <*> pure a)
-                    m <- parseItfInstances
-                    return $ Ab e m a)
+abBody :: MonadicParsing m => m (Ab Raw)
+abBody = provideLoc $ \a ->
+           -- closed ability: [0] or [0 | i_1, ... i_n]
+           (do symbol "0"
+               m <- option (ItfMap M.empty a) (symbol "|" *> itfInstances)
+               return $ Ab (EmpAb a) m a) <|>
+           -- open ability:   [i_1, ..., i_n] (implicitly e := £) or [e | i_1, ..., i_n]
+           (do e <- option (AbVar "£" a) (try $ AbVar <$> identifier <* symbol "|" <*> pure a)
+               m <- itfInstances
+               return $ Ab e m a)
 
-parseAb :: MonadicParsing m => m (Ab Raw)
-parseAb = do mxs <- optional $ brackets parseAbBody
-             case mxs of
-               Nothing -> provideLoc $ \a ->
-                 return $ Ab (AbVar "£" a) (ItfMap M.empty a) a
-               Just ab -> return ab
-
-parseItfInstance :: MonadicParsing m => m (Id, [TyArg Raw])
-parseItfInstance = do x <- identifier
-                      ts <- many parseTyArg
-                      return (x, ts)
+itfInstance :: MonadicParsing m => m (Id, [TyArg Raw])
+itfInstance = do x <- identifier
+                 ts <- many tyArg
+                 return (x, ts)
 
 -- This parser gives higher precedence to MkDTTy when coming across "X"
 -- E.g., the type "X" becomes   MkDTTy "X" []   (instead of MkTVar "X")
-parseVType :: MonadicParsing m => m (VType Raw)
-parseVType = try parseDTType <|> -- could possibly also be a MKTvar (determined
+vtype :: MonadicParsing m => m (VType Raw)
+vtype = try dataInstance <|> -- could possibly also be a MKTvar (determined
                                  -- during refinement)
-             parseVType'
+             vtype'
 
 -- This parser gives higher precedence to MkTVar when coming across "X"
 -- E.g., the type "X" becomes   MkTVar "X"   (instead of MkDTTy "X" [])
--- By writing "(X)" one can escape back to parseVType
-parseVType' :: MonadicParsing m => m (VType Raw)
-parseVType' = parens parseVType <|>
-              (attachLoc $ SCTy <$> try (braces parseCType)) <|>
+-- By writing "(X)" one can escape back to vtype
+vtype' :: MonadicParsing m => m (VType Raw)
+vtype' = parens vtype <|>
+              (attachLoc $ SCTy <$> try (braces ctype)) <|>
               (attachLoc $ StringTy <$ reserved "String") <|>
               (attachLoc $ IntTy <$ reserved "Int") <|>
               (attachLoc $ CharTy <$ reserved "Char") <|>
               -- could possibly also be a MkDTTy (determined during refinement)
               (attachLoc $ TVar <$> identifier)
 
-parseTyArg :: MonadicParsing m => m (TyArg Raw)
-parseTyArg = attachLoc $ VArg <$> parseVType' <|>
-                         EArg <$> parseDTAb
+tyArg :: MonadicParsing m => m (TyArg Raw)
+tyArg = attachLoc $ VArg <$> vtype' <|>
+                         EArg <$> abExplicit
 
 -- Parse a potential datatype. Note it may actually be a type variable.
-parseDTType :: MonadicParsing m => m (VType Raw)
-parseDTType = attachLoc $ do x <- identifier
-                             args <- localIndentation Gt $ many parseTyArg
-                             return $ DTTy x args
+dataInstance :: MonadicParsing m => m (VType Raw)
+dataInstance = attachLoc $ do x <- identifier
+                              args <- localIndentation Gt $ many tyArg
+                              return $ DTTy x args
 
-parseRawTmSeq :: MonadicParsing m => m (Tm Raw)
-parseRawTmSeq = do loc <- getLoc
-                   tm1 <- parseRawTm
-                   m <- optional $ symbol ";"
-                   case m of
-                     Just _ -> do tm2 <- parseRawTmSeq
-                                  return $ TmSeq tm1 tm2 loc
-                     Nothing -> return tm1
+-----------
+-- Terms --
+-----------
 
--- parse term of 1st syntactic category
-parseRawTm :: MonadicParsing m => m (Tm Raw)
-parseRawTm = parseLet <|>
-             try parseRawOpTm <|>
-             parseRawTm'
+-- term
+tm :: MonadicParsing m => m (Tm Raw)                  -- ltm ; ... ; ltm
+tm = provideLoc $ \a -> do
+       t <- ltm
+       m <- optional $ symbol ";"
+       case m of
+         Just _ -> do t' <- tm
+                      return $ TmSeq t t' a
+         Nothing -> return t
 
--- parse term of 2nd syntactic category
--- parse binary operation or term comb t_1 ... t_n
-parseRawOpTm :: (MonadicParsing m) => m (Tm Raw)
-parseRawOpTm = do loc <- getLoc
-                  uminus <- optional $ symbol "-"
-                  t1 <- parseRawOperandTm
-                  let t1' = case uminus of
-                              Just _ -> Use (RawComb (RawId "-" loc) [IntTm 0 loc, t1] loc) loc
-                              Nothing -> t1
-                  (do binOp <- parseBinOp
-                      t2 <- parseRawOperandTm
-                      return $ Use (RawComb binOp [t1',t2] loc) loc
-                    <|> (return t1'))
+-- let-term
+ltm :: MonadicParsing m => m (Tm Raw)
+ltm = parseLet tm tm <|>                              -- let x = tm in tm
+      btm                                             -- btm
 
-parseRawOperandTm :: MonadicParsing m => m (Tm Raw)
-parseRawOperandTm = (attachLoc $ Use <$> try parseComb) <|>
-                    parens parseRawOpTm <|>
-                    (attachLoc $ Use <$> parseId) <|>
-                    (attachLoc $ IntTm <$> natural)
+-- binary operation term (takes care of associativity)
+btm :: MonadicParsing m => m (Tm Raw)
+btm = do t <- utm
+         binOperation t
+  where
+    binOperation :: (MonadicParsing m) => Tm Raw -> m (Tm Raw)
+    binOperation t =
+      (provideLoc $ \a -> do
+         operator <- binOpLeft                        -- utm +  ...  + utm
+         t' <- utm
+         binOperation (Use (RawComb operator [t, t'] a) a)) <|>
+      (provideLoc $ \a -> do
+         operator <- binOpRight                       -- utm :: ... :: utm
+         t' <- btm
+         binOperation (Use (RawComb operator [t, t'] a) a)) <|>
+      (return t)
 
-parseBinOp :: MonadicParsing m => m (Use Raw)
-parseBinOp = attachLoc $ do op <- choice $ map symbol ["+","-","*","/","::"]
-                            let op' = if op == "::" then "cons" else op
-                            return $ RawId op'
+-- unary operation term
+utm :: MonadicParsing m => m (Tm Raw)
+utm = unOperation <|>                                 -- - utm
+      ctm                                             -- ctm
+  where
+    unOperation :: (MonadicParsing m) => m (Tm Raw)
+    unOperation = provideLoc $ \a -> do
+                    symbol "-"
+                    t <- utm
+                    return $ Use (RawComb (RawId "-" a) [IntTm 0 a, t] a) a
 
-parseId :: MonadicParsing m => m (Use Raw)
-parseId = attachLoc $ do x <- identifier
-                         return $ RawId x
+-- nun-nullary comb term
+ctm :: MonadicParsing m => m (Tm Raw)
+ctm = (attachLoc $ Use <$> comb) <|>                  -- comb
+      nctm                                            -- nctm
 
-parseNullaryComb :: MonadicParsing m => m (Use Raw)
-parseNullaryComb = attachLoc $ do x <- choice [parseId, parens parseComb]
-                                  symbol "!"
-                                  return $ RawComb x []
+-- nullary comb term
+nctm :: MonadicParsing m => m (Tm Raw)
+nctm = (attachLoc $ Use <$> nullaryComb) <|>          -- nullaryComb
+       atm                                            -- atm
 
-parseLet :: MonadicParsing m => m (Tm Raw)
-parseLet = attachLoc $ do reserved "let"
-                          x <- identifier
-                          symbol "="
-                          tm1 <- parseRawTm
-                          reserved "in"
-                          tm2 <- parseRawTmSeq
-                          return $ Let x tm1 tm2
+-- atomic term
+atm :: MonadicParsing m => m (Tm Raw)
+atm = (attachLoc $ Use <$> idUse) <|>                 -- x
+      (attachLoc $ SC <$> suspComp) <|>               -- { p_1 -> t_1 | ... }
+      (attachLoc $ StrTm <$> stringLiteral) <|>       -- "string"
+      (attachLoc $ IntTm <$> natural) <|>             -- 42
+      (attachLoc $ CharTm <$> charLiteral) <|>        -- 'c'
+      (attachLoc $ ListTm <$> listTm) <|>             -- [t_1, ..., t_n]
+      parens tm                                       -- (tm ; ... ; tm)
 
--- parse any term except let-expression or binary operation
-parseRawTm' :: MonadicParsing m => m (Tm Raw)
-parseRawTm' = (attachLoc $ Use <$> try parseNullaryComb) <|>  -- x!
-              parens parseRawTmSeq <|>                        -- t_1 ; ... ; t_n
-              (attachLoc $ Use <$> parseId) <|>               -- x
-              (attachLoc $ SC <$> parseRawSComp) <|>          -- { p_1 -> t_1 | ...
-              (attachLoc $ StrTm <$> stringLiteral) <|>       -- "string"
-              (attachLoc $ IntTm <$> natural) <|>             -- 42
-              (attachLoc $ CharTm <$> charLiteral) <|>        -- 'c'
-              (attachLoc $ ListTm <$> listTm)                 -- [t_1, ..., t_n]
+comb :: MonadicParsing m => m (Use Raw)
+comb = attachLoc $ try $ do
+         x <- choice [idUse,                          --      x nctm ... nctm   or      x!
+                      parens comb]                    -- (comb) nctm ... nctm   or (comb)!
+         args <- choice [some nctm, symbol "!" >> return []]
+         return $ RawComb x args
 
-listTm :: MonadicParsing m => m [Tm Raw]                      -- [t_1, ..., t_n]
-listTm = brackets (sepBy parseRawTm (symbol ","))
+nullaryComb :: MonadicParsing m => m (Use Raw)
+nullaryComb = attachLoc $ try $ do
+                x <- choice [idUse,                 --      x!
+                             parens comb]             -- (comb)!
+                symbol "!"
+                return $ RawComb x []
 
-parseComb :: MonadicParsing m => m (Use Raw)
-parseComb = attachLoc $ do x <- choice [parseId, parens parseComb]
-                           args <- choice [some parseRawTm', symbol "!" >> pure []]
-                           return $ RawComb x args
+idUse :: MonadicParsing m => m (Use Raw)
+idUse = attachLoc $ do x <- identifier
+                       return $ RawId x
 
-parseRawClause :: MonadicParsing m => m (Clause Raw)
-parseRawClause = attachLoc $ do ps <- choice [try parsePatterns, pure []]
-                                seq <- parseRawTmSeq
-                                return $ Cls ps seq
-  where parsePatterns = do
-          ps <- choice [some parsePattern, symbol "!" >> return []]
+parseLet :: MonadicParsing m => m (Tm Raw) -> m (Tm Raw) -> m (Tm Raw)
+parseLet p p' = attachLoc $ do reserved "let"
+                               x <- identifier
+                               symbol "="
+                               t <- p
+                               reserved "in"
+                               t' <- p'
+                               return $ Let x t t'
+
+listTm :: MonadicParsing m => m [Tm Raw]              -- [t_1, ..., t_n]
+listTm = brackets (sepBy tm (symbol ","))
+
+suspComp :: MonadicParsing m => m (SComp Raw)
+suspComp = attachLoc $ localIndentation Gt $ absoluteIndentation $
+             do cs <- braces $ sepBy anonymousCls (symbol "|")
+                return $ SComp cs
+
+anonymousCls :: MonadicParsing m => m (Clause Raw)
+anonymousCls = attachLoc $ do ps <- choice [try patterns, pure []]
+                              seq <- tm
+                              return $ Cls ps seq
+  where patterns = do
+          ps <- choice [some pattern, symbol "!" >> return []]
           symbol "->"
           return ps
 
-parsePattern :: MonadicParsing m => m (Pattern Raw)
-parsePattern = try parseCPat <|> (attachLoc $ VPat <$> parseVPat)
+binOpLeft :: MonadicParsing m => m (Use Raw)
+binOpLeft = attachLoc $ do op <- choice $ map symbol ["+","-","*","/"]
+                           return $ RawId op
 
-parseCPat :: MonadicParsing m => m (Pattern Raw)
-parseCPat = between (symbol "<") (symbol ">") $
-            try parseCmdPat <|> parseThunkPat
+binOpRight :: MonadicParsing m => m (Use Raw)
+binOpRight = attachLoc $ do op <- choice $ map symbol ["::"]
+                            let op' = if op == "::" then "cons" else op
+                            return $ RawId op'
 
-parseThunkPat :: MonadicParsing m => m (Pattern Raw)
-parseThunkPat = attachLoc $ do x <- identifier
-                               return (ThkPat x)
+--------------
+-- Patterns --
+--------------
 
-parseCmdPat :: MonadicParsing m => m (Pattern Raw)
-parseCmdPat = attachLoc $ do cmd <- identifier
-                             ps <- many parseVPat
-                             symbol "->"
-                             g <- identifier
-                             return (CmdPat cmd ps g)
+pattern :: MonadicParsing m => m (Pattern Raw)
+pattern = try compPat <|> (attachLoc $ VPat <$> valPat)
 
-parseVPat :: MonadicParsing m => m (ValuePat Raw)
-parseVPat = parseDataTPat <|>
-            (attachLoc $ do x <- identifier
-                            return $ VarPat x) <|>
-            (attachLoc $ IntPat <$> try integer) <|> -- try block for unary minus
-            (attachLoc $ CharPat <$> charLiteral) <|>
-            (attachLoc $ StrPat <$> stringLiteral) <|>
-            (attachLoc $ ListPat <$> brackets (sepBy parseVPat (symbol ",")))
+compPat :: MonadicParsing m => m (Pattern Raw)
+compPat = between (symbol "<") (symbol ">") $
+            try cmdPat <|> thunkPat
 
-parseDataTPat :: MonadicParsing m => m (ValuePat Raw)
-parseDataTPat = attachLoc $ parens $ ((try (do p <- parseVPat
-                                               symbol "::"
-                                               q <- parseVPat
-                                               return $ ConsPat p q)) <|>
-                                     (do k <- identifier
-                                         ps <- many parseVPat
-                                         return $ DataPat k ps))
+thunkPat :: MonadicParsing m => m (Pattern Raw)
+thunkPat = attachLoc $ do x <- identifier
+                          return (ThkPat x)
 
-parseRawSComp :: MonadicParsing m => m (SComp Raw)
-parseRawSComp = attachLoc $ localIndentation Gt $ absoluteIndentation $
-                do cs <- braces $ sepBy parseRawClause (symbol "|")
-                   return $ SComp cs
+cmdPat :: MonadicParsing m => m (Pattern Raw)
+cmdPat = attachLoc $ do cmd <- identifier
+                        ps <- many valPat
+                        symbol "->"
+                        g <- identifier
+                        return (CmdPat cmd ps g)
+
+valPat :: MonadicParsing m => m (ValuePat Raw)
+valPat = dataPat <|>
+         (attachLoc $ do x <- identifier
+                         return $ VarPat x) <|>
+         (attachLoc $ IntPat <$> try integer) <|> -- try block for unary minus
+         (attachLoc $ CharPat <$> charLiteral) <|>
+         (attachLoc $ StrPat <$> stringLiteral) <|>
+         (attachLoc $ ListPat <$> brackets (sepBy valPat (symbol ",")))
+
+dataPat :: MonadicParsing m => m (ValuePat Raw)
+dataPat = attachLoc $ parens $ ((try (do p <- valPat
+                                         symbol "::"
+                                         q <- valPat
+                                         return $ ConsPat p q)) <|>
+                                   (do k <- identifier
+                                       ps <- many valPat
+                                       return $ DataPat k ps))
+
+----------------------
+-- Helper functions --
+----------------------
 
 evalCharIndentationParserT :: Monad m => FrankParser Char m a ->
                               IndentationState -> m a

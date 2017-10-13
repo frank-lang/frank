@@ -1,0 +1,8 @@
+-- #desc Cons :: is right-assoc.
+-- #return unit
+
+myVal : {List Int}
+myVal!  = 1::1::[1, 2, 3]
+
+main: {Unit}
+main! = unit

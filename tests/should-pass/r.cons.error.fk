@@ -1,0 +1,5 @@
+-- #desc Some error with parsing cons-expressions
+-- #return [0, 1, 2, 3]
+
+main: {List Int}
+main! = (0::[1, 2, 3])
