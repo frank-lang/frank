@@ -1,10 +1,11 @@
 # frankjnr
 
 An implementation of the Frank programming language described in the
-paper ``Do be do be do'' by Sam Lindley, Conor McBride, and Craig
-McLaughlin, appeared at POPL 2017: http://homepages.inf.ed.ac.uk/slindley/papers/frankly.pdf
+POPL 2017 paper, ``Do be do be do'' by Sam Lindley, Conor McBride, and Craig
+McLaughlin. See the (revised) paper at: https://arxiv.org/abs/1611.09259
 
-Further enhancements are described by Lukas Convent in his MSc thesis of 2017: http://lukas.convnet.de/proj/master/index.html
+Further enhancements are described by Lukas Convent in his MSc thesis of 2017:
+http://lukas.convnet.de/proj/master/index.html
 
 #### Installation procedure
 
