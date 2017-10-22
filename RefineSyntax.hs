@@ -193,6 +193,14 @@ getIntroducedEVars (ItfMap m _) = do
   case errors of []             -> return $ map fst candidates
                  ((itf, _) : _) -> throwError $ errorRefEffVarNoParams itf
 
+refineAbMod :: AbMod Raw -> AbMod Refined
+refineAbMod (EmpAb a) = EmpAb (rawToRef a)
+refineAbMod (AbVar x a) = AbVar x (rawToRef a)
+
+refineAdj :: Adj Raw -> Refine (Adj Refined)
+refineAdj (Adj m a) = do m' <- refineItfMap m
+                         return $ Adj m' (rawToRef a)
+
 -- Explicit refinements:
 -- + interface aliases are substituted
 refineItfMap :: ItfMap Raw -> Refine (ItfMap Refined)
@@ -225,14 +233,6 @@ refineItfMap (ItfMap m a) = do
                                  insts
                   return (x, insts')
                Nothing -> throwError $ errorRefIdNotDeclared "interface" x a
-
-refineAbMod :: AbMod Raw -> AbMod Refined
-refineAbMod (EmpAb a) = EmpAb (rawToRef a)
-refineAbMod (AbVar x a) = AbVar x (rawToRef a)
-
-refineAdj :: Adj Raw -> Refine (Adj Refined)
-refineAdj (Adj m a) = do m' <- refineItfMap m
-                         return $ Adj m' (rawToRef a)
 
 -- Explicit refinements:
 -- + implicit [£] ty args to data types are made explicit
@@ -385,6 +385,9 @@ refineTm (ListTm ts a) =
 refineTm (TmSeq t1 t2 a) = do t1' <- refineTm t1
                               t2' <- refineTm t2
                               return $ TmSeq t1' t2' (rawToRef a)
+refineTm (Shift itfMap t a) = do itfMap' <- refineItfMap itfMap
+                                 t' <- refineTm t
+                                 return $ Shift itfMap' t' (rawToRef a)
 refineTm (Use u a) = do u' <- refineUse u
                         case u' of
                           Left use -> return $ Use use (rawToRef a)

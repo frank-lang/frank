@@ -33,9 +33,9 @@ import Debug
 -- Top-level definitions --
 ---------------------------
 
--- the eof disallows gibberish at the end of the file!
 prog :: (MonadicParsing m) => m (Prog Raw)
 prog = MkProg <$ whiteSpace <*> do tts <- many def; eof; return tts
+-- the eof disallows gibberish at the end of the file!
 
 def :: MonadicParsing m => m (TopTm Raw)
 def = attachLoc (DataTm <$> dataDef <|>
@@ -168,17 +168,18 @@ peg = attachLoc $ do ab <- ab
                      ty <- vtype
                      return $ Peg ab ty
 
+-- peg with explicit ability
 pegExplicit :: MonadicParsing m => m (Peg Raw)
 pegExplicit = attachLoc $ do ab <- abExplicit
                              ty <- vtype
                              return $ Peg ab ty
 
 adj :: MonadicParsing m => m (Adj Raw)
-adj = provideLoc $ \a -> do
-              mItfMap <- optional $ angles itfInstances
-              case mItfMap of
-                Nothing -> return $ Adj (ItfMap M.empty a) a
-                Just itfMap -> return $ Adj itfMap a
+adj = provideLoc $ \a -> do mItfMap <- optional $ angles itfInstances
+                            case mItfMap of
+                              Nothing -> return $ Adj (ItfMap M.empty a) a
+                              Just itfMap -> return $ Adj itfMap a
+
 
 -- TODO: LC: Name consistently `instances` or `instantiations`
 itfInstances :: MonadicParsing m => m (ItfMap Raw)
@@ -186,6 +187,11 @@ itfInstances = do
   a <- getLoc
   insts <- sepBy itfInstance (symbol ",")
   return $ foldl addInstanceToItfMap (ItfMap M.empty a) insts
+
+itfInstance :: MonadicParsing m => m (Id, [TyArg Raw])
+itfInstance = do x <- identifier
+                 ts <- many tyArg
+                 return (x, ts)
 
 ab :: MonadicParsing m => m (Ab Raw)
 ab = do mxs <- optional $ abExplicit
@@ -208,11 +214,6 @@ abBody = provideLoc $ \a ->
            (do e <- option (AbVar "£" a) (try $ AbVar <$> identifier <* symbol "|" <*> pure a)
                m <- itfInstances
                return $ Ab e m a)
-
-itfInstance :: MonadicParsing m => m (Id, [TyArg Raw])
-itfInstance = do x <- identifier
-                 ts <- many tyArg
-                 return (x, ts)
 
 -- This parser gives higher precedence to MkDTTy when coming across "X"
 -- E.g., the type "X" becomes   MkDTTy "X" []   (instead of MkTVar "X")
@@ -247,6 +248,10 @@ dataInstance = attachLoc $ do x <- identifier
 -- Terms --
 -----------
 
+-- The following are high-level syntactic categories that make use of concrete
+-- parser combinators. This means that e.g. `ltm` does not expect necessarily
+-- a let expression, but also an object of a lower category (in this case `btm`).
+
 -- term
 tm :: MonadicParsing m => m (Tm Raw)                  -- ltm ; ... ; ltm
 tm = provideLoc $ \a -> do
@@ -259,7 +264,7 @@ tm = provideLoc $ \a -> do
 
 -- let-term
 ltm :: MonadicParsing m => m (Tm Raw)
-ltm = parseLet tm tm <|>                              -- let x = tm in tm
+ltm = letTm tm tm <|>                                 -- let x = tm in tm
       btm                                             -- btm
 
 -- binary operation term (takes care of associativity)
@@ -282,22 +287,17 @@ btm = do t <- utm
 -- unary operation term
 utm :: MonadicParsing m => m (Tm Raw)
 utm = unOperation <|>                                 -- - utm
-      ctm                                             -- ctm
-  where
-    unOperation :: (MonadicParsing m) => m (Tm Raw)
-    unOperation = provideLoc $ \a -> do
-                    symbol "-"
-                    t <- utm
-                    return $ Use (RawComb (RawId "-" a) [IntTm 0 a, t] a) a
+      sctm                                            -- sctm
 
--- nun-nullary comb term
-ctm :: MonadicParsing m => m (Tm Raw)
-ctm = (attachLoc $ Use <$> comb) <|>                  -- comb
-      nctm                                            -- nctm
+-- shift or comb term
+sctm :: MonadicParsing m => m (Tm Raw)
+sctm = shift nctm <|>                                 -- shift [...] nctm
+       (attachLoc $ Use <$> comb nctm) <|>            -- comb
+       nctm                                           -- nctm
 
 -- nullary comb term
 nctm :: MonadicParsing m => m (Tm Raw)
-nctm = (attachLoc $ Use <$> nullaryComb) <|>          -- nullaryComb
+nctm = (attachLoc $ Use <$> nullaryComb nctm) <|>     -- nullaryComb
        atm                                            -- atm
 
 -- atomic term
@@ -310,32 +310,55 @@ atm = (attachLoc $ Use <$> idUse) <|>                 -- x
       (attachLoc $ ListTm <$> listTm) <|>             -- [t_1, ..., t_n]
       parens tm                                       -- (tm ; ... ; tm)
 
-comb :: MonadicParsing m => m (Use Raw)
-comb = attachLoc $ try $ do
-         x <- choice [idUse,                          --      x nctm ... nctm   or      x!
-                      parens comb]                    -- (comb) nctm ... nctm   or (comb)!
-         args <- choice [some nctm, symbol "!" >> return []]
-         return $ RawComb x args
+binOpLeft :: MonadicParsing m => m (Use Raw)
+binOpLeft = attachLoc $ do op <- choice $ map symbol ["+","-","*","/"]
+                           return $ RawId op
 
-nullaryComb :: MonadicParsing m => m (Use Raw)
-nullaryComb = attachLoc $ try $ do
-                x <- choice [idUse,                 --      x!
-                             parens comb]             -- (comb)!
-                symbol "!"
-                return $ RawComb x []
+binOpRight :: MonadicParsing m => m (Use Raw)
+binOpRight = attachLoc $ do op <- choice $ map symbol ["::"]
+                            let op' = if op == "::" then "cons" else op
+                            return $ RawId op'
+
+unOperation :: (MonadicParsing m) => m (Tm Raw)
+unOperation = provideLoc $ \a -> do
+                symbol "-"
+                t <- utm
+                return $ Use (RawComb (RawId "-" a) [IntTm 0 a, t] a) a
+
+shift :: MonadicParsing m => m (Tm Raw) -> m (Tm Raw)
+shift p = attachLoc $ do                              -- shift [I R ... R, ...] stm
+            reserved "shift"
+            itfMap <- brackets itfInstances
+            t <- p
+            return $ Shift itfMap t
+
+-- may be non-nullary comb (e.g. x nctm ... nctm) or nullary comb (e.g. x!)
+comb :: MonadicParsing m => m (Tm Raw) -> m (Use Raw)
+comb p = attachLoc $ try $ do
+           x <- choice [idUse,                          --      x nctm ... nctm   or      x!
+                        parens (comb p)]                -- (comb) nctm ... nctm   or (comb)!
+           args <- choice [some p, symbol "!" >> return []]
+           return $ RawComb x args
+
+nullaryComb :: MonadicParsing m => m (Tm Raw) -> m (Use Raw)
+nullaryComb p = attachLoc $ try $ do
+                  x <- choice [idUse,                   --      x!
+                               parens (comb p)]         -- (comb)!
+                  symbol "!"
+                  return $ RawComb x []
 
 idUse :: MonadicParsing m => m (Use Raw)
 idUse = attachLoc $ do x <- identifier
                        return $ RawId x
 
-parseLet :: MonadicParsing m => m (Tm Raw) -> m (Tm Raw) -> m (Tm Raw)
-parseLet p p' = attachLoc $ do reserved "let"
-                               x <- identifier
-                               symbol "="
-                               t <- p
-                               reserved "in"
-                               t' <- p'
-                               return $ Let x t t'
+letTm :: MonadicParsing m => m (Tm Raw) -> m (Tm Raw) -> m (Tm Raw)
+letTm p p' = attachLoc $ do reserved "let"
+                            x <- identifier
+                            symbol "="
+                            t <- p
+                            reserved "in"
+                            t' <- p'
+                            return $ Let x t t'
 
 listTm :: MonadicParsing m => m [Tm Raw]              -- [t_1, ..., t_n]
 listTm = brackets (sepBy tm (symbol ","))
@@ -353,15 +376,6 @@ anonymousCls = attachLoc $ do ps <- choice [try patterns, pure []]
           ps <- choice [some pattern, symbol "!" >> return []]
           symbol "->"
           return ps
-
-binOpLeft :: MonadicParsing m => m (Use Raw)
-binOpLeft = attachLoc $ do op <- choice $ map symbol ["+","-","*","/"]
-                           return $ RawId op
-
-binOpRight :: MonadicParsing m => m (Use Raw)
-binOpRight = attachLoc $ do op <- choice $ map symbol ["::"]
-                            let op' = if op == "::" then "cons" else op
-                            return $ RawId op'
 
 --------------
 -- Patterns --

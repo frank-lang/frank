@@ -120,8 +120,7 @@ step mine         unit = unit
 -- This signature suffers from the issue of unintentially exposed intermediate
 -- effects. Thus all the effects listed within <...> will be 'handled away'
 -- (consumed). This restriction shall be overcome in the future.
-runActor : {<RefState,
-             Queue (Proc [RefState]),
+runActor : {<Queue (Proc [RefState]),
              Co [Queue (Proc [RefState]), RefState],
              Actor X [RefState,
                       Queue (Proc [RefState]),
@@ -164,7 +163,7 @@ scheduleDF unit          = popRunAllProcs!
 --------------------------------------------------------------------------------
 
 -- Dont delete these lines, they make this program into a unit test.
--- #desc   examples/actorMultiMailbox.fk
+-- #desc   examples/actor.fk
 -- #return calculating (1+1) + (2+2)... 6 unit
 
 main: {[Console, RefState]Unit}

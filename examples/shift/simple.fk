@@ -1,0 +1,21 @@
+data Bool = false | true
+
+interface BChoice = choose: Bool
+
+fixTrue: {<BChoice>X -> X}
+fixTrue x = x
+fixTrue <choose -> k> = fixTrue (k true)
+
+fixFalse: {<BChoice>X -> X}
+fixFalse x = x
+fixFalse <choose -> k> = fixFalse (k false)
+
+prog: {[BChoice]Bool}
+prog! = choose!
+
+main: {Bool}
+main! = fixFalse (fixTrue (fixTrue (shift [BChoice] (shift [BChoice] prog!))))
+
+
+-- can currently also write:
+--main! = fixFalse (fixTrue (fixTrue (shift [BChoice, BChoice]  prog!)))

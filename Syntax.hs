@@ -260,13 +260,16 @@ data TmF :: ((* -> *) -> (* -> *)) -> * -> * where
   MkChar :: Char -> TmF t r
   MkList :: [r] -> TmF (AnnotT Raw) r
   MkTmSeq :: r -> r -> TmF t r
+  MkShift :: TFix t ItfMapF -> r -> TmF t r  -- difference to formal definition: shift takes a *list* of instantiations instead of a single instantiation
   MkUse :: TFix t UseF -> TmF t r
   MkDCon :: NotRaw (t Identity ()) => TFix t DataConF -> TmF t r
 deriving instance (Show (TFix t SCompF),
+                   Show (TFix t ItfMapF),
                    Show (TFix t UseF),
                    Show (TFix t DataConF),
                    Show r, Show (TFix t TmF)) => Show (TmF t r)
 deriving instance (Eq (TFix t SCompF),
+                   Eq (TFix t ItfMapF),
                    Eq (TFix t UseF),
                    Eq (TFix t DataConF),
                    Eq r, Eq (TFix t TmF)) => Eq (TmF t r)
@@ -278,6 +281,7 @@ pattern IntTm n a = Fx (AnnF (MkInt n, a))
 pattern CharTm c a = Fx (AnnF (MkChar c, a))
 pattern ListTm xs a = Fx (AnnF (MkList xs, a))
 pattern TmSeq tm1 tm2 a = Fx (AnnF (MkTmSeq tm1 tm2, a))
+pattern Shift itfMap tm a = Fx (AnnF (MkShift itfMap tm, a))
 pattern Use u a = Fx (AnnF (MkUse u, a))
 pattern DCon dc a = Fx (AnnF (MkDCon dc, a))
 
@@ -602,7 +606,7 @@ trimVar = takeWhile (/= '$')
 
 {- Operations on interface maps -}
 
--- e.g. [State Bool, State Int] and [State String, State Char] get unified to
+-- e.g. [State Bool, State Int] + [State String, State Char] =
 -- [State Bool, State Int, State String, State Char], i.e. the second ItfMap
 -- possible overrides an active instance (State Char is active in the result)
 plusItfMap :: ItfMap t -> ItfMap t -> ItfMap t
@@ -611,25 +615,31 @@ plusItfMap (ItfMap m a) (ItfMap m' _) = foldl plusItfMap' (ItfMap m a) (M.toList
         plusItfMap' (ItfMap m'' a'') (x, instants) = if M.member x m'' then ItfMap (M.adjust (\instants' -> instants' <>< bwd2fwd instants) x m'') a''
                                                                        else ItfMap (M.insert x instants m'') a''
 
+-- e.g. [State Bool, State Int] + State Char = [State Bool, State Int, State Char]
 addInstanceToItfMap :: ItfMap Raw -> (Id, [TyArg Raw]) -> ItfMap Raw
 addInstanceToItfMap (ItfMap m a) (x, args) = if M.member x m then ItfMap (M.adjust (:< args) x m) a
                                                              else ItfMap (M.insert x (BEmp :< args) m) a
 
-extractLargestEqualSuffixesOfItfMap :: ItfMap t -> ItfMap t -> ItfMap t
-extractLargestEqualSuffixesOfItfMap (ItfMap m1 a) (ItfMap m2 _) = ItfMap m'' a
+-- Given m1 and m2, trim m1 down to at most the shape of m2
+trimItfMapByItfMap :: ItfMap t -> ItfMap t -> ItfMap t
+trimItfMapByItfMap (ItfMap m1 a) (ItfMap m2 _) = ItfMap m'' a
   where m'  = M.intersectionWith (\args args' -> takeBwd (min (length args) (length args')) args) m1 m2
         m'' = M.filter (not . null) m'
+
+
+-- Given m1 and m2, cut off entry suffixes of m1 of length determined by m2's entries' lengths
+cutItfMapSuffix :: ItfMap t -> ItfMap t -> ItfMap t
+cutItfMapSuffix (ItfMap m1 a) (ItfMap m2 _) = ItfMap m'' a
+  where m' = M.differenceWith (\args args' -> Just $ dropBwd (length args') args) m1 m2
+        m'' = M.filter (not. null) m'
 
 stripInactiveOffItfMap :: ItfMap t -> ItfMap t
 stripInactiveOffItfMap (ItfMap m a) = ItfMap m' a
   where m' = M.map (\case BEmp -> error "invariant broken"
                           (_ :< x) -> BEmp :< x) m
 
--- Given m1 and m2, cutt off entry suffixes of m1 of length determined by m2's entries' lengths
-minusItfMap :: ItfMap t -> ItfMap t -> ItfMap t
-minusItfMap (ItfMap m1 a) (ItfMap m2 _) = ItfMap m'' a
-  where m' = M.differenceWith (\args args' -> Just $ dropBwd (length args') args) m1 m2
-        m'' = M.filter (not. null) m'
+isItfMapSuffixOf :: Eq t => ItfMap t -> ItfMap t -> Bool
+isItfMapSuffixOf m1 m2 = (m2 `cutItfMapSuffix` m1) `plusItfMap` m1 == m2
 
 emptyItfMap :: t -> ItfMap t
 emptyItfMap = ItfMap M.empty

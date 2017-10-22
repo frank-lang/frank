@@ -96,10 +96,10 @@ compileProg progName p args =
 evalProg :: Shonky.Env -> String -> IO ()
 evalProg env tm =
   case Shonky.try env tm of
-    Shonky.Ret v -> putStrLn $ Shonky.ppVal v
+    Shonky.Ret v -> putStrLn $ (show . Shonky.ppVal) v
     comp -> do -- putStrLn $ "Generated computation: " ++ show comp
                v <- Shonky.ioHandler comp
-               putStrLn $ Shonky.ppVal v
+               putStrLn $ (show . Shonky.ppVal) v
 
 compileAndRunProg :: String -> [(String, String)] -> IO ()
 compileAndRunProg fileName args =

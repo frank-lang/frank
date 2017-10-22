@@ -72,14 +72,6 @@ unify t0 t1 = do logBeginUnify t0 t1
   unify' ty              (FTVar y b)          = solve y b [] ty                 -- inst
   unify' t               s                    = throwError $ errorUnifTys t s
 
-unifyAbActive :: Ab Desugared -> Ab Desugared -> Contextual ()
-unifyAbActive ab1 ab2 = do
-  (Ab v1 m1 a1) <- expandAbFully ab1
-  (Ab v2 m2 a2) <- expandAbFully ab2
-  let m1' = stripInactiveOffItfMap m1
-  let m2' = stripInactiveOffItfMap m2
-  unifyAb (Ab v1 m1' a1) (Ab v2 m2' a2)
-
 -- unify 2 eff tys in current context
 unifyAb :: Ab Desugared -> Ab Desugared -> Contextual ()
 unifyAb ab0@(Ab v0 m0 a) ab1@(Ab v1 m1 b) =
@@ -94,19 +86,19 @@ unifyAb ab0@(Ab v0 m0 a) ab1@(Ab v1 m1 b) =
         -- Both eff ty vars are flexible
         unifyAb' (Ab (AbFVar x a') m1 a) (Ab (AbFVar y b') m2 b) =
           do -- For same occurrences of interfaces, their instantiat's must coincide
-             unifyItfMap (extractLargestEqualSuffixesOfItfMap m1 m2) (extractLargestEqualSuffixesOfItfMap m2 m1)
+             unifyItfMap (trimItfMapByItfMap m1 m2) (trimItfMapByItfMap m2 m1)
              v <- AbFVar <$> freshMVar "£" <*> pure (Desugared Generated)
-             solveForEVar x a' [] (Ab v (m2 `minusItfMap` m1) a)  -- TODO: LC: locations assigned correctly?
-             solveForEVar y b' [] (Ab v (m1 `minusItfMap` m2) b)
+             solveForEVar x a' [] (Ab v (m2 `cutItfMapSuffix` m1) a)  -- TODO: LC: locations assigned correctly?
+             solveForEVar y b' [] (Ab v (m1 `cutItfMapSuffix` m2) b)
         -- One eff ty var is flexible, the other one either empty or rigid
         unifyAb' (Ab (AbFVar x a') m1 _) (Ab v m2 b)
-          | isItfMapEmpty (minusItfMap m1 m2) =
-            do unifyItfMap (extractLargestEqualSuffixesOfItfMap m1 m2) (extractLargestEqualSuffixesOfItfMap m2 m1)
-               solveForEVar x a' [] (Ab v (m2 `minusItfMap` m1) b)   -- TODO: LC: locations assigned correctly?
+          | isItfMapEmpty (cutItfMapSuffix m1 m2) =
+            do unifyItfMap (trimItfMapByItfMap m1 m2) (trimItfMapByItfMap m2 m1)
+               solveForEVar x a' [] (Ab v (m2 `cutItfMapSuffix` m1) b)   -- TODO: LC: locations assigned correctly?
         unifyAb' (Ab v m1 a) (Ab (AbFVar y b') m2 _)
-          | isItfMapEmpty (minusItfMap m2 m1) =
-            do unifyItfMap (extractLargestEqualSuffixesOfItfMap m1 m2) (extractLargestEqualSuffixesOfItfMap m2 m1)
-               solveForEVar y b' [] (Ab v (m1 `minusItfMap` m2) a)   -- TODO: LC: locations assigned correctly?
+          | isItfMapEmpty (cutItfMapSuffix m2 m1) =
+            do unifyItfMap (trimItfMapByItfMap m1 m2) (trimItfMapByItfMap m2 m1)
+               solveForEVar y b' [] (Ab v (m1 `cutItfMapSuffix` m2) a)   -- TODO: LC: locations assigned correctly?
         -- In any other case
         unifyAb' ab0 ab1 = throwError $ errorUnifAbs ab0 ab1
 
@@ -245,14 +237,8 @@ expandAb :: Ab Desugared -> Contextual (Ab Desugared)
 expandAb (Ab v m a) = do
   ab <- findAbVar v
   case ab of
-    (Just (Ab v' m' a')) -> return $ Ab v' (m' `plusItfMap` m) a
-    Nothing ->              return $ Ab v m a
-
-expandAbFully :: Ab Desugared -> Contextual (Ab Desugared)
-expandAbFully ab = do
-  ab' <- expandAb ab
-  if ab == ab' then return ab
-  else expandAbFully ab'
+    Just (Ab v' m' a') -> return $ Ab v' (m' `plusItfMap` m) a
+    Nothing ->            return $ Ab v m a
 
 {- Helpers -}
 

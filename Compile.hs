@@ -53,7 +53,7 @@ isAtom id = do s <- getCState
                return $ S.member id (atoms s)
 
 compileToFile :: NotRaw a => Prog a -> String -> IO ()
-compileToFile p dst = writeFile (dst ++ ".uf") (S.ppProg $ compile p)
+compileToFile p dst = writeFile (dst ++ ".uf") (show $ S.ppProg $ compile p)
 
 compile :: NotRaw a => Prog a -> [S.Def S.Exp]
 compile (MkProg xs) = res
@@ -156,8 +156,15 @@ compileTm (StrTm s _) = compileDataCon (f s) where
 compileTm (IntTm n _) = return $ S.EI n
 compileTm (CharTm c _) = return $ S.EX [Left c]
 compileTm (TmSeq t1 t2 _) = (S.:!) <$> compileTm t1 <*> compileTm t2
+compileTm (Shift itfMap t _) = do e <- compileTm t
+                                  compileShift itfMap e
 compileTm (Use u _) = compileUse u
 compileTm (DCon d _) = compileDataCon d
+
+compileShift :: NotRaw a => ItfMap a -> S.Exp -> Compile S.Exp
+compileShift (ItfMap im _) e = do s <- getCState
+                                  let cmdMultiSet = concat $ map (\itf -> M.findWithDefault [] itf (imap s)) (M.keys im)
+                                  return $ S.ES cmdMultiSet e
 
 compileUse :: NotRaw a => Use a -> Compile S.Exp
 compileUse (Op op _) = compileOp op

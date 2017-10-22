@@ -180,9 +180,7 @@ desugarPeg (Peg ab ty a) = Peg <$> desugarAb ab <*> desugarVType ty <*> pure (re
 
 -- nothing happens on this level
 desugarAb :: Ab Refined -> Desugar (Ab Desugared)
-desugarAb (Ab v (ItfMap m b) a) = do v' <- desugarAbMod v
-                                     m' <- mapM (mapM (mapM desugarTyArg)) m
-                                     return $ Ab v' (ItfMap m' (refToDesug b)) (refToDesug a)
+desugarAb (Ab v itfMap a) = Ab <$> desugarAbMod v <*> desugarItfMap itfMap <*> pure (refToDesug a)
 
 -- explicit desugaring:
 -- + replace effect type variables by corresponding MkAbRVar's of abModEnv,
@@ -200,8 +198,11 @@ desugarAbMod (AbVar x a) =
 
 -- nothing happens on this level
 desugarAdj :: Adj Refined -> Desugar (Adj Desugared)
-desugarAdj (Adj (ItfMap m b) a) = do m' <- mapM (mapM (mapM desugarTyArg)) m
-                                     return $ Adj (ItfMap m' (refToDesug b)) (refToDesug a)
+desugarAdj (Adj itfMap a) = Adj <$> desugarItfMap itfMap <*> pure (refToDesug a)
+
+desugarItfMap :: ItfMap Refined -> Desugar (ItfMap Desugared)
+desugarItfMap (ItfMap m a) = do m' <- mapM (mapM (mapM desugarTyArg)) m
+                                return $ ItfMap m' (refToDesug a)
 
 -- no explicit desugaring: clauses (and constituents) unaffected between Refine/Desugar phase
 desugarClause :: Clause Refined -> Desugar (Clause Desugared)
@@ -215,6 +216,7 @@ desugarTm (StrTm s a) = return $ StrTm s (refToDesug a)
 desugarTm (IntTm n a) = return $ IntTm n (refToDesug a)
 desugarTm (CharTm c a) = return $ CharTm c (refToDesug a)
 desugarTm (TmSeq tm1 tm2 a) = TmSeq <$> desugarTm tm1 <*> desugarTm tm2 <*> pure (refToDesug a)
+desugarTm (Shift itfMap t a) = Shift <$> desugarItfMap itfMap <*> desugarTm t <*> pure (refToDesug a)
 desugarTm (Use u a) = Use <$> desugarUse u <*> pure (refToDesug a)
 desugarTm (DCon d a) = DCon <$> desugarDCon d <*> pure (refToDesug a)
 
@@ -230,7 +232,6 @@ desugarVPat (DataPat x xs a) = DataPat x <$> mapM desugarVPat xs <*> pure (refTo
 desugarVPat (IntPat i a) = return $ IntPat i (refToDesug a)
 desugarVPat (CharPat c a) = return $ CharPat c (refToDesug a)
 desugarVPat (StrPat s a) = return $ StrPat s (refToDesug a)
-
 
 desugarSComp :: SComp Refined -> Desugar (SComp Desugared)
 desugarSComp (SComp xs a) = SComp <$> mapM desugarClause xs <*> pure (refToDesug a)

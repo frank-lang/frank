@@ -18,7 +18,7 @@ type Refine = ExceptT String (State RState)
 type TVarMap = M.Map Id (VType Raw)
 type EVarSet = S.Set Id
 
--- Object-Int pair
+-- generic object-int pair
 type IPair = (Id,Int)
 -- data type id is mapped to rigid data type (RDT) variables (for polymorphic data types)
 type DTMap = M.Map Id [(Id, Kind)]                      -- dt-id     -> [ty-vars]

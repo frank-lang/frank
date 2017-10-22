@@ -1,5 +1,5 @@
--- #desc   Due to only considering active fragments on APP, shadowed instantiations are not regarded
--- #return unit
+-- #desc   Due to not only considering active fragments on APP, shadowed instantiations are regarded
+-- #return cannot unify abilities [£ | State ( Bool ) , State Int] (line 11 , column 8) and [£ | State Int] (line 19 , column 8)
 
 --- start of standard stuff ---
 data Bool = true | false
