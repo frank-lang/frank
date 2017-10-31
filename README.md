@@ -1,4 +1,4 @@
-# frankjnr
+# Frank
 
 An implementation of the Frank programming language described in the
 POPL 2017 paper, ``Do be do be do'' by Sam Lindley, Conor McBride, and Craig
