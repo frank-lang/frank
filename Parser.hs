@@ -249,23 +249,24 @@ dataInstance = attachLoc $ do x <- identifier
 -----------
 
 -- The following are high-level syntactic categories that make use of concrete
--- parser combinators. This means that e.g. `ltm` does not expect necessarily
--- a let expression, but also an object of a lower category (in this case `btm`).
+-- parser combinators. This means that e.g. `ltm` may not necessarily parse
+-- a let expression, but instead an object of a lower category (in this case
+-- `btm`).
 
 -- term
-tm :: MonadicParsing m => m (Tm Raw)                  -- ltm ; ... ; ltm
-tm = provideLoc $ \a -> do
-       t <- ltm
-       m <- optional $ symbol ";"
-       case m of
-         Just _ -> do t' <- tm
-                      return $ TmSeq t t' a
-         Nothing -> return t
+tm :: MonadicParsing m => m (Tm Raw)
+tm = letTm tm tm <|>                                  -- let x = stm in stm
+     stm                                              -- stm
 
--- let-term
-ltm :: MonadicParsing m => m (Tm Raw)
-ltm = letTm tm tm <|>                                 -- let x = tm in tm
-      btm                                             -- btm
+-- sequence term
+stm :: MonadicParsing m => m (Tm Raw)
+stm = provideLoc $ \a -> do
+        t <- btm
+        m <- optional $ symbol ";"
+        case m of
+          Just _ -> do t' <- tm                       -- btm ; tm
+                       return $ TmSeq t t' a
+          Nothing -> return t                         -- btm
 
 -- binary operation term (takes care of associativity)
 btm :: MonadicParsing m => m (Tm Raw)
@@ -308,6 +309,15 @@ atm = (attachLoc $ SC <$> suspComp) <|>               -- { p_1 -> t_1 | ... }
       (attachLoc $ ListTm <$> listTm) <|>             -- [t_1, ..., t_n]
       parens tm                                       -- (ltm ; ... ; ltm)
 
+letTm :: MonadicParsing m => m (Tm Raw) -> m (Tm Raw) -> m (Tm Raw)
+letTm p p' = attachLoc $ do reserved "let"
+                            x <- identifier
+                            symbol "="
+                            t <- p
+                            reserved "in"
+                            t' <- p'
+                            return $ Let x t t'
+
 binOpLeft :: MonadicParsing m => m (Use Raw)
 binOpLeft = attachLoc $ do op <- choice $ map symbol ["+","-","*","/"]
                            return $ RawId op
@@ -317,6 +327,7 @@ binOpRight = attachLoc $ do op <- choice $ map symbol ["::"]
                             let op' = if op == "::" then "cons" else op
                             return $ RawId op'
 
+-- unary operation
 unOperation :: (MonadicParsing m) => m (Tm Raw)
 unOperation = provideLoc $ \a -> do
                 symbol "-"
@@ -361,15 +372,6 @@ shift p = attachLoc $ do                              -- shift [I R ... R, ...] 
 idUse :: MonadicParsing m => m (Use Raw)
 idUse = attachLoc $ do x <- identifier
                        return $ RawId x
-
-letTm :: MonadicParsing m => m (Tm Raw) -> m (Tm Raw) -> m (Tm Raw)
-letTm p p' = attachLoc $ do reserved "let"
-                            x <- identifier
-                            symbol "="
-                            t <- p
-                            reserved "in"
-                            t' <- p'
-                            return $ Let x t t'
 
 listTm :: MonadicParsing m => m [Tm Raw]              -- [t_1, ..., t_n]
 listTm = brackets (sepBy tm (symbol ","))
