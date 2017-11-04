@@ -156,8 +156,6 @@ compileTm (StrTm s _) = compileDataCon (f s) where
 compileTm (IntTm n _) = return $ S.EI n
 compileTm (CharTm c _) = return $ S.EX [Left c]
 compileTm (TmSeq t1 t2 _) = (S.:!) <$> compileTm t1 <*> compileTm t2
-compileTm (Shift itfMap t _) = do e <- compileTm t
-                                  compileShift itfMap e
 compileTm (Use u _) = compileUse u
 compileTm (DCon d _) = compileDataCon d
 
@@ -169,6 +167,8 @@ compileShift (ItfMap im _) e = do s <- getCState
 compileUse :: NotRaw a => Use a -> Compile S.Exp
 compileUse (Op op _) = compileOp op
 compileUse (App use xs _) = (S.:$) <$> compileUse use <*> mapM compileTm xs
+compileUse (Shift itfMap t _) = do e <- compileUse t
+                                   compileShift itfMap e
 
 compileDataCon :: NotRaw a => DataCon a -> Compile S.Exp
 compileDataCon (DataCon id xs _) = do xs' <- mapM compileTm xs

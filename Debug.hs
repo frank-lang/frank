@@ -343,19 +343,24 @@ ppTm (StrTm str _) = text "{" <+> text str <+> text "}"
 ppTm (IntTm n _) = text (show n)
 ppTm (CharTm c _) = text (show c)
 ppTm (ListTm xs _) = text "[" <+> sep (map ppTm xs) <+> text "]"
-ppTm (TmSeq t1 t2 _) = ppTm t1 <+> text "; " <+> ppTm t2
-ppTm (Shift im t _) = text "shift[" <+> ppItfMap im <+> text "] " <+> ppTm t
-ppTm (Use u _) = ppUse u
-ppTm (DCon dc _) = ppDataCon dc
+ppTm (TmSeq t1 t2 _) = PP.parens $ ppTm t1 <+> text "; " <+> ppTm t2
+ppTm (Use u _) = PP.parens $ ppUse u
+ppTm (DCon dc _) = PP.parens $ ppDataCon dc
 
 ppSComp :: (Show a, HasSource a) => SComp a -> Doc
 ppSComp (SComp cls _) = text "{" <+> sep (map (ppClause "") cls) <+> text "}"
 
 ppUse :: (Show a, HasSource a) => Use a -> Doc
 ppUse (RawId x _) = text x
-ppUse (RawComb u args _) = ppUse u <+> text " " <+> sep (map ppTm args)
+ppUse (RawComb u args _) = PP.lparen <> ppUse u <+> ppArgs args <> PP.rparen
 ppUse (Op op _) = ppOperator op
-ppUse (App u args _) = ppUse u <+> text " " <+> sep (map ppTm args)
+ppUse (App u args _) = PP.lparen <> ppUse u <+> ppArgs args <> PP.rparen
+ppUse (Shift im t _) = PP.parens $ text "shift[" <+> ppItfMap im <+> text "] " <+> ppUse t
+
+-- TODO: LC: fix parenthesis output...
+ppArgs :: (Show a, HasSource a) => [Tm a] -> Doc
+ppArgs [] = text "!"
+ppArgs args = sep (map ppTm args)
 
 ppOperator :: (Show a, HasSource a) => Operator a -> Doc
 ppOperator (Mono x _) = text x

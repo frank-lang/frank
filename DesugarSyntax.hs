@@ -216,7 +216,6 @@ desugarTm (StrTm s a) = return $ StrTm s (refToDesug a)
 desugarTm (IntTm n a) = return $ IntTm n (refToDesug a)
 desugarTm (CharTm c a) = return $ CharTm c (refToDesug a)
 desugarTm (TmSeq tm1 tm2 a) = TmSeq <$> desugarTm tm1 <*> desugarTm tm2 <*> pure (refToDesug a)
-desugarTm (Shift itfMap t a) = Shift <$> desugarItfMap itfMap <*> desugarTm t <*> pure (refToDesug a)
 desugarTm (Use u a) = Use <$> desugarUse u <*> pure (refToDesug a)
 desugarTm (DCon d a) = DCon <$> desugarDCon d <*> pure (refToDesug a)
 
@@ -239,6 +238,7 @@ desugarSComp (SComp xs a) = SComp <$> mapM desugarClause xs <*> pure (refToDesug
 desugarUse :: Use Refined -> Desugar (Use Desugared)
 desugarUse (App use xs a) = App <$> desugarUse use <*> mapM desugarTm xs <*> pure (refToDesug a)
 desugarUse (Op op a) = Op <$> desugarOperator op <*> pure (refToDesug a)
+desugarUse (Shift itfMap t a) = Shift <$> desugarItfMap itfMap <*> desugarUse t <*> pure (refToDesug a)
 
 desugarOperator :: Operator Refined -> Desugar (Operator Desugared)
 desugarOperator (Mono x a) = return $ Mono x (refToDesug a)

@@ -269,46 +269,44 @@ ltm = letTm tm tm <|>                                 -- let x = tm in tm
 
 -- binary operation term (takes care of associativity)
 btm :: MonadicParsing m => m (Tm Raw)
-btm = do t <- utm
+btm = do t <- untm
          binOperation t
   where
     binOperation :: (MonadicParsing m) => Tm Raw -> m (Tm Raw)
     binOperation t =
       (provideLoc $ \a -> do
-         operator <- binOpLeft                        -- utm +  ...  + utm
-         t' <- utm
+         operator <- binOpLeft                        -- untm +  ...  + untm
+         t' <- untm
          binOperation (Use (RawComb operator [t, t'] a) a)) <|>
       (provideLoc $ \a -> do
-         operator <- binOpRight                       -- utm :: ... :: utm
+         operator <- binOpRight                       -- untm :: ... :: untm
          t' <- btm
          binOperation (Use (RawComb operator [t, t'] a) a)) <|>
       (return t)
 
 -- unary operation term
-utm :: MonadicParsing m => m (Tm Raw)
-utm = unOperation <|>                                 -- - utm
-      sctm                                            -- sctm
+untm :: MonadicParsing m => m (Tm Raw)
+untm = unOperation <|>                                -- - untm
+       usetm                                          -- usetm
 
--- shift or comb term
-sctm :: MonadicParsing m => m (Tm Raw)
-sctm = shift nctm <|>                                 -- shift [...] nctm
-       (attachLoc $ Use <$> comb nctm) <|>            -- comb
-       nctm                                           -- nctm
-
--- nullary comb term
-nctm :: MonadicParsing m => m (Tm Raw)
-nctm = (attachLoc $ Use <$> nullaryComb nctm) <|>     -- nullaryComb
-       atm                                            -- atm
+-- use term
+usetm :: MonadicParsing m => m (Tm Raw)
+usetm = (attachLoc $ Use <$> (try $ use nctm)) <|>    -- use
+        atm                                           -- atm
+  where
+    -- nullary comb term
+    nctm :: MonadicParsing m => m (Tm Raw)
+    nctm = (attachLoc $ Use <$> (try $ ncuse nctm)) <|> -- ncuse
+           atm                                        -- atm
 
 -- atomic term
 atm :: MonadicParsing m => m (Tm Raw)
-atm = (attachLoc $ Use <$> idUse) <|>                 -- x
-      (attachLoc $ SC <$> suspComp) <|>               -- { p_1 -> t_1 | ... }
+atm = (attachLoc $ SC <$> suspComp) <|>               -- { p_1 -> t_1 | ... }
       (attachLoc $ StrTm <$> stringLiteral) <|>       -- "string"
       (attachLoc $ IntTm <$> natural) <|>             -- 42
       (attachLoc $ CharTm <$> charLiteral) <|>        -- 'c'
       (attachLoc $ ListTm <$> listTm) <|>             -- [t_1, ..., t_n]
-      parens tm                                       -- (tm ; ... ; tm)
+      parens tm                                       -- (ltm ; ... ; ltm)
 
 binOpLeft :: MonadicParsing m => m (Use Raw)
 binOpLeft = attachLoc $ do op <- choice $ map symbol ["+","-","*","/"]
@@ -322,30 +320,43 @@ binOpRight = attachLoc $ do op <- choice $ map symbol ["::"]
 unOperation :: (MonadicParsing m) => m (Tm Raw)
 unOperation = provideLoc $ \a -> do
                 symbol "-"
-                t <- utm
+                t <- untm
                 return $ Use (RawComb (RawId "-" a) [IntTm 0 a, t] a) a
 
-shift :: MonadicParsing m => m (Tm Raw) -> m (Tm Raw)
+-- use
+use :: MonadicParsing m => m (Tm Raw) -> m (Use Raw)
+use p = shift (ncuse p) <|>                           -- shift [...] ncuse
+        cuse p                                        -- cuse
+
+-- comb use
+cuse :: MonadicParsing m => m (Tm Raw) -> m (Use Raw)
+cuse p = provideLoc $ \a -> do
+           op <- ncuse p
+           args <- many p
+           if null args
+              then return op                          -- ncuse
+              else return $ RawComb op args a         -- ncuse p ... p
+
+-- nullary comb use
+ncuse :: MonadicParsing m => m (Tm Raw) -> m (Use Raw)
+ncuse p = provideLoc $ \a -> do
+           op <- ause p
+           bang <- optional (symbol "!")
+           case bang of
+             Nothing -> return op                     -- ause
+             Just _  -> return $ RawComb op [] a      -- ause!
+
+-- atomic use
+ause :: MonadicParsing m => m (Tm Raw) -> m (Use Raw)
+ause p = parens (use p) <|>                           -- (use)
+         idUse                                        -- x
+
+shift :: MonadicParsing m => m (Use Raw) -> m (Use Raw)
 shift p = attachLoc $ do                              -- shift [I R ... R, ...] stm
             reserved "shift"
             itfMap <- brackets itfInstances
             t <- p
             return $ Shift itfMap t
-
--- may be non-nullary comb (e.g. x nctm ... nctm) or nullary comb (e.g. x!)
-comb :: MonadicParsing m => m (Tm Raw) -> m (Use Raw)
-comb p = attachLoc $ try $ do
-           x <- choice [idUse,                          --      x nctm ... nctm   or      x!
-                        parens (comb p)]                -- (comb) nctm ... nctm   or (comb)!
-           args <- choice [some p, symbol "!" >> return []]
-           return $ RawComb x args
-
-nullaryComb :: MonadicParsing m => m (Tm Raw) -> m (Use Raw)
-nullaryComb p = attachLoc $ try $ do
-                  x <- choice [idUse,                   --      x!
-                               parens (comb p)]         -- (comb)!
-                  symbol "!"
-                  return $ RawComb x []
 
 idUse :: MonadicParsing m => m (Use Raw)
 idUse = attachLoc $ do x <- identifier

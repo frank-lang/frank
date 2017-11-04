@@ -228,6 +228,11 @@ inferUse app@(App f xs _) =                                                     
         -- Check typing tm: ty in ambient [adj]
         checkArg :: Port Desugared -> Tm Desugared -> Contextual ()
         checkArg (Port adj ty _) tm = inAdjustedAmbient adj (checkTm tm ty)
+inferUse (Shift shiftItfMap t _) =
+  do amb <- getAmbient
+     let (Ab ambMod ambItfMap a) = amb
+     unifyAb (Ab ambMod ((ambItfMap `cutItfMapSuffix` shiftItfMap) `plusItfMap` shiftItfMap) a) amb  -- shiftItfMap must be suffix of ambItfMap
+     inAmbient (Ab ambMod (ambItfMap `cutItfMapSuffix` shiftItfMap) a) (inferUse t) -- infer use in reduced ambient
 
 -- 2nd major TC function: Check that term (construction) has given type
 checkTm :: Tm Desugared -> VType Desugared -> Contextual ()
@@ -240,11 +245,6 @@ checkTm (TmSeq tm1 tm2 a) ty =
   do ftvar <- freshMVar "seq"
      checkTm tm1 (FTVar ftvar a)
      checkTm tm2 ty
-checkTm (Shift shiftItfMap t _) ty =
-  do amb <- getAmbient
-     let (Ab ambMod ambItfMap a) = amb
-     unifyAb (Ab ambMod ((ambItfMap `cutItfMapSuffix` shiftItfMap) `plusItfMap` shiftItfMap) a) amb  -- shiftItfMap must be suffix of ambItfMap
-     inAmbient (Ab ambMod (ambItfMap `cutItfMapSuffix` shiftItfMap) a) (checkTm t ty)
 checkTm (Use u a) t = do s <- inferUse u                                        -- Switch rule
                          unify t s
 checkTm (DCon (DataCon k xs _) a) ty =                                          -- Data rule

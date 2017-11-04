@@ -362,6 +362,11 @@ refineUse (RawComb x xs a) =
        Left use -> do xs' <- mapM refineTm xs
                       return $ Left $ App use xs' (rawToRef a)
        Right tm -> throwError $ errorRefExpectedUse tm
+refineUse (Shift itfMap t a) = do itfMap' <- refineItfMap itfMap
+                                  t' <- refineUse t
+                                  case t' of
+                                    Left u   -> return $ Left $ Shift itfMap' u (rawToRef a)
+                                    Right tm -> throwError $ errorRefExpectedUse tm
 
 refineTm :: Tm Raw -> Refine (Tm Refined)
 refineTm (Let x t1 t2 a) =
@@ -385,9 +390,6 @@ refineTm (ListTm ts a) =
 refineTm (TmSeq t1 t2 a) = do t1' <- refineTm t1
                               t2' <- refineTm t2
                               return $ TmSeq t1' t2' (rawToRef a)
-refineTm (Shift itfMap t a) = do itfMap' <- refineItfMap itfMap
-                                 t' <- refineTm t
-                                 return $ Shift itfMap' t' (rawToRef a)
 refineTm (Use u a) = do u' <- refineUse u
                         case u' of
                           Left use -> return $ Use use (rawToRef a)

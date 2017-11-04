@@ -238,17 +238,21 @@ data UseF :: ((* -> *) -> (* -> *)) -> * -> * where
   MkRawComb :: r -> [TFix (AnnotT Raw) TmF] -> UseF (AnnotT Raw) r
   MkOp :: NotRaw (t Identity ()) => TFix t OperatorF -> UseF t r
   MkApp :: NotRaw (t Identity ()) => r -> [TFix t TmF] -> UseF t r
+  MkShift :: TFix t ItfMapF -> r -> UseF t r  -- difference to formal definition: shift takes a *list* of instantiations instead of a single instantiation
 deriving instance (Show (TFix t OperatorF),
                    Show (TFix t TmF),
+                   Show (TFix t ItfMapF),
                    Show r, Show (TFix t UseF)) => Show (UseF t r)
 deriving instance (Eq (TFix t OperatorF),
                    Eq (TFix t TmF),
+                   Eq (TFix t ItfMapF),
                    Eq r, Eq (TFix t UseF)) => Eq (UseF t r)
 type Use a = AnnotTFix a UseF
 pattern RawId x a = Fx (AnnF (MkRawId x, a))
 pattern RawComb f xs a = Fx (AnnF (MkRawComb f xs, a))
 pattern Op op a = Fx (AnnF (MkOp op, a))
 pattern App f xs a = Fx (AnnF (MkApp f xs, a))
+pattern Shift itfMap tm a = Fx (AnnF (MkShift itfMap tm, a))
 
 -- Tm here = 'construction' in the paper
 
@@ -260,16 +264,13 @@ data TmF :: ((* -> *) -> (* -> *)) -> * -> * where
   MkChar :: Char -> TmF t r
   MkList :: [r] -> TmF (AnnotT Raw) r
   MkTmSeq :: r -> r -> TmF t r
-  MkShift :: TFix t ItfMapF -> r -> TmF t r  -- difference to formal definition: shift takes a *list* of instantiations instead of a single instantiation
   MkUse :: TFix t UseF -> TmF t r
   MkDCon :: NotRaw (t Identity ()) => TFix t DataConF -> TmF t r
 deriving instance (Show (TFix t SCompF),
-                   Show (TFix t ItfMapF),
                    Show (TFix t UseF),
                    Show (TFix t DataConF),
                    Show r, Show (TFix t TmF)) => Show (TmF t r)
 deriving instance (Eq (TFix t SCompF),
-                   Eq (TFix t ItfMapF),
                    Eq (TFix t UseF),
                    Eq (TFix t DataConF),
                    Eq r, Eq (TFix t TmF)) => Eq (TmF t r)
@@ -281,7 +282,6 @@ pattern IntTm n a = Fx (AnnF (MkInt n, a))
 pattern CharTm c a = Fx (AnnF (MkChar c, a))
 pattern ListTm xs a = Fx (AnnF (MkList xs, a))
 pattern TmSeq tm1 tm2 a = Fx (AnnF (MkTmSeq tm1 tm2, a))
-pattern Shift itfMap tm a = Fx (AnnF (MkShift itfMap tm, a))
 pattern Use u a = Fx (AnnF (MkUse u, a))
 pattern DCon dc a = Fx (AnnF (MkDCon dc, a))
 
