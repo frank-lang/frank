@@ -1,0 +1,98 @@
+--- start of standard stuff ---
+data Maybe X = just X | nothing
+data Bool = true | false
+
+map : {{X -> Y} -> List X -> List Y}
+map f []        = []
+map f (x :: xs) = f x :: map f xs
+
+reverse' : {List X -> List X -> List X}
+reverse' []        ys = ys
+reverse' (x :: xs) ys = reverse' xs (x :: ys)
+
+reverse : {List X -> List X}
+reverse xs = reverse' xs []
+
+print : {String -> [Console]Unit}
+print s = map ouch s; unit
+--- end of standard stuff ---
+
+
+{--- Cooperative concurrency ---}
+interface Yield = yield : Unit
+
+-- example abstract concurrent computation
+testA : {[Yield, Console]Unit}
+testA! = print "A1 "; yield!; print "A2 "
+
+testB : {[Yield, Console]Unit}
+testB! = print "B1 "; yield!; print "B2 "
+
+testC : {[Yield, Console]Unit}
+testC! = print "C1 "; yield!; print "C2 "
+
+
+-- queue interface
+interface Queue S = enqueue : S -> Unit
+                  | dequeue : Maybe S
+
+-- process queue computations
+data Proc = proc {[Queue Proc]Unit}
+
+enqProc : {{[Queue Proc]Unit} -> [Queue Proc]Unit}
+enqProc p = enqueue (proc p)
+
+runNext : {[Queue Proc]Unit}
+runNext! = case dequeue! { (just (proc x)) -> x!
+                         | nothing         -> unit }
+
+-- implementations of cooperative concurrency
+
+-- enqueue; dequeue; run
+scheduleEDR : {<Yield>Unit -> [Queue Proc]Unit}
+scheduleEDR <yield -> k>  = enqProc {scheduleEDR (k unit)};
+                            runNext!
+scheduleEDR unit          = runNext!
+
+-- dequeue; enqueue; run
+scheduleDER : {<Yield>Unit -> [Queue Proc]Unit}
+scheduleDER <yield -> k>  = case dequeue!
+                              { (just (proc x)) ->
+                                enqProc {scheduleDER (k unit)};
+                                x!
+                              | nothing         ->
+                                scheduleDER (k unit) }
+scheduleDER unit          = runNext!
+
+-- FIFO queue using a zipper
+fq : {List S -> List S -> <Queue S>Unit -> Unit}
+fq front        back <enqueue x -> k> = fq front (x :: back) (k unit)
+fq []           []   <dequeue -> k>   = fq [] [] (k nothing)
+fq []           back <dequeue -> k>   = fq (reverse back) [] (k dequeue!)
+fq (x :: front) back <dequeue -> k>   = fq front back (k (just x))
+fq front        back unit             = unit
+
+fifo : {<Queue S>Unit -> Unit}
+fifo <m> = fq [] [] m!
+
+-- LIFO queue using a plain list
+lq : {List S -> <Queue S>Unit -> Unit}
+lq xs      <enqueue x -> k> = lq (x :: xs) (k unit)
+lq []      <dequeue -> k>   = lq [] (k nothing)
+lq (x::xs) <dequeue -> k>   = lq xs (k (just x))
+lq _       unit             = unit
+
+lifo : {<Queue S>Unit -> Unit}
+lifo <m> = lq [] m!
+
+-- run a collection of processes with a scheduler that maintains a queue
+runWith : {{<Yield>Unit -> [Queue Proc]Unit} -> List {[Yield]Unit} -> [Queue Proc]Unit}
+runWith scheduler []      = runNext!
+runWith scheduler (p::ps) = enqProc {scheduler (shift [Queue Proc] p!)}; runWith scheduler ps
+
+main : {[Console]Unit}
+main! = print "FIFO EDR: ";   fifo (runWith scheduleEDR [testA, testB, testC]);
+        print "\nLIFO EDR: "; lifo (runWith scheduleEDR [testA, testB, testC]);
+        print "\nFIFO DER: "; fifo (runWith scheduleDER [testA, testB, testC]);
+        print "\nLIFO DER: "; lifo (runWith scheduleDER [testA, testB, testC]);
+        print "\n"
