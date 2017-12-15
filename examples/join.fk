@@ -1,0 +1,187 @@
+data Either X Y = left X | right Y
+data Pair X Y = pair X Y
+data Maybe X = nothing | just X
+data Bool = true | false
+
+not : {Bool -> Bool}
+not false = true
+not true  = false
+
+and : {Bool -> Bool -> Bool}
+and true true = true
+and _    _    = false
+
+or : {Bool -> Bool -> Bool}
+or false false = false
+or _    _      = true
+
+if : Bool -> {X} -> {X} -> X
+if true  t f = t!
+if false t f = f!
+
+
+print : {String -> [Console]Unit}
+print s = map ouch s; unit
+
+
+map : {{X -> Y} -> List X -> List Y}
+map f []        = []
+map f (x :: xs) = f x :: map f xs
+
+foldRight : {{X -> Y -> Y} -> Y -> List X -> Y}
+foldRight f y []        = y
+foldRight f y (x :: xs) = f x (foldRight f y xs)
+
+lookup : {{X -> X -> Bool} -> X -> List (Pair X Y) -> Maybe Y}
+lookup _  _  []               = nothing
+lookup eq x' ((pair x y)::xr) = if (eq x x') {just y} {lookup eq x' xr}
+
+interface Yield X = yield : X -> Unit
+
+interface Fail = fail X : X
+
+--interface Future X Y = await : Y -> X
+--                     | fut : {X} -> Y
+
+data Fut X = Ref (Either (List {X -> Unit}) X)
+
+data Reactive X = rnil | rcons X (Fut (Reactive X))
+
+interface Join X Y = join : Reactive X -> Reactive Y -> Pair X Y
+
+interface Imp X Y = push1 : X -> Unit
+                  | push2 : Y -> Unit
+
+interface ImpState X Y = put1 : List (Pair X (Ref Count)) -> Unit
+                       | put2 : List (Pair Y (Ref Count)) -> Unit
+                       | get1 : List (Pair X (Ref Count))
+                       | get2 : List (Pair Y (Ref Count))
+
+--interface State X = get : X
+--                  | put : X -> Unit
+
+interface Trigger X Y = trigger : Pair X Y -> Unit
+
+interface Eq1 X = eq1 : X -> X -> Bool
+interface Eq2 X = eq2 : X -> X -> Bool
+
+interface Choose = choose : Bool
+
+data Count = int Int | inf
+
+impState : {List (Pair X (Ref Count)) -> List (Pair Y (Ref Count)) -> <ImpState X Y>Z -> Z}
+impState _  ys <put1 xs -> k> = impState xs ys (k unit)
+impState xs ys <get1 -> k>    = impState xs ys (k xs)
+impState xs _  <put2 ys -> k> = impState xs ys (k unit)
+impState xs ys <get2 -> k>    = impState xs ys (k ys)
+impState _  _  x              = x
+
+printTrigger : {<Trigger Char Char>Z -> [Console]Z}
+printTrigger <trigger (pair c1 c2) -> k> = ouch c1; ouch ':'; ouch c2; ouch '\n'; printTrigger (k unit)
+
+forall : {<Imp X Y>Unit -> [RefState, ImpState X Y]Unit}
+forall <push1 x -> k> = put1 (pair x (new inf) :: get1!); forall (k (push1 x))
+forall <push2 x -> k> = put2 (pair x (new inf) :: get2!); forall (k (push2 x))
+forall unit = unit
+
+reify : {<Imp X Y>Unit -> [Eq1 X, Eq2 Y, RefState, Choose, Trigger X Y, ImpState X Y]Unit}
+reify <push1 x -> k> = case (lookup eq1 x get1!)
+                         { (just v) -> chooseEach trigger (cartesian (pair x v) get2!); reify (k unit) }
+reify <push2 x -> k> = case (lookup eq2 x get2!)
+                         { (just v) ->
+                             chooseEach trigger (map {(pair x y) -> pair y x}
+                                                      (cartesian (pair x v) get1!)); reify (k unit) }
+reify unit = unit
+
+eqNat : {Int -> Int -> Bool}
+eqNat 0 0 = true
+eqNat 0 _ = false
+eqNat _ 0 = false
+eqNat m n = eqNat (m-1) (n-1)
+
+eqCount : {Count -> Count -> Bool}
+eqCount inf inf         = true
+eqCount (int m) (int n) = eqNat m n
+eqCount _       _       = false
+
+
+eqZero : {Count -> Bool}
+eqZero (int 0) = true
+eqZero _       = false
+
+decrCount : {Count -> Count}
+decrCount inf     = inf
+decrCount (int m) = int (m-1)
+
+decr : {Ref Count -> [RefState]Unit}
+decr r = write r (decrCount (read r))
+
+cartesian : {Pair X (Ref Count) -> List (Pair Y (Ref Count)) -> [RefState]List (Pair X Y)}
+cartesian (pair x cx) ys = foldRight {(pair y cy) zs ->
+                                        let a = read cx in
+                                        let b = read cy in
+                                        if (and (not (eqZero a)) (not (eqZero b)))
+                                           {decr cx; decr cy; pair x y :: zs}
+                                           {zs}
+                                     } [] ys
+
+chooseEach : {{X -> [Choose]Unit} -> List X -> [Choose]Unit}
+chooseEach f []        = unit
+chooseEach f (x :: xs) = if choose! {f x} {chooseEach f xs}
+
+
+
+interleave : {Bool -> List X -> List X -> [Imp X X]Unit}
+interleave _    []     [] = unit
+interleave b (x :: xs) ys = if b {push1 x} {push2 x}; interleave (not b) ys xs
+interleave b []        ys = interleave (not b) ys []
+
+
+chooseBoth : {<Choose>Unit -> Unit}
+chooseBoth <choose -> k> = chooseBoth (k true); chooseBoth (k false)
+chooseBoth unit          = unit
+
+
+eqChar1 : {<Eq1 Char>X -> X}
+eqChar1 <eq1 'a' 'a' -> k> = eqChar1 (k true)
+eqChar1 <eq1 'b' 'b' -> k> = eqChar1 (k true)
+eqChar1 <eq1 'c' 'c' -> k> = eqChar1 (k true)
+eqChar1 <eq1 'd' 'd' -> k> = eqChar1 (k true)
+eqChar1 <eq1 'e' 'e' -> k> = eqChar1 (k true)
+eqChar1 <eq1 '1' '1' -> k> = eqChar1 (k true)
+eqChar1 <eq1 '2' '2' -> k> = eqChar1 (k true)
+eqChar1 <eq1 '3' '3' -> k> = eqChar1 (k true)
+eqChar1 <eq1 '4' '4' -> k> = eqChar1 (k true)
+eqChar1 <eq1 '5' '5' -> k> = eqChar1 (k true)
+eqChar1 <eq1 '6' '6' -> k> = eqChar1 (k true)
+eqChar1 <eq1 '7' '7' -> k> = eqChar1 (k true)
+eqChar1 <eq1 _ _     -> k> = eqChar1 (k false)
+eqChar1 x                  = x
+
+eqChar2 : {<Eq2 Char>X -> X}
+eqChar2 <eq2 'a' 'a' -> k> = eqChar2 (k true)
+eqChar2 <eq2 'b' 'b' -> k> = eqChar2 (k true)
+eqChar2 <eq2 'c' 'c' -> k> = eqChar2 (k true)
+eqChar2 <eq2 'd' 'd' -> k> = eqChar2 (k true)
+eqChar2 <eq2 'e' 'e' -> k> = eqChar2 (k true)
+eqChar2 <eq2 '1' '1' -> k> = eqChar2 (k true)
+eqChar2 <eq2 '2' '2' -> k> = eqChar2 (k true)
+eqChar2 <eq2 '3' '3' -> k> = eqChar2 (k true)
+eqChar2 <eq2 '4' '4' -> k> = eqChar2 (k true)
+eqChar2 <eq2 '5' '5' -> k> = eqChar2 (k true)
+eqChar2 <eq2 '6' '6' -> k> = eqChar2 (k true)
+eqChar2 <eq2 '7' '7' -> k> = eqChar2 (k true)
+eqChar2 <eq2 _ _     -> k> = eqChar2 (k false)
+eqChar2 x                  = x
+
+l1 : {List Char}
+l1! = ['a', 'b', 'c', 'd', 'e']
+
+l2 : {List Char}
+l2! = ['1', '2', '3', '4', '5', '6', '7']
+
+main : {[Console, RefState]Unit}
+main! = eqChar1 (eqChar2 (chooseBoth (printTrigger (impState [] [] (reify (forall (interleave true l1! l2!)))))))
+
+--main : {Unit}
+--main! = unit
