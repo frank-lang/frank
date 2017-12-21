@@ -18,14 +18,13 @@ print s = map ouch s; unit
 --- end of standard stuff ---
 
 --------------------------------------------------------------------------------
--- Queue interface and fast queue implementation
+-- Queue interface and FIFO implementation using a zipper
 --------------------------------------------------------------------------------
 
 interface Queue S = enqueue : S -> Unit
                   | dequeue : Maybe S
 
--- Execute a computation along with a queue as state (generalisation of
--- zipQueue from coop-factored.fk)
+-- zipper queue
 data ZipQ S = zipq (List S) (List S)
 
 emptyZipQ : {ZipQ S}
@@ -56,16 +55,15 @@ execFifo <t> q = case (runFifo q t!) { (pair _ q) -> q }
 -- Definitions of interfaces, data types
 --------------------------------------------------------------------------------
 
-interface Co = fork : {[Co]Unit} -> Unit
+interface Co = fork  : {[Co]Unit} -> Unit
              | yield : Unit
 
--- Multi-item mailbox
 data Mailbox X = mbox (Ref (ZipQ X))
 
-interface Actor X = self:    Mailbox X
-                  | spawn Y: {[Actor Y]Unit} -> Mailbox Y
-                  | recv:    X
-                  | send Y:  Mailbox Y -> Y -> Unit
+interface Actor X = self    : Mailbox X
+                  | spawn Y : {[Actor Y]Unit} -> Mailbox Y
+                  | recv    : X
+                  | send Y  : Mailbox Y -> Y -> Unit
 
 data WithSender X Y = withSender (Mailbox X) Y
 
@@ -105,7 +103,7 @@ writingActor! = let you = spawn nicePrintActor in
                 send you "important msg"
 
 --------------------------------------------------------------------------------
--- Turn an actor step into a process step
+-- Implment an actor computation as a stateful concurrent computation
 --------------------------------------------------------------------------------
 
 shiftBody : {{[E|Actor X [E|]]Unit} -> {[E|Actor X [E|], Co [E|RefState], RefState]Unit}}
@@ -115,31 +113,30 @@ shiftBody m = {shift [RefState, Co [E|RefState]] m!}
 dummy : {Unit}
 dummy! = case unit {_ -> unit | _ -> unit}
 
-step: {Mailbox X -> <Actor X>Unit -> [Co [RefState], RefState]Unit}
-step mine     <self -> k> = step mine (k mine)
-step mine     <spawn you -> k> = let yours = mbox (new (emptyZipQ!)) in
-                                     fork {step yours (shiftBody you)!};
-                                     step mine (k yours)
-step (mbox m) <recv -> k> = case (runFifo (read m) dequeue!)
+act : {Mailbox X -> <Actor X>Unit -> [Co [RefState], RefState]Unit}
+act mine     <self -> k> = act mine (k mine)
+act mine     <spawn you -> k> = let yours = mbox (new (emptyZipQ!)) in
+                                     fork {act yours (shiftBody you)!};
+                                     act mine (k yours)
+act (mbox m) <recv -> k> = case (runFifo (read m) dequeue!)
                                 { (pair nothing _)  -> yield!;
-                                                       step (mbox m) (k recv!)
+                                                       act (mbox m) (k recv!)
                                 | (pair (just x) q) -> write m q;
-                                                       step (mbox m) (k x) }
-step mine     <send (mbox yours') x -> k> = let q  = read yours' in
+                                                       act (mbox m) (k x) }
+act mine     <send (mbox yours') x -> k> = let q = read yours' in
                                             case (execFifo (enqueue x) q)
                                             { q' -> write yours' q';
-                                                    step mine (k unit) }
-step mine     unit = unit
+                                                    act mine (k unit) }
+act mine     unit = unit
 
 runActor : {<Actor X>Unit -> [RefState]Unit}
-runActor <m> = bfFifo (step (mbox (new (emptyZipQ!))) (shift [Co [RefState]] m!))
+runActor <m> = bfFifo (act (mbox (new (emptyZipQ!))) (shift [Co [RefState]] m!))
 
 bfFifo : {<Co>Unit -> Unit}
 bfFifo <m> = fifo (scheduleBF (shift [Queue Proc] m!))
 
 --------------------------------------------------------------------------------
--- This is the process executer from coop-factored.fk, using a queue to handle
--- multiple processes
+-- Scheduling as in coop.fk
 --------------------------------------------------------------------------------
 
 data Proc = proc {[Queue Proc]Unit}

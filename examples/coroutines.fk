@@ -20,7 +20,6 @@ testB! = print "B1 "; yield!; print "B2 "
 testC : {[Yield, Console]Unit}
 testC! = print "C1 "; yield!; print "C2 "
 
-
 -- scheduler for two coroutines
 schedule2 : {<Yield>Unit -> <Yield>Unit -> Unit}
 schedule2 <yield -> k> unit = schedule2 (k unit) unit
