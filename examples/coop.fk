@@ -53,7 +53,15 @@ runNext! = case dequeue! { (just (proc x)) -> x!
 
 -- implementations of cooperative concurrency
 
--- defer forked processes
+-- defer forked processes (with effect pollution)
+scheduleBF' : {<Co [Queue Proc]>Unit -> [Queue Proc]Unit}
+scheduleBF' <yield -> k>  = enqProc {scheduleBF' (k unit)};
+                            runNext!
+scheduleBF' <fork p -> k> = enqProc {scheduleBF' p!};
+                            scheduleBF' (k unit)
+scheduleBF' unit          = runNext!
+
+-- defer forked processes (without effect poluution)
 scheduleBF : {<Co>Unit -> [Queue Proc]Unit}
 scheduleBF <yield -> k>  = enqProc {scheduleBF (k unit)};
                            runNext!
@@ -70,15 +78,19 @@ scheduleDF <fork p -> k> = enqProc {scheduleDF (k unit)};
 scheduleDF unit          = runNext!
 
 -- FIFO queue implementation using a zipper
-fq : {List S -> List S -> <Queue S>Unit -> Unit}
+fq : {List S -> List S -> <Queue S>X -> X}
 fq front        back <enqueue x -> k> = fq front (x :: back) (k unit)
 fq []           []   <dequeue -> k>   = fq [] [] (k nothing)
 fq []           back <dequeue -> k>   = fq (reverse back) [] (k dequeue!)
 fq (x :: front) back <dequeue -> k>   = fq front back (k (just x))
-fq front        back unit             = unit
+fq front        back x                = x
 
-fifo : {<Queue Proc>Unit -> Unit}
+fifo : {<Queue S>X -> X}
 fifo <m> = fq [] [] m!
+
+-- with effect pollution
+bfFifo' : {<Co [Queue Proc], Queue Proc>Unit -> Unit}
+bfFifo' <m> = fifo (scheduleBF' m!)
 
 bfFifo : {<Co>Unit -> Unit}
 bfFifo <m> = fifo (scheduleBF (shift [Queue Proc] m!))
@@ -87,5 +99,6 @@ dfFifo : {<Co>Unit -> Unit}
 dfFifo <m> = fifo (scheduleDF (shift [Queue Proc] m!))
 
 main : {[Console]Unit}
-main! = print "BF: "; bfFifo test!;
+main! = print "BF':"; bfFifo' test!;
+        print "BF: "; bfFifo test!;
         print "DF: "; dfFifo test!

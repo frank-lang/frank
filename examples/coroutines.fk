@@ -1,0 +1,41 @@
+--- start of standard stuff ---
+map : {{X -> Y} -> List X -> List Y}
+map f []        = []
+map f (x :: xs) = f x :: map f xs
+
+print : {String -> [Console]Unit}
+print s = map ouch s; unit
+--- end of standard stuff ---
+
+{--- Cooperative concurrency ---}
+interface Yield = yield : Unit
+
+-- example abstract concurrent computations
+testA : {[Yield, Console]Unit}
+testA! = print "A1 "; yield!; print "A2 "
+
+testB : {[Yield, Console]Unit}
+testB! = print "B1 "; yield!; print "B2 "
+
+testC : {[Yield, Console]Unit}
+testC! = print "C1 "; yield!; print "C2 "
+
+
+-- scheduler for two coroutines
+schedule2 : {<Yield>Unit -> <Yield>Unit -> Unit}
+schedule2 <yield -> k> unit = schedule2 (k unit) unit
+schedule2 <yield -> k> <m>  = schedule2 m! (k unit)
+schedule2 unit         unit = unit
+schedule2 unit         <m>  = schedule2 m! unit    
+
+-- scheduler for three coroutines
+schedule3 : {<Yield>Unit -> <Yield>Unit -> <Yield>Unit -> Unit}
+schedule3 <yield -> k> unit unit = schedule3 (k unit) unit unit
+schedule3 <yield -> k> <m> <n>   = schedule3 m! n! (k unit)
+schedule3 unit         unit unit = unit
+schedule3 unit         <m>  <n>  = schedule3 m! n! unit
+
+main : {[Console]Unit}
+main! = print "AB: ";    schedule2 testA! testB!;
+        print "\nABC: "; schedule3 testA! testB! testC!;
+        print "\n"

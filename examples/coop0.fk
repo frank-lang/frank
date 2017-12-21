@@ -31,7 +31,6 @@ testB! = print "B1 "; yield!; print "B2 "
 testC : {[Yield, Console]Unit}
 testC! = print "C1 "; yield!; print "C2 "
 
-
 -- queue interface
 interface Queue S = enqueue : S -> Unit
                   | dequeue : Maybe S
@@ -65,24 +64,24 @@ scheduleDER <yield -> k>  = case dequeue!
 scheduleDER unit          = runNext!
 
 -- FIFO queue using a zipper
-fq : {List S -> List S -> <Queue S>Unit -> Unit}
+fq : {List S -> List S -> <Queue S>X -> X}
 fq front        back <enqueue x -> k> = fq front (x :: back) (k unit)
 fq []           []   <dequeue -> k>   = fq [] [] (k nothing)
 fq []           back <dequeue -> k>   = fq (reverse back) [] (k dequeue!)
 fq (x :: front) back <dequeue -> k>   = fq front back (k (just x))
-fq front        back unit             = unit
+fq front        back x                = x
 
-fifo : {<Queue S>Unit -> Unit}
+fifo : {<Queue S>X -> X}
 fifo <m> = fq [] [] m!
 
 -- LIFO queue using a plain list
-lq : {List S -> <Queue S>Unit -> Unit}
+lq : {List S -> <Queue S>X -> X}
 lq xs      <enqueue x -> k> = lq (x :: xs) (k unit)
 lq []      <dequeue -> k>   = lq [] (k nothing)
 lq (x::xs) <dequeue -> k>   = lq xs (k (just x))
-lq _       unit             = unit
+lq _       x             = x
 
-lifo : {<Queue S>Unit -> Unit}
+lifo : {<Queue S>X -> X}
 lifo <m> = lq [] m!
 
 -- run a collection of processes with a scheduler that maintains a queue
