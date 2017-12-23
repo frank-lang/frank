@@ -25,7 +25,7 @@ schedule2 : {<Yield>Unit -> <Yield>Unit -> Unit}
 schedule2 <yield -> k> unit = schedule2 (k unit) unit
 schedule2 <yield -> k> <m>  = schedule2 m! (k unit)
 schedule2 unit         unit = unit
-schedule2 unit         <m>  = schedule2 m! unit    
+schedule2 unit         <m>  = schedule2 m! unit
 
 -- scheduler for three coroutines
 schedule3 : {<Yield>Unit -> <Yield>Unit -> <Yield>Unit -> Unit}

@@ -33,7 +33,7 @@ emptyZipQ! = zipq [] []
 -- FIFO queue implementation using a zipper
 -- (returns the remaining queue alongside the final value)
 runFifo : {ZipQ S -> <Queue S>X -> Pair X (ZipQ S)}
-runFifo (zipq front back)        <enqueue x -> k> = runFifo (zipq front (x :: back)) (k unit)    
+runFifo (zipq front back)        <enqueue x -> k> = runFifo (zipq front (x :: back)) (k unit)
 runFifo (zipq []      [])        <dequeue -> k>   = runFifo emptyZipQ! (k nothing)
 runFifo (zipq []      back)      <dequeue -> k>   = runFifo (zipq (reverse back) []) (k dequeue!)
 runFifo (zipq (x :: front) back) <dequeue -> k>   = runFifo (zipq front back) (k (just x))
