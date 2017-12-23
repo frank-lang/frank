@@ -74,7 +74,7 @@ fulfill (promise r) x = case (read r)
 asyncCoRef : {Promise X [CoRef] -> <Async [CoRef]>X -> [CoRef]Unit}
 asyncCoRef p v = fulfill p v
 asyncCoRef p <async c -> k> =
-  let q = promise (new (waiting [])) in 
+  let q = promise (new (waiting [])) in
   fork { asyncCoRef q c! };
   asyncCoRef p (k q)
 asyncCoRef p <await (promise r) -> k> =
@@ -87,6 +87,15 @@ asyncCoRef p <await (promise r) -> k> =
 runAsync : {<Async [CoRef]>X -> [RefState]X}
 runAsync <m> = let r = new (waiting []) in
                bfFifo (asyncCoRef (promise r) (shift [Co [RefState]] m!));
+
+               -- For the promise to be fullfilled now depends on all
+               -- handlers in sight using their continuations
+               -- linearly.
+
+               -- This does hold for all of the defined handlers, but
+               -- one could define a non-standard handler for RefState
+               -- which did not invoke the continuation linearly.
+
                case (read r) {(done x) -> x}
 
 bfFifo : {<Co>Unit -> Unit}
@@ -117,14 +126,11 @@ scheduleBF unit          = runNext!
 -- Concurrent Async programs
 --------------------------------------------------------------------------------
 
-binOp : {Int -> Int -> Int}
-binOp m n = m + n
-
 -- IMPORTANT: the effect parameter of Async must be independent of the
 -- ambient
 calcProg : {Int -> Int -> Int -> [Async [E|]]Int}
-calcProg a b c = let p1 = async {binOp a b} in
-                 let p2 = async {binOp b c} in
+calcProg a b c = let p1 = async {a + b} in
+                 let p2 = async {b + c} in
                  let v1 = await p1 in
                  let v2 = await p2 in
                  v1 + v2
