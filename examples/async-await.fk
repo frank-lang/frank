@@ -1,0 +1,145 @@
+--- start of standard stuff ---
+data Maybe X = nothing | just X
+data Pair X Y = pair X Y
+
+reverse' : {List X -> List X -> List X}
+reverse' []        ys = ys
+reverse' (x :: xs) ys = reverse' xs (x :: ys)
+
+reverse : {List X -> List X}
+reverse xs = reverse' xs []
+
+map : {{X -> Y} -> List X -> List Y}
+map f []        = []
+map f (x :: xs) = f x :: map f xs
+
+print : {String -> [Console]Unit}
+print s = map ouch s; unit
+--- end of standard stuff ---
+
+-- =============================================================================
+-- Description
+-- Little Frank library for writing concurrent programs that can synchronise via
+-- promises. When a new Async process is spawned, the caller gets a promise
+-- object. When the caller wants to redeem the given promise, it `awaits`
+-- the promise and blocks until the spawned process is executed.
+-- =============================================================================
+
+--------------------------------------------------------------------------------
+-- Queue interface and implementation
+--------------------------------------------------------------------------------
+
+interface Queue S = enqueue : S -> Unit
+                  | dequeue : Maybe S
+
+-- FIFO queue implementation using a zipper
+fq : {List S -> List S -> <Queue S>X -> X}
+fq front        back <enqueue x -> k> = fq front (x :: back) (k unit)
+fq []           []   <dequeue -> k>   = fq [] [] (k nothing)
+fq []           back <dequeue -> k>   = fq (reverse back) [] (k dequeue!)
+fq (x :: front) back <dequeue -> k>   = fq front back (k (just x))
+fq front        back x                = x
+
+fifo : {<Queue S>X -> X}
+fifo <m> = fq [] [] m!
+
+--------------------------------------------------------------------------------
+-- Definitions of interfaces, data types
+--------------------------------------------------------------------------------
+
+interface Co = fork : {[Co]Unit} -> Unit
+             | yield : Unit
+
+data PromiseStatus X = done X
+                     | waiting (List {X -> Unit})
+
+data Promise X = promise (Ref (PromiseStatus X))
+
+interface Async = async X: {[Async]X} -> Promise X
+                | await X: Promise X -> X
+
+--------------------------------------------------------------------------------
+-- Transform an async process into fork/yield process
+--------------------------------------------------------------------------------
+
+interface CoRef = [Co [RefState], RefState]
+
+-- only the first attempt to fulfill a promise is observable;
+-- subsequent attempts are ignored
+fulfill : {Promise X [CoRef] -> X -> [CoRef]Unit}
+fulfill (promise r) x = case (read r)
+                          { (done _)     -> unit
+                          | (waiting fs) -> map { f -> f x } fs; write r (done x) }
+
+asyncCoRef : {Promise X [CoRef] -> <Async [CoRef]>X -> [CoRef]Unit}
+asyncCoRef p v = fulfill p v
+asyncCoRef p <async c -> k> =
+  let q = promise (new (waiting [])) in 
+  fork { asyncCoRef q c! };
+  asyncCoRef p (k q)
+asyncCoRef p <await (promise r) -> k> =
+  case (read r)
+  { (done v) -> asyncCoRef p (k v)
+  | (waiting fs) ->
+      let f = { v -> asyncCoRef p (k v) } in
+      write r (waiting (f::fs)) }
+
+runAsync : {<Async [CoRef]>X -> [RefState]X}
+runAsync <m> = let r = new (waiting []) in
+               bfFifo (asyncCoRef (promise r) (shift [Co [RefState]] m!));
+               case (read r) {(done x) -> x}
+
+bfFifo : {<Co>Unit -> Unit}
+bfFifo <m> = fifo (scheduleBF (shift [Queue Proc] m!))
+
+--------------------------------------------------------------------------------
+-- Scheduling as in coop.fk
+--------------------------------------------------------------------------------
+
+data Proc = proc {[Queue Proc]Unit}
+
+enqProc : {[Queue Proc]Unit} -> [Queue Proc]Unit
+enqProc p = enqueue (proc p)
+
+runNext : {[Queue Proc]Unit}
+runNext! = case dequeue! { (just (proc x)) -> x!
+                         | nothing         -> unit }
+
+-- defer forked processes
+scheduleBF : {<Co>Unit -> [Queue Proc]Unit}
+scheduleBF <yield -> k>  = enqProc {scheduleBF (k unit)};
+                           runNext!
+scheduleBF <fork p -> k> = enqProc {scheduleBF (shift [Queue Proc] p!)};
+                           scheduleBF (k unit)
+scheduleBF unit          = runNext!
+
+--------------------------------------------------------------------------------
+-- Concurrent Async programs
+--------------------------------------------------------------------------------
+
+binOp : {Int -> Int -> Int}
+binOp m n = m + n
+
+-- IMPORTANT: the effect parameter of Async must be independent of the
+-- ambient
+calcProg : {Int -> Int -> Int -> [Async [E|]]Int}
+calcProg a b c = let p1 = async {binOp a b} in
+                 let p2 = async {binOp b c} in
+                 let v1 = await p1 in
+                 let v2 = await p2 in
+                 v1 + v2
+
+-- stupid pretty-printer hack :)
+dummy : {Unit}
+dummy! = case unit {_ -> unit | _ -> unit}
+
+--------------------------------------------------------------------------------
+-- Main
+--------------------------------------------------------------------------------
+
+-- Dont delete these lines, they make this program into a unit test.
+-- #desc   examples/asyncAwait.fk
+-- #return 8
+
+main: {[RefState]Int}
+main! = runAsync (calcProg 1 2 3)

@@ -21,7 +21,7 @@ concat (xs :: xss) = append xs (concat xss)
 
 interface Abort = aborting : Zero
 
-abort : [Abort]X
+abort : {[Abort]X}
 abort! = case aborting! {}
 
 data Bool = true | false
