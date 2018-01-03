@@ -78,10 +78,11 @@ impState _  _  x              = x
 
 printTrigger : {<Trigger Char Char>Z -> [Console]Z}
 printTrigger <trigger (pair c1 c2) -> k> = ouch c1; ouch ':'; ouch c2; ouch '\n'; printTrigger (k unit)
+printTrigger x                           = x
 
-forall : {<Imp X Y>Unit -> [RefState, ImpState X Y]Unit}
-forall <push1 x -> k> = put1 (pair x (new inf) :: get1!); forall (k (push1 x))
-forall <push2 x -> k> = put2 (pair x (new inf) :: get2!); forall (k (push2 x))
+forall : {<Imp X Y>Unit -> [RefState, ImpState X Y, Imp X Y]Unit}
+forall <push1 x -> k> = put1 (pair x (new inf) :: get1!); push1 x; forall (k unit)
+forall <push2 x -> k> = put2 (pair x (new inf) :: get2!); push2 x; forall (k unit)
 forall unit = unit
 
 reify : {<Imp X Y>Unit -> [Eq1 X, Eq2 Y, RefState, Choose, Trigger X Y, ImpState X Y]Unit}
@@ -175,10 +176,10 @@ eqChar2 <eq2 _ _     -> k> = eqChar2 (k false)
 eqChar2 x                  = x
 
 l1 : {List Char}
-l1! = ['a', 'b', 'c', 'd', 'e']
+l1! = ['a', 'b']
 
 l2 : {List Char}
-l2! = ['1', '2', '3', '4', '5', '6', '7']
+l2! = ['1', '2', '3']
 
 main : {[Console, RefState]Unit}
 main! = eqChar1 (eqChar2 (chooseBoth (printTrigger (impState [] [] (reify (forall (interleave true l1! l2!)))))))
