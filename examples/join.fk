@@ -28,9 +28,16 @@ map : {{X -> Y} -> List X -> List Y}
 map f []        = []
 map f (x :: xs) = f x :: map f xs
 
-foldRight : {{X -> Y -> Y} -> Y -> List X -> Y}
-foldRight f y []        = y
-foldRight f y (x :: xs) = f x (foldRight f y xs)
+reverse' : {List X -> List X -> List X}
+reverse' []        ys = ys
+reverse' (x :: xs) ys = reverse' xs (x :: ys)
+
+reverse : {List X -> List X}
+reverse xs = reverse' xs []
+
+foldRight : {{X -> Y -> Y} -> List X -> Y -> Y}
+foldRight f []        y = y
+foldRight f (x :: xs) y = f x (foldRight f xs y)
 
 lookup : {{X -> X -> Bool} -> X -> List (Pair X Y) -> Maybe Y}
 lookup _  _  []               = nothing
@@ -52,10 +59,19 @@ interface Join X Y = join : Reactive X -> Reactive Y -> Pair X Y
 interface Imp X Y = push1 : X -> Unit
                   | push2 : Y -> Unit
 
-interface ImpState X Y = put1 : List (Pair X (Ref Count)) -> Unit
-                       | put2 : List (Pair Y (Ref Count)) -> Unit
-                       | get1 : List (Pair X (Ref Count))
-                       | get2 : List (Pair Y (Ref Count))
+interface ReadTwo X Y = get1 : X
+                      | get2 : Y
+
+interface ImpRead X Y = [ReadTwo (List (Pair X (Ref Count))) (List (Pair Y (Ref Count)))]
+
+interface WriteTwo X Y = put1 : X -> Unit
+                       | put2 : Y -> Unit
+
+interface ImpWrite X Y = [WriteTwo (List (Pair X (Ref Count))) (List (Pair Y (Ref Count)))]
+
+interface StateTwo X Y = [ReadTwo X Y, WriteTwo X Y]
+
+interface ImpState X Y = [ImpRead X Y, ImpWrite X Y]
 
 --interface State X = get : X
 --                  | put : X -> Unit
@@ -65,16 +81,22 @@ interface Trigger X Y = trigger : Pair X Y -> Unit
 interface Eq1 X = eq1 : X -> X -> Bool
 interface Eq2 X = eq2 : X -> X -> Bool
 
-interface Choose = choose : Bool
-
 data Count = int Int | inf
 
-impState : {List (Pair X (Ref Count)) -> List (Pair Y (Ref Count)) -> <ImpState X Y>Z -> Z}
-impState _  ys <put1 xs -> k> = impState xs ys (k unit)
-impState xs ys <get1 -> k>    = impState xs ys (k xs)
-impState xs _  <put2 ys -> k> = impState xs ys (k unit)
-impState xs ys <get2 -> k>    = impState xs ys (k ys)
-impState _  _  x              = x
+impState : {X -> Y -> <StateTwo X Y>Z -> Pair Z (Pair X Y)}
+impState _  s2 <put1 s1 -> k> = impState s1 s2 (k unit)
+impState s1 s2 <get1 -> k>    = impState s1 s2 (k s1)
+impState s1 _  <put2 s2 -> k> = impState s1 s2 (k unit)
+impState s1 s2 <get2 -> k>    = impState s1 s2 (k s2)
+impState s1 s2  x             = pair x (pair s1 s2)
+
+evalStateTwo : {X -> Y -> <StateTwo X Y>Z -> Z}
+evalStateTwo s1 s2 <m> = case (impState s1 s2 m!) {(pair x _) -> x}
+
+evalReadTwo : {X -> Y -> <ReadTwo X Y>Z -> Z}
+evalReadTwo s1 s2 <get1 -> k> = evalReadTwo s1 s2 (k s1)
+evalReadTwo s1 s2 <get2 -> k> = evalReadTwo s1 s2 (k s2)
+evalReadTwo s1 s2 x           = x
 
 printTrigger : {<Trigger Char Char>Z -> [Console]Z}
 printTrigger <trigger (pair c1 c2) -> k> = ouch c1; ouch ':'; ouch c2; ouch '\n'; printTrigger (k unit)
@@ -85,25 +107,29 @@ forall <push1 x -> k> = put1 (pair x (new inf) :: get1!); push1 x; forall (k uni
 forall <push2 x -> k> = put2 (pair x (new inf) :: get2!); push2 x; forall (k unit)
 forall unit = unit
 
-reify : {<Imp X Y>Unit -> [Eq1 X, Eq2 Y, RefState, Choose, Trigger X Y, ImpState X Y]Unit}
+reify : {<Imp X Y>Unit -> [Eq1 X, Eq2 Y, RefState, Trigger X Y, ImpRead X Y, Console]Unit}
 reify <push1 x -> k> = case (lookup eq1 x get1!)
-                         { (just v) -> chooseEach trigger (cartesian (pair x v) get2!); reify (k unit) }
+                       { (just c) ->
+                           map trigger (cartesian (pair x c) (reverse get2!));
+                           reify (k unit)
+                       }
 reify <push2 x -> k> = case (lookup eq2 x get2!)
-                         { (just v) ->
-                             chooseEach trigger (map {(pair x y) -> pair y x}
-                                                      (cartesian (pair x v) get1!)); reify (k unit) }
+                       { (just c) ->
+                           map trigger (map {(pair x y) -> pair y x} (cartesian (pair x c) (reverse get1!)));
+                           reify (k unit)
+                       }
 reify unit = unit
 
-eqNat : {Int -> Int -> Bool}
-eqNat 0 0 = true
-eqNat 0 _ = false
-eqNat _ 0 = false
-eqNat m n = eqNat (m-1) (n-1)
+-- eqNat : {Int -> Int -> Bool}
+-- eqNat 0 0 = true
+-- eqNat 0 _ = false
+-- eqNat _ 0 = false
+-- eqNat m n = eqNat (m-1) (n-1)
 
-eqCount : {Count -> Count -> Bool}
-eqCount inf inf         = true
-eqCount (int m) (int n) = eqNat m n
-eqCount _       _       = false
+-- eqCount : {Count -> Count -> Bool}
+-- eqCount inf inf         = true
+-- eqCount (int m) (int n) = eqNat m n
+-- eqCount _       _       = false
 
 
 eqZero : {Count -> Bool}
@@ -118,29 +144,17 @@ decr : {Ref Count -> [RefState]Unit}
 decr r = write r (decrCount (read r))
 
 cartesian : {Pair X (Ref Count) -> List (Pair Y (Ref Count)) -> [RefState]List (Pair X Y)}
-cartesian (pair x cx) ys = foldRight {(pair y cy) zs ->
-                                        let a = read cx in
-                                        let b = read cy in
-                                        if (and (not (eqZero a)) (not (eqZero b)))
-                                           {decr cx; decr cy; pair x y :: zs}
-                                           {zs}
-                                     } [] ys
-
-chooseEach : {{X -> [Choose]Unit} -> List X -> [Choose]Unit}
-chooseEach f []        = unit
-chooseEach f (x :: xs) = if choose! {f x} {chooseEach f xs}
-
-
+cartesian (pair x cx) ys = --map {(pair y _) -> pair x y} ys
+  foldRight {(pair y cy) zs ->
+               if (and (not (eqZero (read cx))) (not (eqZero (read cy))))
+                  {decr cx; decr cy; pair x y :: zs}
+                  {zs}
+            } ys []
 
 interleave : {Bool -> List X -> List X -> [Imp X X]Unit}
-interleave _    []     [] = unit
+interleave _ []        [] = unit
 interleave b (x :: xs) ys = if b {push1 x} {push2 x}; interleave (not b) ys xs
 interleave b []        ys = interleave (not b) ys []
-
-
-chooseBoth : {<Choose>Unit -> Unit}
-chooseBoth <choose -> k> = chooseBoth (k true); chooseBoth (k false)
-chooseBoth unit          = unit
 
 
 eqChar1 : {<Eq1 Char>X -> X}
@@ -176,13 +190,14 @@ eqChar2 <eq2 _ _     -> k> = eqChar2 (k false)
 eqChar2 x                  = x
 
 l1 : {List Char}
-l1! = ['a', 'b']
+l1! = ['a', 'b', 'c', 'd', 'e']
 
 l2 : {List Char}
-l2! = ['1', '2', '3']
+l2! = ['1', '2', '3', '4', '5', '6', '7']
+
 
 main : {[Console, RefState]Unit}
-main! = eqChar1 (eqChar2 (chooseBoth (printTrigger (impState [] [] (reify (forall (interleave true l1! l2!)))))))
+main! = evalStateTwo [] [] (printTrigger (eqChar1 (eqChar2 (reify (forall (interleave true l1! l2!))))))
 
 --main : {Unit}
 --main! = unit
