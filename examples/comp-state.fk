@@ -5,19 +5,19 @@ interface Get S = get : S
 interface Put S = put : S -> Unit
 interface State S = [Get S, Put S]
 
-runGet : {S -> <Get S>X -> X}
-runGet s <get -> k> = runGet s (k s)
-runGet s x          = x
+evalGet : {S -> <Get S>X -> X}
+evalGet s <get -> k> = evalGet s (k s)
+evalGet s x          = x
 
-runPut : {<Put S>X -> [Get S]X}
-runPut <put s -> k> = shift [Get S] (runGet s (runPut (k unit)))
-runPut x            = x
+evalPut : {<Put S>X -> [Get S]X}
+evalPut <put s -> k> = shift [Get S] (evalGet s (evalPut (k unit)))
+evalPut x            = x
 
-runState : {S -> <State S>X -> X}
-runState s <m> = runGet s (runPut m!)
+evalState : {S -> <State S>X -> X}
+evalState s <m> = evalGet s (evalPut m!)
 
 incr : {[State Int]Unit}
 incr! = put (get! + 1)
 
 main : {Int}
-main! = runState 0 (incr!; incr!; get!)
+main! = evalState 0 (incr!; incr!; get!)
