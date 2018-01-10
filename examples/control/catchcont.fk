@@ -1,0 +1,28 @@
+data Bool = true | false
+
+append : {List X -> List X -> List X}
+append []        ys = ys
+append (x :: xs) ys = x :: (append xs ys)
+
+interface Throw X Y = throw : X -> Y
+
+data Step X Y Z = done Z
+                | step X {Y -> [Throw X Y]Z}
+
+catchCont0 : {<Throw X Y>Z -> Step X Y Z}
+catchCont0 x              = done x
+catchCont0 <throw v -> k> = step v k
+
+catchCont : {<Throw X Y>{[Throw X Y]Z} -> Step X Y {[Throw X Y]Z}}
+catchCont <m> = catchCont0 m!
+
+choose : {[Throw Unit Bool]Bool}
+choose! = throw unit
+
+allChoices : {<Throw Unit Bool>X -> List X}
+allChoices <m> = case (catchCont0 m!) { (done x)      -> [x]
+                                      | (step unit k) -> append (allChoices (k true)) (allChoices (k false))}
+
+main : {List Bool}
+main! = allChoices (case choose! { true -> choose!
+                                 | false -> false})
