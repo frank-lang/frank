@@ -137,7 +137,7 @@ errorFindCmdNotPermit cmd loc itf amb = "command " ++ cmd ++ " belonging to inte
 logBeginFindCmd :: Id -> Id -> Maybe [TyArg Desugared] -> Contextual ()
 logBeginFindCmd x itf mps = ifDebugTypeCheckOnThen $
   debugTypeCheckM $ "find command " ++ show x ++ " of interface " ++ show itf ++
-                    " with instantiation " ++ show mps ++ "\n\n"
+                    " with instantiation " ++ show (mps >>= Just . (map (show . ppTyArg))) ++ "\n\n"
 
 logEndFindCmd :: Id -> VType Desugared -> Contextual ()
 logEndFindCmd x ty = ifDebugTypeCheckOnThen $
@@ -153,6 +153,10 @@ logBeginInferUse u@(Op x _) = ifDebugTypeCheckOnThen $ do
 logBeginInferUse u@(App f xs _) = ifDebugTypeCheckOnThen $ do
   amb <- getAmbient
   debugTypeCheckM $ "begin infer use of app: Under curr. amb. " ++ show (ppAb amb) ++ "\n   infer type of " ++ show (ppUse u) ++ "\n\n"
+logBeginInferUse u@(Shift itfMap t _) = ifDebugTypeCheckOnThen $ do
+  amb <- getAmbient
+  debugTypeCheckM $ "begin infer use of shift: Under curr. amb. " ++ show (ppAb amb) ++ "\n   infer type of " ++ show (ppUse u) ++ "\n\n"
+
 
 logEndInferUse :: Use Desugared -> VType Desugared -> Contextual ()
 logEndInferUse u@(Op x _) ty = ifDebugTypeCheckOnThen $ do
@@ -163,6 +167,9 @@ logEndInferUse u@(Op x _) ty = ifDebugTypeCheckOnThen $ do
 logEndInferUse u@(App f xs _) ty = ifDebugTypeCheckOnThen $ do
   amb <- getAmbient
   debugTypeCheckM $ "ended infer use of app: Under curr. amb. " ++ show (ppAb amb) ++ "\n   infer type of " ++ show (ppUse u) ++ "\n   gives " ++ show (ppVType ty) ++ "\n\n"
+logEndInferUse u@(Shift itfMap t _) ty = ifDebugTypeCheckOnThen $ do
+  amb <- getAmbient
+  debugTypeCheckM $ "ended infer use of shift: Under curr. amb. " ++ show (ppAb amb) ++ "\n   infer type of " ++ show (ppUse u) ++ "\n   gives " ++ show (ppVType ty) ++ "\n\n"
 
 logBeginUnify :: VType Desugared -> VType Desugared -> Contextual ()
 logBeginUnify t0 t1 = ifDebugTypeCheckOnThen $ do
@@ -207,6 +214,16 @@ logEndSolve a ext ty = ifDebugTypeCheckOnThen $ do
   ctx <- getContext
   debugTypeCheckM $ "ended solving " ++ show a ++ " = " ++ show (ppVType ty) ++ "\n under suffix\n   " ++ show (ppSuffix ext) ++ "\n\n"
 
+-- logBeginSolveForEVar :: Id -> Suffix -> VType Desugared -> Contextual ()
+-- logBeginSolve a ext ty = ifDebugTypeCheckOnThen $ do
+--   ctx <- getContext
+--   debugTypeCheckM $ "begin to solve " ++ show a ++ " = " ++ show (ppVType ty) ++ "\n under suffix\n   " ++ show (ppSuffix ext) ++ "\n\n"
+--
+-- logEndSolveForEVar :: Id -> Suffix -> VType Desugared -> Contextual ()
+-- logEndSolve a ext ty = ifDebugTypeCheckOnThen $ do
+--   ctx <- getContext
+--   debugTypeCheckM $ "ended solving " ++ show a ++ " = " ++ show (ppVType ty) ++ "\n under suffix\n   " ++ show (ppSuffix ext) ++ "\n\n"
+
 debugParserM :: (MonadicParsing m) => String -> m ()
 debugParserM = traceM
 
@@ -233,6 +250,7 @@ text = PP.text
 sep = PP.sep
 nest = PP.nest
 vcat = PP.vcat
+hcat = PP.hcat
 
 type Doc = PP.Doc
 
@@ -268,10 +286,26 @@ ppMHDef (Def id cty cls _) = text id <+> text ":" <+>
 ppClause :: (Show a, HasSource a) => Id -> Clause a -> Doc
 ppClause id (Cls ps tm _) = text id <+>
                             (vcat . map ppPattern) ps <+> text "=" $$
-                            (nest 3 . text . show) tm
+                            (nest 3 . ppTm) tm
 
 ppPattern :: (Show a, HasSource a) => Pattern a -> Doc
-ppPattern = text . show
+ppPattern (VPat vp _) = ppValuePat vp
+ppPattern (CmdPat x vps k _) = text "<" <+>
+                               text x <+>
+                               (hcat . map ppValuePat) vps <+>
+                               text "->" <+>
+                               text k <+>
+                               text ">"
+ppPattern (ThkPat x _) = text x
+
+ppValuePat :: (Show a, HasSource a) => ValuePat a -> Doc
+ppValuePat (VarPat x _) = text x
+ppValuePat (DataPat x vps _) = text x <+> (hcat . map ppValuePat) vps
+ppValuePat (IntPat n _) = (text . show) n
+ppValuePat (CharPat c _) = (text . show) c
+ppValuePat (StrPat s _) = (text . show) s
+ppValuePat (ConsPat vp1 vp2 _) = ppValuePat vp1 <+> text "::" <+> ppValuePat vp2
+ppValuePat (ListPat vps _) = (hcat . map ppValuePat) vps
 
 ppCType :: (Show a, HasSource a) => CType a -> Doc
 ppCType (CType ps q _) = text "{" <> ports <> peg <> text "}"

@@ -606,9 +606,9 @@ trimVar = takeWhile (/= '$')
 
 {- Operations on interface maps -}
 
+-- For each interface, the instances are concatenated
 -- e.g. [State Bool, State Int] + [State String, State Char] =
--- [State Bool, State Int, State String, State Char], i.e. the second ItfMap
--- possible overrides an active instance (State Char is active in the result)
+-- [State Bool, State Int, State String, State Char]
 plusItfMap :: ItfMap t -> ItfMap t -> ItfMap t
 plusItfMap (ItfMap m a) (ItfMap m' _) = foldl plusItfMap' (ItfMap m a) (M.toList m')
   where plusItfMap' :: ItfMap t -> (Id, Bwd [TyArg t]) -> ItfMap t
@@ -620,18 +620,20 @@ addInstanceToItfMap :: ItfMap Raw -> (Id, [TyArg Raw]) -> ItfMap Raw
 addInstanceToItfMap (ItfMap m a) (x, args) = if M.member x m then ItfMap (M.adjust (:< args) x m) a
                                                              else ItfMap (M.insert x (BEmp :< args) m) a
 
--- Given m1 and m2, trim m1 down to at most the shape of m2
-trimItfMapByItfMap :: ItfMap t -> ItfMap t -> ItfMap t
-trimItfMapByItfMap (ItfMap m1 a) (ItfMap m2 _) = ItfMap m'' a
+-- Given m1 and m2, return
+-- 1) All interfaces that occur in m1 *and* m2
+-- 2) Of those interface, take only the longest suffix of common length,
+--    with instances from m1
+intersectItfMap :: ItfMap t -> ItfMap t -> ItfMap t
+intersectItfMap (ItfMap m1 a) (ItfMap m2 _) = ItfMap m'' a
   where m'  = M.intersectionWith (\args args' -> takeBwd (min (length args) (length args')) args) m1 m2
         m'' = M.filter (not . null) m'
-
 
 -- Given m1 and m2, cut off entry suffixes of m1 of length determined by m2's entries' lengths
 cutItfMapSuffix :: ItfMap t -> ItfMap t -> ItfMap t
 cutItfMapSuffix (ItfMap m1 a) (ItfMap m2 _) = ItfMap m'' a
   where m' = M.differenceWith (\args args' -> Just $ dropBwd (length args') args) m1 m2
-        m'' = M.filter (not. null) m'
+        m'' = M.filter (not . null) m'
 
 stripInactiveOffItfMap :: ItfMap t -> ItfMap t
 stripInactiveOffItfMap (ItfMap m a) = ItfMap m' a

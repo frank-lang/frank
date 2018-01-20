@@ -169,6 +169,11 @@ checkPort p@(Port (Adj im _) ty _) = do
 --    - Infer type of f
 --    - If this susp. comp. type is known, check the arguments are well-typed
 --    - If not, create fresh type pattern and unify (constraining for future)
+-- 3) Shift rule
+--    - Get ambient and expand it (substitute all flexible variables)
+--    - Check that instances to be shifted are applicable for this ambient:
+--      - Check "(amb - shifted) + shifted = amb"
+--    - Recursively infer use of term, but under ambient "amb - shifted"
 inferUse :: Use Desugared -> Contextual (VType Desugared)
 inferUse u@(Op x _) =                                                           -- Var, PolyVar, Command rules
   do logBeginInferUse u
@@ -228,11 +233,15 @@ inferUse app@(App f xs _) =                                                     
         -- Check typing tm: ty in ambient [adj]
         checkArg :: Port Desugared -> Tm Desugared -> Contextual ()
         checkArg (Port adj ty _) tm = inAdjustedAmbient adj (checkTm tm ty)
-inferUse (Shift shiftItfMap t _) =
-  do amb <- getAmbient
-     let (Ab ambMod ambItfMap a) = amb
-     unifyAb (Ab ambMod ((ambItfMap `cutItfMapSuffix` shiftItfMap) `plusItfMap` shiftItfMap) a) amb  -- shiftItfMap must be suffix of ambItfMap
-     inAmbient (Ab ambMod (ambItfMap `cutItfMapSuffix` shiftItfMap) a) (inferUse t) -- infer use in reduced ambient
+inferUse shift@(Shift shiftItfMap t _) =
+  do logBeginInferUse shift
+     amb <- getAmbient
+     amb' <- expandAb amb
+     let (Ab ambMod ambItfMap a) = amb'
+     unifyAb (Ab ambMod ((ambItfMap `cutItfMapSuffix` shiftItfMap) `plusItfMap` shiftItfMap) a) amb'  -- shiftItfMap must be suffix of ambItfMap
+     res <- inAmbient (Ab ambMod (ambItfMap `cutItfMapSuffix` shiftItfMap) a) (inferUse t) -- infer use in reduced ambient
+     logEndInferUse shift res
+     return res
 
 -- 2nd major TC function: Check that term (construction) has given type
 checkTm :: Tm Desugared -> VType Desugared -> Contextual ()

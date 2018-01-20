@@ -216,3 +216,22 @@ addCtr :: Id -> Id -> [TyArg Desugared] -> [VType Desugared] -> Contextual ()
 addCtr dt     ctr     ts         xs         = get >>= \s ->
 --     dt-id  ctr-id  type-args  value-args
   put $ s { ctrMap = M.insert ctr (dt,ts,xs) (ctrMap s) }
+
+-- Given eff var "x", find assigned ability in context and return "Just" it
+-- if not found, return "Nothing"
+findAbVar :: AbMod Desugared -> Contextual (Maybe (Ab Desugared))
+findAbVar (EmpAb _) = return Nothing
+findAbVar (AbRVar _ _) = return Nothing
+findAbVar (AbFVar x _) = getContext >>= find'
+  where find' BEmp = return Nothing
+        find' (es :< FlexMVar y (AbDefn ab)) | x == y = return $ Just ab
+        find' (es :< _) = find' es
+
+-- Given ability [e | ...], "findAbVar" and thereby substitute the eff vars e
+-- so long until it is completely unfolded.
+expandAb :: Ab Desugared -> Contextual (Ab Desugared)
+expandAb (Ab v m a) =  do
+  ab <- findAbVar v
+  case ab of
+    Just (Ab v' m' a') -> expandAb $ Ab v' (m' `plusItfMap` m) a
+    Nothing ->            return $ Ab v m a
