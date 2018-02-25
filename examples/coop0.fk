@@ -85,13 +85,15 @@ lifo : {<Queue S>X -> X}
 lifo <m> = lq [] m!
 
 -- run a collection of processes with a scheduler that maintains a queue
-runWith : {{<Yield>Unit -> [Queue Proc]Unit} -> List {[Yield]Unit} -> [Queue Proc]Unit}
+runWith : {{<Yield>Unit -> [Queue Proc]Unit} -> List {[Yield]Unit} ->
+           [Queue Proc]Unit}
 runWith scheduler []      = runNext!
-runWith scheduler (p::ps) = enqProc {scheduler (shift [Queue Proc] p!)}; runWith scheduler ps
+runWith scheduler (p::ps) =
+  enqProc {scheduler (shift <Queue> p!)}; runWith scheduler ps
 
 main : {[Console]Unit}
-main! = print "FIFO EDR: ";   fifo (runWith scheduleEDR [testA, testB, testC]);
-        print "\nLIFO EDR: "; lifo (runWith scheduleEDR [testA, testB, testC]);
-        print "\nFIFO DER: "; fifo (runWith scheduleDER [testA, testB, testC]);
-        print "\nLIFO DER: "; lifo (runWith scheduleDER [testA, testB, testC]);
+main! = print "FIFO EDR: "; fifo (runWith scheduleEDR [testA, testB, testC]);
+        print "\nLIFO EDR: ";lifo (runWith scheduleEDR [testA, testB, testC]);
+        print "\nFIFO DER: ";fifo (runWith scheduleDER [testA, testB, testC]);
+        print "\nLIFO DER: ";lifo (runWith scheduleDER [testA, testB, testC]);
         print "\n"

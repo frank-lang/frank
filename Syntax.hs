@@ -5,6 +5,7 @@
 module Syntax where
 
 import qualified Data.Map.Strict as M
+import qualified Data.Set as S
 import Data.List
 import Data.Functor.Identity
 
@@ -166,9 +167,6 @@ type MHDef a = AnnotTFix a MHDefF
 pattern Def x cty clss a = Fx (AnnF (MkDef x cty clss, a))
 instance HasId (MHDef t) where getId (Def x _ _ _) = x
 
--- value bindings - not yet supported
--- data VDef a = VDef Id (VType a) (Tm a)
-
 {- MH here = 'operator' in the paper. Operator here doesn't have a name
    in the paper. -}
 
@@ -238,7 +236,7 @@ data UseF :: ((* -> *) -> (* -> *)) -> * -> * where
   MkRawComb :: r -> [TFix (AnnotT Raw) TmF] -> UseF (AnnotT Raw) r
   MkOp :: NotRaw (t Identity ()) => TFix t OperatorF -> UseF t r
   MkApp :: NotRaw (t Identity ()) => r -> [TFix t TmF] -> UseF t r
-  MkShift :: TFix t ItfMapF -> r -> UseF t r  -- difference to formal definition: shift takes a *list* of instantiations instead of a single instantiation
+  MkShift :: S.Set Id -> r -> UseF t r
 deriving instance (Show (TFix t OperatorF),
                    Show (TFix t TmF),
                    Show (TFix t ItfMapF),
@@ -252,7 +250,7 @@ pattern RawId x a = Fx (AnnF (MkRawId x, a))
 pattern RawComb f xs a = Fx (AnnF (MkRawComb f xs, a))
 pattern Op op a = Fx (AnnF (MkOp op, a))
 pattern App f xs a = Fx (AnnF (MkApp f xs, a))
-pattern Shift itfMap tm a = Fx (AnnF (MkShift itfMap tm, a))
+pattern Shift itfs tm a = Fx (AnnF (MkShift itfs tm, a))
 
 -- Tm here = 'construction' in the paper
 
@@ -453,8 +451,9 @@ pattern StringTy a = Fx (AnnF (MkStringTy, a))
 pattern IntTy a = Fx (AnnF (MkIntTy, a))
 pattern CharTy a = Fx (AnnF (MkCharTy, a))
 
+-- Interface-id -> list of bwd-list of ty arg's (each entry an instantiation)
 data ItfMapF :: ((* -> *) -> (* -> *)) -> * -> * where
-  MkItfMap :: M.Map Id (Bwd [TFix t TyArgF]) -> ItfMapF t r     -- interface-id  ->  list of bwd-list of ty arg's (each entry an instantiation)
+  MkItfMap :: M.Map Id (Bwd [TFix t TyArgF]) -> ItfMapF t r
 deriving instance (Show (TFix t TyArgF),
                    Show r, Show (TFix t ItfMapF)) => Show (ItfMapF t r)
 deriving instance (Eq (TFix t TyArgF),
@@ -464,7 +463,7 @@ pattern ItfMap m a = Fx (AnnF (MkItfMap m, a))
 
 -- Adjustments (set of instantiated interfaces)
 data AdjF :: ((* -> *) -> (* -> *)) -> * -> * where
-  MkAdj :: TFix t ItfMapF -> AdjF t r                           -- interface-id  ->  list of ty arg's
+  MkAdj :: TFix t ItfMapF -> AdjF t r -- interface-id -> list of ty arg's
 deriving instance (Show (TFix t ItfMapF),
                    Show r, Show (TFix t AdjF)) => Show (AdjF t r)
 deriving instance (Eq (TFix t ItfMapF),
@@ -615,10 +614,11 @@ plusItfMap (ItfMap m a) (ItfMap m' _) = foldl plusItfMap' (ItfMap m a) (M.toList
         plusItfMap' (ItfMap m'' a'') (x, instants) = if M.member x m'' then ItfMap (M.adjust (\instants' -> instants' <>< bwd2fwd instants) x m'') a''
                                                                        else ItfMap (M.insert x instants m'') a''
 
--- e.g. [State Bool, State Int] + State Char = [State Bool, State Int, State Char]
+-- eg. [State Bool,State Int] + State Char = [State Bool,State Int,State Char]
 addInstanceToItfMap :: ItfMap Raw -> (Id, [TyArg Raw]) -> ItfMap Raw
-addInstanceToItfMap (ItfMap m a) (x, args) = if M.member x m then ItfMap (M.adjust (:< args) x m) a
-                                                             else ItfMap (M.insert x (BEmp :< args) m) a
+addInstanceToItfMap (ItfMap m a) (x, args) =
+  if M.member x m then ItfMap (M.adjust (:< args) x m) a
+  else ItfMap (M.insert x (BEmp :< args) m) a
 
 -- Given m1 and m2, return
 -- 1) All interfaces that occur in m1 *and* m2
@@ -629,7 +629,8 @@ intersectItfMap (ItfMap m1 a) (ItfMap m2 _) = ItfMap m'' a
   where m'  = M.intersectionWith (\args args' -> takeBwd (min (length args) (length args')) args) m1 m2
         m'' = M.filter (not . null) m'
 
--- Given m1 and m2, cut off entry suffixes of m1 of length determined by m2's entries' lengths
+-- Given m1 and m2, cut off entry suffixes of m1 of length determined by m2's
+-- entries' lengths
 cutItfMapSuffix :: ItfMap t -> ItfMap t -> ItfMap t
 cutItfMapSuffix (ItfMap m1 a) (ItfMap m2 _) = ItfMap m'' a
   where m' = M.differenceWith (\args args' -> Just $ dropBwd (length args') args) m1 m2
@@ -648,3 +649,13 @@ emptyItfMap = ItfMap M.empty
 
 isItfMapEmpty :: ItfMap t -> Bool
 isItfMapEmpty (ItfMap m _) = M.null m
+
+-- Remove from the map the first instance of every interface in the set.
+removeItfs :: ItfMap t -> S.Set Id -> ItfMap t
+removeItfs (ItfMap m a) p =
+  let upd sx = case sx of
+        BEmp -> error "shift invariant broken"
+        BEmp :< _ -> Nothing
+        sy :< _ -> Just sy
+  in
+   ItfMap (S.foldr (\k q -> M.update upd k q) m p) a

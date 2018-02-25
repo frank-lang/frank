@@ -159,16 +159,12 @@ compileTm (TmSeq t1 t2 _) = (S.:!) <$> compileTm t1 <*> compileTm t2
 compileTm (Use u _) = compileUse u
 compileTm (DCon d _) = compileDataCon d
 
-compileShift :: NotRaw a => ItfMap a -> S.Exp -> Compile S.Exp
-compileShift (ItfMap im _) e = do s <- getCState
-                                  let cmdMultiSet = concat $ map (\itf -> M.findWithDefault [] itf (imap s)) (M.keys im)
-                                  return $ S.ES cmdMultiSet e
-
 compileUse :: NotRaw a => Use a -> Compile S.Exp
 compileUse (Op op _) = compileOp op
 compileUse (App use xs _) = (S.:$) <$> compileUse use <*> mapM compileTm xs
-compileUse (Shift itfMap t _) = do e <- compileUse t
-                                   compileShift itfMap e
+compileUse (Shift p t _) = do e <- compileUse t
+                              cmds <- msum <$> mapM getCCmds (S.toList p)
+                              return $ S.ES cmds e
 
 compileDataCon :: NotRaw a => DataCon a -> Compile S.Exp
 compileDataCon (DataCon id xs _) = do xs' <- mapM compileTm xs

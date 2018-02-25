@@ -17,9 +17,9 @@ print : {String -> [Console]Unit}
 print s = map ouch s; unit
 --- end of standard stuff ---
 
---------------------------------------------------------------------------------
+------------------------------------------------------------------------------
 -- Queue interface and FIFO implementation using a zipper
---------------------------------------------------------------------------------
+------------------------------------------------------------------------------
 
 interface Queue S = enqueue : S -> Unit
                   | dequeue : Maybe S
@@ -102,12 +102,17 @@ writingActor: {[Actor Int [Console], Console]Unit}
 writingActor! = let you = spawn nicePrintActor in
                 send you "important msg"
 
---------------------------------------------------------------------------------
+------------------------------------------------------------------------------
 -- Implement an actor computation as a stateful concurrent computation
---------------------------------------------------------------------------------
+------------------------------------------------------------------------------
 
-shiftBody : {{[E|Actor X [E|]]Unit} -> {[E|Actor X [E|], Co [E|RefState], RefState]Unit}}
-shiftBody m = {shift [RefState, Co [E|RefState]] m!}
+shiftBody : {{[E|Actor X [E|]]Unit} ->
+            {[E|Actor X [E|], Co [E|RefState], RefState]Unit}}
+shiftBody m = {shift <RefState, Co> m!}
+
+-- CM: Why does this type signature not typecheck?
+-- shiftBody : {{[Actor X]Unit} -> {[Actor X, Co [RefState], RefState]Unit}}
+-- shiftBody m = {shift <RefState, Co> m!}
 
 -- stupid pretty-printer hack :)
 dummy : {Unit}
@@ -129,14 +134,14 @@ act mine     <send (mbox m) x -> k> = let q = execFifo (enqueue x) (read m) in
 act mine     unit = unit
 
 runActor : {<Actor X>Unit -> [RefState]Unit}
-runActor <m> = bfFifo (act (mbox (new (emptyZipQ!))) (shift [Co [RefState]] m!))
+runActor <m> = bfFifo (act (mbox (new (emptyZipQ!))) (shift <Co> m!))
 
 bfFifo : {<Co>Unit -> Unit}
-bfFifo <m> = fifo (scheduleBF (shift [Queue Proc] m!))
+bfFifo <m> = fifo (scheduleBF (shift <Queue> m!))
 
---------------------------------------------------------------------------------
+------------------------------------------------------------------------------
 -- Scheduling as in coop.fk
---------------------------------------------------------------------------------
+------------------------------------------------------------------------------
 
 data Proc = proc {[Queue Proc]Unit}
 
@@ -151,7 +156,7 @@ runNext! = case dequeue! { (just (proc x)) -> x!
 scheduleBF : {<Co>Unit -> [Queue Proc]Unit}
 scheduleBF <yield -> k>  = enqProc {scheduleBF (k unit)};
                            runNext!
-scheduleBF <fork p -> k> = enqProc {scheduleBF (shift [Queue Proc] p!)};
+scheduleBF <fork p -> k> = enqProc {scheduleBF (shift <Queue> p!)};
                            scheduleBF (k unit)
 scheduleBF unit          = runNext!
 
@@ -160,16 +165,16 @@ scheduleDF : {<Co>Unit -> [Queue Proc]Unit}
 scheduleDF <yield -> k>  = enqProc {scheduleDF (k unit)};
                            runNext!
 scheduleDF <fork p -> k> = enqProc {scheduleDF (k unit)};
-                           scheduleDF (shift [Queue Proc] p!)
+                           scheduleDF (shift <Queue> p!)
 scheduleDF unit          = runNext!
 
---------------------------------------------------------------------------------
+-----------------------------------------------------------------------------
 -- Test an example actor
---------------------------------------------------------------------------------
+-----------------------------------------------------------------------------
 
 -- Dont delete these lines, they make this program into a unit test.
 -- #desc   examples/actor2.fk
 -- #return calculating (1+1) + (2+2)... 6 unit
 
 main: {[Console, RefState]Unit}
-main! = runActor (shift [RefState] divConqActor!)
+main! = runActor (shift <RefState> divConqActor!)

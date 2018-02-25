@@ -71,7 +71,7 @@ desugarTopTm (DefTm def a) = DefTm <$> desugarMHDef def <*> pure (refToDesug a)
 -- explicit refinements:
 -- + type variables get fresh ids
 desugarDataT :: DataT Refined -> Desugar (DataT Desugared)
-desugarDataT (DT dt ps                ctrs a) = do
+desugarDataT (DT dt ps ctrs a) = do
   -- id val & eff ty vars constructors
   -- generate fresh ids for ty vars
   xs' <- mapM (freshRigid . fst) ps
@@ -227,18 +227,21 @@ desugarPattern (ThkPat x a) = return $ ThkPat x (refToDesug a)
 
 desugarVPat :: ValuePat Refined -> Desugar (ValuePat Desugared)
 desugarVPat (VarPat x a) = return $ VarPat x (refToDesug a)
-desugarVPat (DataPat x xs a) = DataPat x <$> mapM desugarVPat xs <*> pure (refToDesug a)
+desugarVPat (DataPat x xs a) =
+  DataPat x <$> mapM desugarVPat xs <*> pure (refToDesug a)
 desugarVPat (IntPat i a) = return $ IntPat i (refToDesug a)
 desugarVPat (CharPat c a) = return $ CharPat c (refToDesug a)
 desugarVPat (StrPat s a) = return $ StrPat s (refToDesug a)
 
 desugarSComp :: SComp Refined -> Desugar (SComp Desugared)
-desugarSComp (SComp xs a) = SComp <$> mapM desugarClause xs <*> pure (refToDesug a)
+desugarSComp (SComp xs a) =
+  SComp <$> mapM desugarClause xs <*> pure (refToDesug a)
 
 desugarUse :: Use Refined -> Desugar (Use Desugared)
-desugarUse (App use xs a) = App <$> desugarUse use <*> mapM desugarTm xs <*> pure (refToDesug a)
+desugarUse (App use xs a) =
+  App <$> desugarUse use <*> mapM desugarTm xs <*> pure (refToDesug a)
 desugarUse (Op op a) = Op <$> desugarOperator op <*> pure (refToDesug a)
-desugarUse (Shift itfMap t a) = Shift <$> desugarItfMap itfMap <*> desugarUse t <*> pure (refToDesug a)
+desugarUse (Shift p t a) = Shift p <$> desugarUse t <*> pure (refToDesug a)
 
 desugarOperator :: Operator Refined -> Desugar (Operator Desugared)
 desugarOperator (Mono x a) = return $ Mono x (refToDesug a)
@@ -246,7 +249,8 @@ desugarOperator (Poly x a) = return $ Poly x (refToDesug a)
 desugarOperator (CmdId x a) = return $ CmdId x (refToDesug a)
 
 desugarDCon :: DataCon Refined -> Desugar (DataCon Desugared)
-desugarDCon (DataCon id xs a) = DataCon id <$> mapM desugarTm xs <*> pure (refToDesug a)
+desugarDCon (DataCon id xs a) =
+  DataCon id <$> mapM desugarTm xs <*> pure (refToDesug a)
 
 -- Helpers
 

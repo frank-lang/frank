@@ -19,13 +19,13 @@ data Exp
   | Exp :! Exp                    -- composition (;)
   | Exp :// Exp                   -- composition (o)
   | EF [[String]] [([Pat], Exp)]  -- handler
-                                  --   [[String]]:     for each arg pos, which commands are handled?
-                                  --   [([Pat], Exp)]: pattern matching rules
+    --   [[String]]:     for each arg pos, which commands are handled?
+    --   [([Pat], Exp)]: pattern matching rules
   | [Def Exp] :- Exp              -- ? (not used by Frank)
   | EX [Either Char Exp]          -- string concatenation expression
-                                  -- (used only for characters in source Frank (Left c), but used by strcat)
+    -- (used only for characters in source Frank (Left c), but used by strcat)
   | ES [String] Exp               -- shift
-                                  --  [String]:        multiset of commands-to-be-shifted
+    --  [String]: set of commands-to-be-shifted
   deriving (Show, Eq)
 infixr 6 :&
 infixl 5 :$

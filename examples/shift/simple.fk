@@ -14,8 +14,4 @@ prog: {[BChoice]Bool}
 prog! = choose!
 
 main: {Bool}
-main! = fixFalse (fixTrue (fixTrue (shift [BChoice] (shift [BChoice] prog!))))
-
-
--- can currently also write:
---main! = fixFalse (fixTrue (fixTrue (shift [BChoice, BChoice]  prog!)))
+main! = fixFalse (fixTrue (fixTrue (shift <BChoice> (shift <BChoice> prog!))))

@@ -233,19 +233,20 @@ inferUse app@(App f xs _) =                                                     
         -- Check typing tm: ty in ambient [adj]
         checkArg :: Port Desugared -> Tm Desugared -> Contextual ()
         checkArg (Port adj ty _) tm = inAdjustedAmbient adj (checkTm tm ty)
-inferUse shift@(Shift shiftItfMap t _) =
+inferUse shift@(Shift itfs t _) =
   do logBeginInferUse shift
-     amb <- getAmbient
-     amb' <- expandAb amb
-     let (Ab ambMod ambItfMap a) = amb'
-     unifyAb (Ab ambMod ((ambItfMap `cutItfMapSuffix` shiftItfMap) `plusItfMap` shiftItfMap) a) amb'  -- shiftItfMap must be suffix of ambItfMap
-     res <- inAmbient (Ab ambMod (ambItfMap `cutItfMapSuffix` shiftItfMap) a) (inferUse t) -- infer use in reduced ambient
-     logEndInferUse shift res
-     return res
+     amb <- getAmbient >>= expandAb
+     let (Ab v p@(ItfMap m _) a) = amb
+     -- Check that all the interfaces are in the ambient
+     if all (\x -> M.member x m) (S.toList itfs) then
+       do res <- inAmbient (Ab v (removeItfs p itfs) a) (inferUse t)
+          logEndInferUse shift res
+          return res
+     else throwError $ errorShiftAdj shift amb
 
 -- 2nd major TC function: Check that term (construction) has given type
 checkTm :: Tm Desugared -> VType Desugared -> Contextual ()
-checkTm (SC sc _) ty = checkSComp sc ty                                         -- Thunk rule
+checkTm (SC sc _) ty = checkSComp sc ty
 checkTm (StrTm _ a) ty = unify (desugaredStrTy a) ty
 checkTm (IntTm _ a) ty = unify (IntTy a) ty
 checkTm (CharTm _ a) ty = unify (CharTy a) ty
@@ -254,9 +255,9 @@ checkTm (TmSeq tm1 tm2 a) ty =
   do ftvar <- freshMVar "seq"
      checkTm tm1 (FTVar ftvar a)
      checkTm tm2 ty
-checkTm (Use u a) t = do s <- inferUse u                                        -- Switch rule
+checkTm (Use u a) t = do s <- inferUse u
                          unify t s
-checkTm (DCon (DataCon k xs _) a) ty =                                          -- Data rule
+checkTm (DCon (DataCon k xs _) a) ty =
   do (dt, args, ts) <- getCtr k
 --    data dt arg_1 ... arg_m = k t_1 ... t_n | ...
      addMark

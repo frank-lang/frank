@@ -30,8 +30,8 @@ data Val
 
 -- comp: value or command call
 data Comp
-  = Ret Val                          -- value
-  | Call String [Val] Agenda         -- command call: cmd-id, values, suspended agenda
+  = Ret Val                  -- value
+  | Call String [Val] Agenda -- command call: cmd-id, values, suspended agenda
   deriving Show
 
 -- stack of (collections of definitions)

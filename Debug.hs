@@ -10,6 +10,7 @@ import TypeCheckCommon
 
 import Control.Monad
 import qualified Data.Map.Strict as M
+import qualified Data.Set as S
 import Data.List
 
 import Debug.Trace
@@ -126,6 +127,12 @@ errorUnifItfMaps :: ItfMap Desugared -> ItfMap Desugared -> String
 errorUnifItfMaps m1 m2 =
   "cannot unify interface maps " ++ (show $ ppItfMap m1) ++ " (" ++ (show $ ppSourceOf m1) ++ ")" ++ " and " ++ (show $ ppItfMap m2) ++ " (" ++ (show $ ppSourceOf m2) ++ ")"
 
+errorShiftAdj :: Use Desugared -> Ab Desugared -> String
+errorShiftAdj shift@(Shift p _ _) ab =
+  "<" ++ (show $ ppItfs p) ++
+  "> is not a valid adjustment for shift in ambient " ++ (show $ ppAb ab) ++
+  " (" ++  (show $ ppSourceOf shift) ++ ")"
+
 errorUnifSolveOccurCheck :: String
 errorUnifSolveOccurCheck = "solve: occurs check failure"
 
@@ -153,9 +160,11 @@ logBeginInferUse u@(Op x _) = ifDebugTypeCheckOnThen $ do
 logBeginInferUse u@(App f xs _) = ifDebugTypeCheckOnThen $ do
   amb <- getAmbient
   debugTypeCheckM $ "begin infer use of app: Under curr. amb. " ++ show (ppAb amb) ++ "\n   infer type of " ++ show (ppUse u) ++ "\n\n"
-logBeginInferUse u@(Shift itfMap t _) = ifDebugTypeCheckOnThen $ do
+logBeginInferUse u@(Shift p t _) = ifDebugTypeCheckOnThen $ do
   amb <- getAmbient
-  debugTypeCheckM $ "begin infer use of shift: Under curr. amb. " ++ show (ppAb amb) ++ "\n   infer type of " ++ show (ppUse u) ++ "\n\n"
+  debugTypeCheckM $ "begin infer use of shift: Under curr. amb. " ++
+    show (ppAb amb) ++ " shifted by <" ++ (show $ ppItfs p) ++
+    ">\n   infer type of " ++ show (ppUse u) ++ "\n\n"
 
 
 logEndInferUse :: Use Desugared -> VType Desugared -> Contextual ()
@@ -167,9 +176,12 @@ logEndInferUse u@(Op x _) ty = ifDebugTypeCheckOnThen $ do
 logEndInferUse u@(App f xs _) ty = ifDebugTypeCheckOnThen $ do
   amb <- getAmbient
   debugTypeCheckM $ "ended infer use of app: Under curr. amb. " ++ show (ppAb amb) ++ "\n   infer type of " ++ show (ppUse u) ++ "\n   gives " ++ show (ppVType ty) ++ "\n\n"
-logEndInferUse u@(Shift itfMap t _) ty = ifDebugTypeCheckOnThen $ do
+logEndInferUse u@(Shift p t _) ty = ifDebugTypeCheckOnThen $ do
   amb <- getAmbient
-  debugTypeCheckM $ "ended infer use of shift: Under curr. amb. " ++ show (ppAb amb) ++ "\n   infer type of " ++ show (ppUse u) ++ "\n   gives " ++ show (ppVType ty) ++ "\n\n"
+  debugTypeCheckM $ "ended infer use of shift: Under curr. amb. " ++
+    show (ppAb amb) ++ " shifted by <" ++ (show $ ppItfs p) ++
+    ">\n   infer type of " ++ show (ppUse u) ++
+    "\n   gives " ++ show (ppVType ty) ++ "\n\n"
 
 logBeginUnify :: VType Desugared -> VType Desugared -> Contextual ()
 logBeginUnify t0 t1 = ifDebugTypeCheckOnThen $ do
@@ -355,7 +367,8 @@ ppAbMod (AbRVar x _) = if isDebugVerboseOn () then text x else text $ trimVar x
 ppAbMod (AbFVar x _) = if isDebugVerboseOn () then text x else text $ trimVar x
 
 ppItfMap :: (Show a, HasSource a) => ItfMap a -> Doc
-ppItfMap (ItfMap m _) = PP.hsep $ intersperse PP.comma $ map ppItfMapPair $ M.toList m
+ppItfMap (ItfMap m _) =
+  PP.hsep $ intersperse PP.comma $ map ppItfMapPair $ M.toList m
  where ppItfMapPair :: (Show a, HasSource a) => (Id, Bwd [TyArg a]) -> Doc
        ppItfMapPair (x, instants) =
          PP.hsep $ intersperse PP.comma $ map (\args -> foldl (<+>) (text x) $ map ppTyArg args) (bwd2fwd instants)
@@ -389,7 +402,8 @@ ppUse (RawId x _) = text x
 ppUse (RawComb u args _) = PP.lparen <> ppUse u <+> ppArgs args <> PP.rparen
 ppUse (Op op _) = ppOperator op
 ppUse (App u args _) = PP.lparen <> ppUse u <+> ppArgs args <> PP.rparen
-ppUse (Shift im t _) = PP.parens $ text "shift[" <+> ppItfMap im <+> text "] " <+> ppUse t
+ppUse (Shift p t _) =
+  PP.parens $ text "shift <" <+> ppItfs p <+> text "> " <+> ppUse t
 
 -- TODO: LC: fix parenthesis output...
 ppArgs :: (Show a, HasSource a) => [Tm a] -> Doc
@@ -420,9 +434,13 @@ ppDecl (TyDefn ty) = text "val.ty. " <+> ppVType ty
 ppDecl (AbDefn ab) = text "eff.ty. " <+> ppAb ab
 
 ppSuffix :: Suffix -> Doc
-ppSuffix = ppFwd . (map (\(x, d) -> "(" ++ show x ++ "," ++ show (ppDecl d) ++ ")"))
+ppSuffix = ppFwd . (map (\(x, d) -> "(" ++ show x ++ "," ++
+                                    show (ppDecl d) ++ ")"))
 
-{- BwdFwd pretty printers -}
+ppItfs :: S.Set Id -> Doc
+ppItfs p = PP.hsep $ intersperse PP.comma $ map text (S.toList p)
+
+{- BWDFWD pretty printers -}
 
 ppFwd :: Show a => [a] -> Doc
 ppFwd [] = text "[]"

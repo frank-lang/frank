@@ -1,7 +1,7 @@
 -- Regression for a bug concerning shift and expandAb, discovered by Sam.
 -- Problem description in commit 86e0ecd2d
 
--- #desc Regression for a bug concerning shift and expandAb, discovered by Sam.
+-- #desc Regression for bug concerning shift and expandAb, discovered by Sam.
 -- #return 3
 
 interface Reader S = ask : S
@@ -9,13 +9,13 @@ interface Reader S = ask : S
 data Pair X Y = pair X Y
 
 readPair : {[Reader X, Reader Y](Pair X Y)}
-readPair! = pair (shift [Reader Y] ask!) (ask!)
+readPair! = pair (shift <Reader> ask!) (ask!)
 
 readPair' : {[Reader X, Reader Y](Pair Y X)}
-readPair'! = pair (ask!) (shift [Reader Y] ask!)
+readPair'! = pair (ask!) (shift <Reader> ask!)
 
 readPair'' : {[Reader X, Reader Y](Pair X Y)}
-readPair''! = let x = shift [Reader Y] ask! in
+readPair''! = let x = shift <Reader> ask! in
               let y = ask! in
               pair x y
 
@@ -24,7 +24,7 @@ readPair''! = let x = shift [Reader Y] ask! in
 -- (not anymore)
 readPair''' : {[Reader X, Reader Y](Pair X Y)}
 readPair'''! = let y = ask! in
-               let x = shift [Reader Y] ask! in
+               let x = shift <Reader> ask! in
                pair x y
 -- end BUG
 

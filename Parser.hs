@@ -9,6 +9,7 @@ import Control.Monad.IO.Class
 
 import Data.Char
 import qualified Data.Map.Strict as M
+import qualified Data.Set as S
 import qualified Data.HashSet as HashSet
 
 import Text.Trifecta
@@ -363,11 +364,11 @@ ause p = parens (use p) <|>                           -- (use)
          idUse                                        -- x
 
 shift :: MonadicParsing m => m (Use Raw) -> m (Use Raw)
-shift p = attachLoc $ do                              -- shift [I R ... R, ...] stm
+shift p = attachLoc $ do -- shift <I_1,I_2,...,I_n> stm
             reserved "shift"
-            itfMap <- brackets itfInstances
+            xs <- angles (sepBy identifier (symbol ","))
             t <- p
-            return $ Shift itfMap t
+            return $ Shift (S.fromList xs) t
 
 idUse :: MonadicParsing m => m (Use Raw)
 idUse = attachLoc $ do x <- identifier
@@ -398,8 +399,7 @@ pattern :: MonadicParsing m => m (Pattern Raw)
 pattern = try compPat <|> (attachLoc $ VPat <$> valPat)
 
 compPat :: MonadicParsing m => m (Pattern Raw)
-compPat = between (symbol "<") (symbol ">") $
-            try cmdPat <|> thunkPat
+compPat = angles $ try cmdPat <|> thunkPat
 
 thunkPat :: MonadicParsing m => m (Pattern Raw)
 thunkPat = attachLoc $ do x <- identifier
