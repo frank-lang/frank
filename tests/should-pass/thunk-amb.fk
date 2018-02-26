@@ -1,0 +1,18 @@
+-- #desc Construct appropriate ambient for effectful thunk
+-- #return 2
+
+interface State X =
+   get : X
+ | put : X -> Unit
+
+execState : X -> <State X>Y   -> X
+execState   x    <get -> k>    = execState x (k x)
+execState   x    <put x' -> k> = execState x' (k unit)
+execState   x         y        = x
+
+-- foo does not perform stateful effects but the thunk it returns does.
+foo : {{[State Int]Unit}}
+foo! = case {put 1; put (get! + get!)} {x -> x}
+
+main : {Int}
+main! = let k = foo! in execState 42 k!

@@ -227,6 +227,15 @@ findAbVar (AbFVar x _) = getContext >>= find'
         find' (es :< FlexMVar y (AbDefn ab)) | x == y = return $ Just ab
         find' (es :< _) = find' es
 
+-- Search the context and return true if the identifier has a definition
+isMVarDefined :: Id -> Contextual Bool
+isMVarDefined x = getContext >>= find'
+  where find' BEmp = return False
+        find' (es :< FlexMVar y dec) | x == y = case dec of
+          Hole -> return False
+          _    -> return True
+        find' (es :< _) = find' es
+
 -- Given ability [e | ...], "findAbVar" and thereby substitute the eff vars e
 -- so long until it is completely unfolded.
 expandAb :: Ab Desugared -> Contextual (Ab Desugared)

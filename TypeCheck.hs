@@ -37,23 +37,33 @@ find (CmdId x a) =
   do amb <- getAmbient
      (itf, qs, rs, ts, y) <- getCmd x
      -- interface itf q_1 ... q_m = x r1 ... r_l: t_1 -> ... -> t_n -> y
-     mps <- lkpItf itf amb -- how is itf instantiated in amb?
+     mps <- lkpItf itf amb
+     addMark -- Localise qs
+     res <- case mps of
+       Nothing ->
+         do b <- isMVarDefined x
+            if b then return mps
+              else do ps <- mapM (makeFlexibleTyArg []) qs
+                      v <- freshMVar "E"
+                      let m = ItfMap (M.fromList [(itf, BEmp :< ps)]) a
+                      unifyAb amb (Ab (AbFVar v a) m a)
+                      return $ Just ps
+       Just _ -> return mps          
      logBeginFindCmd x itf mps
-     case mps of
+     case res of
        Nothing -> throwError $ errorFindCmdNotPermit x a itf amb
        Just ps ->
          -- instantiation in ambient: [itf p_1 ... p_m]
-         do addMark
-            -- Localise qs, bind them to their instantiation
-            -- (according to adjustment) and localise their occurences
-            -- in ts, y
+         do -- bind qs to their instantiations (according to adjustment) and
+            -- localise their occurences in ts, y
             qs' <- mapM (makeFlexibleTyArg []) qs
             ts' <- mapM (makeFlexible []) ts
             y' <- makeFlexible [] y
             zipWithM_ unifyTyArg ps qs'
             -- Localise rs
             rs' <- mapM (makeFlexibleTyArg []) rs
-            let ty = SCTy (CType (map (\x -> Port idAdjDesug x a) ts') (Peg amb y' a) a) a
+            let ty = SCTy (CType (map (\x -> Port idAdjDesug x a) ts')
+                                 (Peg amb y' a) a) a
             logEndFindCmd x ty
             return ty
 find x = getContext >>= find'
@@ -94,9 +104,8 @@ inAdjustedAmbient :: Adj Desugared -> Contextual a -> Contextual a
 inAdjustedAmbient adj m = do amb <- getAmbient
                              inAmbient (amb `plus` adj) m
 
--- Lookup the ty args of an interface "itf" in a given ability (i.e., what is
--- the active (right-most) instantiation of this interface?)
--- Return "Nothing" if "itf" is not part of given ability
+-- Return the right-most instantiation of the interface in the given
+-- ability. Return Nothing if the interface is not part of the ability.
 lkpItf :: Id -> Ab Desugared -> Contextual (Maybe [TyArg Desugared])
 lkpItf itf (Ab v (ItfMap m _) _) =
   case M.lookup itf m of
@@ -285,7 +294,7 @@ checkSComp (SComp xs a) ty = mapM_ (checkCls' ty) xs
         checkCls' ty cls@(Cls pats tm a) =
           do pushMarkCtx
              ps <- mapM (\_ -> freshPort "X" a) pats
-             q <- freshPeg "" "X" a
+             q <- freshPeg "E" "X" a
              -- {p_1 -> ... -> p_n -> q} for fresh flex. var.s ps, q
              checkCls cls ps q                -- assign these variables
              unify ty (SCTy (CType ps q a) a) -- unify with resulting ty
