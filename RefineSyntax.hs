@@ -193,6 +193,14 @@ getIntroducedEVars (ItfMap m _) = do
   case errors of []             -> return $ map fst candidates
                  ((itf, _) : _) -> throwError $ errorRefEffVarNoParams itf
 
+refineAbMod :: AbMod Raw -> AbMod Refined
+refineAbMod (EmpAb a) = EmpAb (rawToRef a)
+refineAbMod (AbVar x a) = AbVar x (rawToRef a)
+
+refineAdj :: Adj Raw -> Refine (Adj Refined)
+refineAdj (Adj m a) = do m' <- refineItfMap m
+                         return $ Adj m' (rawToRef a)
+
 -- Explicit refinements:
 -- + interface aliases are substituted
 refineItfMap :: ItfMap Raw -> Refine (ItfMap Refined)
@@ -225,14 +233,6 @@ refineItfMap (ItfMap m a) = do
                                  insts
                   return (x, insts')
                Nothing -> throwError $ errorRefIdNotDeclared "interface" x a
-
-refineAbMod :: AbMod Raw -> AbMod Refined
-refineAbMod (EmpAb a) = EmpAb (rawToRef a)
-refineAbMod (AbVar x a) = AbVar x (rawToRef a)
-
-refineAdj :: Adj Raw -> Refine (Adj Refined)
-refineAdj (Adj m a) = do m' <- refineItfMap m
-                         return $ Adj m' (rawToRef a)
 
 -- Explicit refinements:
 -- + implicit [£] ty args to data types are made explicit
@@ -362,6 +362,19 @@ refineUse (RawComb x xs a) =
        Left use -> do xs' <- mapM refineTm xs
                       return $ Left $ App use xs' (rawToRef a)
        Right tm -> throwError $ errorRefExpectedUse tm
+refineUse (Shift itfs t a) =
+  -- First check the existence of the interfaces
+  do mapM_ exists (S.toList itfs)
+     t' <- refineUse t
+     case t' of
+       Left u   -> return $ Left $ Shift itfs u (rawToRef a)
+       Right tm -> throwError $ errorRefExpectedUse tm
+  where exists :: Id -> Refine ()
+        exists x =
+          do itfCx <- getRItfs
+             if M.member x itfCx
+             then return ()
+             else throwError $ errorRefIdNotDeclared "interface" x a
 
 refineTm :: Tm Raw -> Refine (Tm Refined)
 refineTm (Let x t1 t2 a) =

@@ -1,0 +1,13 @@
+data Pair X Y = pair X Y
+
+interface Throw X Y = throw : X -> Y
+
+data Step X Y Z0 Z1 = done (Pair Z0 {[Throw X Y]Z1})
+                    | step X {Y -> [Throw X Y]Pair Z0 Z1}
+
+catchCont : {<Throw X Y>(Pair Z0 {[Throw X Y]Z1}) -> Step X Y Z0 Z1}
+catchCont v              = done v
+catchCont <throw x -> k> = step x {y -> case (k y) {(pair z0 z1) -> pair z0 z1!}}
+
+main : {Unit}
+main! = unit

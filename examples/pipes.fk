@@ -30,10 +30,10 @@ interface Receive X = receive : X
 
 interface Abort = aborting : Zero
 
-abort : [Abort]X
+abort : {[Abort]X}
 abort! = on aborting! {}
 
-catch : <Abort>X -> {X} -> X
+catch : {<Abort>X -> {X} -> X}
 catch x               h = x
 catch <aborting -> k> h = h!
 --- end of standard stuff ---

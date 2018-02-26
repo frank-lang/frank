@@ -1,0 +1,9 @@
+
+-- #desc The interfaces supplied to shift must occur in the ambient
+-- #return <Console> is not a valid adjustment for shift in ambient [£] (line 9 , column 9)
+
+num : {Int}
+num! = 2
+
+main : {Int}
+main! = shift <Console> num!

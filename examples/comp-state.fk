@@ -1,0 +1,23 @@
+-- State as the composition of reading and writing
+-- (c.f. Handle with care, POPL 2018)
+
+interface Get S = get : S
+interface Put S = put : S -> Unit
+interface State S = [Get S, Put S]
+
+evalGet : {S -> <Get S>X -> X}
+evalGet s <get -> k> = evalGet s (k s)
+evalGet s x          = x
+
+evalPut : {<Put S>X -> [Get S]X}
+evalPut <put s -> k> = shift <Get> (evalGet s (evalPut (k unit)))
+evalPut x            = x
+
+evalState : {S -> <State S>X -> X}
+evalState s <m> = evalGet s (evalPut m!)
+
+incr : {[State Int]Unit}
+incr! = put (get! + 1)
+
+main : {Int}
+main! = evalState 0 (incr!; incr!; get!)

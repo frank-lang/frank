@@ -1,0 +1,27 @@
+-- delimited continuations in Frank
+interface Shift0 X R = shift0 : {{X -> R} -> R} -> X
+
+reset0 : {<Shift0 X R>R -> R}
+reset0 <shift0 p -> k> = p {x -> reset0 (k x)}
+reset0 x               = x
+
+interface Control0 X R = control0 : {{X -> [Control0 X R]R} -> R} -> X
+
+prompt0 : {<Control0 X R>R -> R}
+prompt0 <control0 p -> k> = p k
+prompt0 x                 = x
+
+interface Shift X R = shift : {{X -> R} -> [Shift X R]R} -> X
+
+reset : {<Shift X R>R -> R}
+reset <shift p -> k>  = reset (p {x -> reset (k x)})
+reset x               = x
+
+interface Control X R = control : {{X -> [Control X R]R} -> [Control X R]R} -> X
+
+prompt : {<Control X R>R -> R}
+prompt <control p -> k> = prompt (p k)
+prompt x                = x
+
+main : {Int}
+main! = reset0 (let x = shift0 {k -> k (k (k 7))} in x + x + 1)

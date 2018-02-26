@@ -41,7 +41,7 @@ test! = print "M1 ";
         yield!;
         print "M3 ";
         yield!; yield!;
-        print "\n"
+        print "."
 
 
 -- silly scheduler
@@ -57,8 +57,10 @@ t1! = silly nil test!
 
 -- fair scheduler (continuation before fork)
 fairkf : List Process -> List Process -> <Co Process>Unit -> Unit
-fairkf ps                    qs  <fork p -> k> = fairkf ps (cons p qs) (k unit)
-fairkf ps                    qs  <yield -> k>  = fairkf ps (cons (process {k unit}) qs) unit
+fairkf ps                    qs  <fork p -> k> =
+  fairkf ps (cons p qs) (k unit)
+fairkf ps                    qs  <yield -> k>  =
+  fairkf ps (cons (process {k unit}) qs) unit
 fairkf nil                   nil unit          = unit
 fairkf nil                   qs  unit          = fairkf (reverse qs) nil unit
 fairkf (cons (process p) ps) qs  unit          = fairkf ps qs p!
@@ -69,8 +71,9 @@ t2! = fairkf nil nil test!
 -- alternative fair scheduler (fork before continuation)
 fairfk : List Process -> List Process -> <Co Process>Unit -> Unit
 fairfk ps                    qs  <fork (process p) -> k> =
-                                                fairfk ps (cons (process {k unit}) qs) p!
-fairfk ps                    qs  <yield -> k> = fairfk ps (cons (process {k unit}) qs) unit
+  fairfk ps (cons (process {k unit}) qs) p!
+fairfk ps                    qs  <yield -> k> =
+  fairfk ps (cons (process {k unit}) qs) unit
 fairfk nil                   nil unit         = unit
 fairfk nil                   qs  unit         = fairfk (reverse qs) nil unit
 fairfk (cons (process p) ps) qs  unit         = fairfk ps qs p!
@@ -79,8 +82,9 @@ t3 : [Console]Unit
 t3! = fairfk nil nil test!
 
 -- a handler that flips continuations with forked processes
-flip : <Co Process>Unit -> [Co Process]Unit
-flip <fork (process p) -> k> = fork (process {flip (k unit)}); flip p!
+flip : <Co (Process [Co Process])>Unit -> [Co Process]Unit
+flip <fork (process p) -> k> =
+     fork (process {flip (k unit)}); flip p!
 flip <yield -> k>            = yield; flip (k unit)
 flip unit                    = unit
 
@@ -90,8 +94,9 @@ t4! = fairkf nil nil (flip test!)
 
 -- Dont delete these lines, they make this program into a unit test.
 -- #desc   examples/coop-old.fk
--- #return unit
+-- #return M1 A1 A2 M2 B1 B2 M3 .unit
 
--- just a stub: use --entry-point tX to do something interesting
-main : []Unit
-main! = unit
+-- t4 was previously invalidated by a fix to effect interface shadowing and
+-- then by the addition of shift in lieu of active instantiations.
+main : [Console]Unit
+main! = t4!

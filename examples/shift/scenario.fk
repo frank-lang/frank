@@ -1,0 +1,50 @@
+-- begin standard stuff
+map : {{X -> Y} -> List X -> List Y}
+map f []        = []
+map f (x :: xs) = f x :: map f xs
+
+print : {String -> [Console]Unit}
+print s = map ouch s; unit
+
+data Bool = false | true
+
+if : Bool -> {X} -> {X} -> X
+if true  t f = t!
+if false t f = f!
+-- end standard stuff
+
+
+-- Define effects
+interface BChoice = bchoose: Bool
+interface IChoice = ichoose: Int
+
+-- Basic handlers
+boolFix: {<BChoice>X -> X}
+boolFix x = x
+boolFix <bchoose -> k> = boolFix (k false)
+
+intFix: {<IChoice>X -> X}
+intFix x = x
+intFix <ichoose -> k> = intFix (k 42)
+
+boolByCons: {<BChoice>X -> [Console]X}
+boolByCons x = x
+boolByCons <bchoose -> k> = print "true (t) or false (_)? "; case inch!
+                            { 't' -> print "t\n"; boolByCons (k true)
+                            | _   -> print "_\n"; boolByCons (k false) }
+
+-- Scenario 2: Unintentionally Exposed Intermediate Effects
+intByBool: {<IChoice>X -> [BChoice]X}
+intByBool x = x
+intByBool <ichoose -> k> = let n = if bchoose! { if bchoose! {3} {2} }
+                                               { if bchoose! {1} {0} }
+                           in intByBool (k n)
+
+-- NEW
+--    before: intFix_composed: {<BChoice,IChoice>X -> X}
+intFix_composed: {<IChoice>X -> X}
+intFix_composed <m> = boolFix (intByBool (shift <BChoice> m!))
+
+
+main: {Int}
+main! = intFix_composed (ichoose!)

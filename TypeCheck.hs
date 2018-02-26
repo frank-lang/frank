@@ -37,23 +37,33 @@ find (CmdId x a) =
   do amb <- getAmbient
      (itf, qs, rs, ts, y) <- getCmd x
      -- interface itf q_1 ... q_m = x r1 ... r_l: t_1 -> ... -> t_n -> y
-     mps <- lkpItf itf amb -- how is itf instantiated in amb?
+     mps <- lkpItf itf amb
+     addMark -- Localise qs
+     res <- case mps of
+       Nothing ->
+         do b <- isMVarDefined x
+            if b then return mps
+              else do ps <- mapM (makeFlexibleTyArg []) qs
+                      v <- freshMVar "E"
+                      let m = ItfMap (M.fromList [(itf, BEmp :< ps)]) a
+                      unifyAb amb (Ab (AbFVar v a) m a)
+                      return $ Just ps
+       Just _ -> return mps          
      logBeginFindCmd x itf mps
-     case mps of
+     case res of
        Nothing -> throwError $ errorFindCmdNotPermit x a itf amb
        Just ps ->
          -- instantiation in ambient: [itf p_1 ... p_m]
-         do addMark
-            -- Localise qs, bind them to their instantiation
-            -- (according to adjustment) and localise their occurences
-            -- in ts, y
+         do -- bind qs to their instantiations (according to adjustment) and
+            -- localise their occurences in ts, y
             qs' <- mapM (makeFlexibleTyArg []) qs
             ts' <- mapM (makeFlexible []) ts
             y' <- makeFlexible [] y
             zipWithM_ unifyTyArg ps qs'
             -- Localise rs
             rs' <- mapM (makeFlexibleTyArg []) rs
-            let ty = SCTy (CType (map (\x -> Port idAdjDesug x a) ts') (Peg amb y' a) a) a
+            let ty = SCTy (CType (map (\x -> Port idAdjDesug x a) ts')
+                                 (Peg amb y' a) a) a
             logEndFindCmd x ty
             return ty
 find x = getContext >>= find'
@@ -83,16 +93,19 @@ inScope x ty m = do modify (:< TermVar x ty)
         dropVar (es :< e) = dropVar es :< e
 
 -- Run a contextual computation in a modified ambient environment
-inAmbient :: Adj Desugared -> Contextual a -> Contextual a
-inAmbient adj m = do amb <- getAmbient
-                     putAmbient (plus amb adj)
-                     a <- m
+inAmbient :: Ab Desugared -> Contextual a -> Contextual a
+inAmbient amb m = do oldAmb <- getAmbient
                      putAmbient amb
+                     a <- m
+                     putAmbient oldAmb
                      return a
 
--- Lookup the ty args of an interface "itf" in a given ability (i.e., what is
--- the active (right-most) instantiation of this interface?)
--- Return "Nothing" if "itf" is not part of given ability
+inAdjustedAmbient :: Adj Desugared -> Contextual a -> Contextual a
+inAdjustedAmbient adj m = do amb <- getAmbient
+                             inAmbient (amb `plus` adj) m
+
+-- Return the right-most instantiation of the interface in the given
+-- ability. Return Nothing if the interface is not part of the ability.
 lkpItf :: Id -> Ab Desugared -> Contextual (Maybe [TyArg Desugared])
 lkpItf itf (Ab v (ItfMap m _) _) =
   case M.lookup itf m of
@@ -141,8 +154,15 @@ checkTopTm (DefTm def _) = checkMHDef def
 checkTopTm _ = return ()
 
 checkMHDef :: MHDef Desugared -> Contextual ()
-checkMHDef (Def id ty@(CType ps q _) cs _) =
+checkMHDef (Def id ty@(CType ps q _) cs _) = do
+  mapM_ checkPort ps
   mapM_ (\cls -> checkCls cls ps q) cs
+
+checkPort :: Port Desugared -> Contextual ()
+checkPort p@(Port (Adj im _) ty _) = do
+  if (stripInactiveOffItfMap im /= im) then
+    throwError $ errorTCPortContainsInactiveInstances p
+  else return ()
 
 -- 1st major TC function: Infer type of a "use"
 -- Functions below implement the typing rules described in the paper.
@@ -158,6 +178,11 @@ checkMHDef (Def id ty@(CType ps q _) cs _) =
 --    - Infer type of f
 --    - If this susp. comp. type is known, check the arguments are well-typed
 --    - If not, create fresh type pattern and unify (constraining for future)
+-- 3) Shift rule
+--    - Get ambient and expand it (substitute all flexible variables)
+--    - Check that instances to be shifted are applicable for this ambient:
+--      - Check "(amb - shifted) + shifted = amb"
+--    - Recursively infer use of term, but under ambient "amb - shifted"
 inferUse :: Use Desugared -> Contextual (VType Desugared)
 inferUse u@(Op x _) =                                                           -- Var, PolyVar, Command rules
   do logBeginInferUse u
@@ -186,8 +211,8 @@ inferUse app@(App f xs _) =                                                     
         discriminate ty@(SCTy (CType ps (Peg ab ty' _) _) _) =
         -- {p_1 -> ... p_n -> [ab] ty'}
           do amb <- getAmbient
-             -- require active(amb) = active(ab)
-             unifyAbActive amb ab
+             -- require ab = amb
+             unifyAb ab amb
              -- Check typings of x_i for port p_i
              zipWithM_ checkArg ps xs
              return ty'
@@ -216,11 +241,21 @@ inferUse app@(App f xs _) =                                                     
 
         -- Check typing tm: ty in ambient [adj]
         checkArg :: Port Desugared -> Tm Desugared -> Contextual ()
-        checkArg (Port adj ty _) tm = inAmbient adj (checkTm tm ty)
+        checkArg (Port adj ty _) tm = inAdjustedAmbient adj (checkTm tm ty)
+inferUse shift@(Shift itfs t _) =
+  do logBeginInferUse shift
+     amb <- getAmbient >>= expandAb
+     let (Ab v p@(ItfMap m _) a) = amb
+     -- Check that all the interfaces are in the ambient
+     if all (\x -> M.member x m) (S.toList itfs) then
+       do res <- inAmbient (Ab v (removeItfs p itfs) a) (inferUse t)
+          logEndInferUse shift res
+          return res
+     else throwError $ errorShiftAdj shift amb
 
 -- 2nd major TC function: Check that term (construction) has given type
 checkTm :: Tm Desugared -> VType Desugared -> Contextual ()
-checkTm (SC sc _) ty = checkSComp sc ty                                         -- Thunk rule
+checkTm (SC sc _) ty = checkSComp sc ty
 checkTm (StrTm _ a) ty = unify (desugaredStrTy a) ty
 checkTm (IntTm _ a) ty = unify (IntTy a) ty
 checkTm (CharTm _ a) ty = unify (CharTy a) ty
@@ -229,9 +264,9 @@ checkTm (TmSeq tm1 tm2 a) ty =
   do ftvar <- freshMVar "seq"
      checkTm tm1 (FTVar ftvar a)
      checkTm tm2 ty
-checkTm (Use u a) t = do s <- inferUse u                                        -- Switch rule
+checkTm (Use u a) t = do s <- inferUse u
                          unify t s
-checkTm (DCon (DataCon k xs _) a) ty =                                          -- Data rule
+checkTm (DCon (DataCon k xs _) a) ty =
   do (dt, args, ts) <- getCtr k
 --    data dt arg_1 ... arg_m = k t_1 ... t_n | ...
      addMark
@@ -242,7 +277,7 @@ checkTm (DCon (DataCon k xs _) a) ty =                                          
      unify ty (DTTy dt args' a)
      mapM_ (uncurry checkTm) (zip xs ts')
 
--- Check that susp. comp. term has given type, corresponds to Thunk rule
+-- Check that susp. comp. term has given type, corresponds to Comp rule
 -- Case distinction on expected type:
 -- 1) Check {cls_1 | ... | cls_m} : {p_1 -> ... -> p_n -> q}
 -- 2) Check {cls_1 | ... | cls_m} : ty
@@ -251,14 +286,15 @@ checkTm (DCon (DataCon k xs _) a) ty =                                          
 --        then get bound via checking
 --      - Unify the obtained type for cls_i with overall type ty
 checkSComp :: SComp Desugared -> VType Desugared -> Contextual ()               -- Comp rule
-checkSComp (SComp xs _) (SCTy (CType ps q _) _) =
+checkSComp (SComp xs _) (SCTy (CType ps q _) _) = do
+  mapM_ checkPort ps
   mapM_ (\cls -> checkCls cls ps q) xs
 checkSComp (SComp xs a) ty = mapM_ (checkCls' ty) xs
   where checkCls' :: VType Desugared -> Clause Desugared -> Contextual ()
         checkCls' ty cls@(Cls pats tm a) =
           do pushMarkCtx
              ps <- mapM (\_ -> freshPort "X" a) pats
-             q <- freshPeg "" "X" a
+             q <- freshPeg "E" "X" a
              -- {p_1 -> ... -> p_n -> q} for fresh flex. var.s ps, q
              checkCls cls ps q                -- assign these variables
              unify ty (SCTy (CType ps q a) a) -- unify with resulting ty

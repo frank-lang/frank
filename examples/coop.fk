@@ -47,52 +47,58 @@ data Proc = proc {[Queue Proc]Unit}
 enqProc : {[Queue Proc]Unit} -> [Queue Proc]Unit
 enqProc p = enqueue (proc p)
 
--- return true if the process queue is empty
-deqAndRun : {[Queue Proc]Bool}
-deqAndRun! = case dequeue! { (just (proc x)) -> x!; false
-                           | nothing         ->     true }
-
 runNext : {[Queue Proc]Unit}
-runNext! = deqAndRun!; unit
-
-runAll : {[Queue Proc]Unit}
-runAll! = case deqAndRun! { false -> runAll!
-                          | true  -> unit }
+runNext! = case dequeue! { (just (proc x)) -> x!
+                         | nothing         -> unit }
 
 -- implementations of cooperative concurrency
 
--- defer forked processes
-scheduleBF : {<Co [Queue Proc]>Unit -> [Queue Proc]Unit}
+-- defer forked processes (with effect pollution)
+scheduleBF' : {<Co [Queue Proc]>Unit -> [Queue Proc]Unit}
+scheduleBF' <yield -> k>  = enqProc {scheduleBF' (k unit)};
+                            runNext!
+scheduleBF' <fork p -> k> = enqProc {scheduleBF' p!};
+                            scheduleBF' (k unit)
+scheduleBF' unit          = runNext!
+
+-- defer forked processes (without effect poluution)
+scheduleBF : {<Co>Unit -> [Queue Proc]Unit}
 scheduleBF <yield -> k>  = enqProc {scheduleBF (k unit)};
                            runNext!
-scheduleBF <fork p -> k> = enqProc {scheduleBF p!};
+scheduleBF <fork p -> k> = enqProc {scheduleBF (shift <Queue> p!)};
                            scheduleBF (k unit)
-scheduleBF unit          = runAll!
+scheduleBF unit          = runNext!
 
 -- eagerly run forked processes
-scheduleDF : {<Co [Queue Proc]>Unit -> [Queue Proc]Unit}
+scheduleDF : {<Co>Unit -> [Queue Proc]Unit}
 scheduleDF <yield -> k>  = enqProc {scheduleDF (k unit)};
                            runNext!
 scheduleDF <fork p -> k> = enqProc {scheduleDF (k unit)};
-                           scheduleDF p!
-scheduleDF unit          = runAll!
+                           scheduleDF (shift <Queue> p!)
+scheduleDF unit          = runNext!
 
+-- FIFO queue implementation using a zipper
+fq : {List S -> List S -> <Queue S>X -> X}
+fq front        back <enqueue x -> k> = fq front (x :: back) (k unit)
+fq []           []   <dequeue -> k>   = fq [] [] (k nothing)
+fq []           back <dequeue -> k>   = fq (reverse back) [] (k dequeue!)
+fq (x :: front) back <dequeue -> k>   = fq front back (k (just x))
+fq front        back x                = x
 
--- queue implementation using a zipper
+fifo : {<Queue S>X -> X}
+fifo <m> = fq [] [] m!
 
-zq : {List S -> List S -> <Queue S>Unit -> Unit}
-zq front        back <enqueue x -> k> = zq front (x :: back) (k unit)
-zq []           []   <dequeue -> k>   = zq [] [] (k nothing)
-zq []           back <dequeue -> k>   = zq (reverse back) [] (k dequeue!)
-zq (x :: front) back <dequeue -> k>   = zq front back (k (just x))
-zq front        back unit             = unit
+-- with effect pollution
+bfFifo' : {<Co [Queue Proc], Queue Proc>Unit -> Unit}
+bfFifo' <m> = fifo (scheduleBF' m!)
 
-zipQueue : {{[Queue S]Unit} -> Unit}
-zipQueue m = zq [] [] m!
+bfFifo : {<Co>Unit -> Unit}
+bfFifo <m> = fifo (scheduleBF (shift <Queue> m!))
 
-
+dfFifo : {<Co>Unit -> Unit}
+dfFifo <m> = fifo (scheduleDF (shift <Queue> m!))
 
 main : {[Console]Unit}
-main! = print "BF: "; zipQueue {scheduleBF test!};
-        print "DF: "; zipQueue {scheduleDF test!}
-
+main! = print "BF':"; bfFifo' test!;
+        print "BF: "; bfFifo test!;
+        print "DF: "; dfFifo test!

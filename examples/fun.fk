@@ -28,6 +28,11 @@ map : {{X -> Y} -> List X -> List Y}
 map f []        = []
 map f (x :: xs) = f x :: map f xs
 
+map' : {{X -> [0]Y} -> List X -> [0]List Y}
+map' f []        = []
+map' f (x :: xs) = f x :: map' f xs
+
+
 t2 : {List Int}
 t2! = map {n -> n+1} [1, 2, 3]
 
@@ -125,7 +130,6 @@ interface Abort = aborting : Zero
 abort : {[Abort]X}
 abort! = case aborting! {}
   -- Zero is uninhabited, so no clauses are needed
-
 
 head : {List X -> [Abort]X}
 head []        = abort!

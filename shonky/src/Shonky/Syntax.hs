@@ -3,6 +3,7 @@ module Shonky.Syntax where
 import Control.Monad
 import Control.Applicative
 import Data.Char
+import Text.PrettyPrint.Leijen hiding ((<$>), empty)
 
 import Data.List
 import qualified Data.Map as M
@@ -18,12 +19,13 @@ data Exp
   | Exp :! Exp                    -- composition (;)
   | Exp :// Exp                   -- composition (o)
   | EF [[String]] [([Pat], Exp)]  -- handler
-                                  --   [[String]]:     for each arg pos, which commands are handled?
-                                  --   [([Pat], Exp)]: pattern matching rules
+    --   [[String]]:     for each arg pos, which commands are handled?
+    --   [([Pat], Exp)]: pattern matching rules
   | [Def Exp] :- Exp              -- ? (not used by Frank)
   | EX [Either Char Exp]          -- string concatenation expression
-                                  -- (used only for characters in source Frank (Left c), but used by strcat)
-  | ES [String]                   -- shift commands
+    -- (used only for characters in source Frank (Left c), but used by strcat)
+  | ES [String] Exp               -- shift
+    --  [String]: set of commands-to-be-shifted
   deriving (Show, Eq)
 infixr 6 :&
 infixl 5 :$
@@ -181,28 +183,25 @@ instance Alternative P where
 
 -- Pretty printing routines
 
-ppProg :: [Def Exp] -> String
-ppProg xs = unlines $ map ppDef xs
+ppProg :: [Def Exp] -> Doc
+ppProg xs = vcat (map ppDef xs)
 
-ppDef :: Def Exp -> String
-ppDef (id := e) = id ++ " -> " ++ ppExp e
-ppDef (DF id [] [])  = error "ppDef invariant broken: empty Def Exp detected."
-ppDef (DF id [] ys) = ppCSep (\x -> id ++ (ppClause x)) ys
-ppDef p@(DF id xs ys) = unlines hdr
-  where hdr = [header, cs]
-        header = id ++ "(" ++ args ++ "):"
-        args = intercalate "," (map (intercalate " ") xs)
-        cs = unlines $ f $ map (\x -> id ++ (ppClause x)) ys
-        f (xs:[]) = [xs] -- don't add separator in last case
-        f (xs:xss) = (xs ++ ",") : f xss
+ppDef :: Def Exp -> Doc
+ppDef (id := e) = text id <+> text "->" <+> ppExp e
+ppDef (DF id [] []) = error "ppDef invariant broken: empty Def Exp detected."
+ppDef p@(DF id hss es) = header <$$>
+                         vcat cs
+  where header = text id <+> parens (hsep args) <+> colon
+        args = punctuate comma $ (map (hsep . map text) hss)
+        cs = map (\x -> text id <+> (ppClause x)) es
 
 ppCSep :: (a -> String) -> [a] -> String
 ppCSep f xs = intercalate "," $ map f xs
 
-ppText :: (a -> String) -> [Either Char a] -> String
-ppText f ((Left c) : xs) = escChar c ++ (ppText f xs)
-ppText f ((Right x) : xs) = "`" ++ (f x) ++ "`" ++ (ppText f xs)
-ppText f [] = "|]"
+ppText :: (a -> Doc) -> [Either Char a] -> Doc
+ppText f ((Left c) : xs) = (text $ escChar c) <+> (ppText f xs)
+ppText f ((Right x) : xs) = text "`" <+> f x <+> text "`" <+> (ppText f xs)
+ppText f [] = text "|]"
 
 isEscChar :: Char -> Bool
 isEscChar c = any (c ==) ['\n','\t','\b']
@@ -212,28 +211,29 @@ escChar c = f [('\n', "\\n"),('\t', "\\t"),('\b', "\\b")]
   where f ((c',s):xs) = if c == c' then s else f xs
         f [] = [c]
 
-ppClause :: ([Pat], Exp) -> String
-ppClause (ps, e) = rhs ++ " -> " ++ lhs
-  where rhs = "(" ++ (ppCSep ppPat ps) ++ ")"
+ppClause :: ([Pat], Exp) -> Doc
+ppClause (ps, e) = rhs <+> text "->" <+> nest 3 lhs
+  where rhs = parens (hsep $ punctuate comma (map ppPat ps))
         lhs = ppExp e
 
-ppExp :: Exp -> String
-ppExp (EV x) = x
-ppExp (EI n) = show n
-ppExp (EA x) = "'" ++ x
-ppExp (EX xs) = "[|" ++ ppText ppExp xs
-ppExp (e :& e') | isListExp e = "[" ++ ppListExp e'
-ppExp p@(_ :& _) = "[" ++ ppExp' p
-ppExp (f :$ xs) = ppExp f ++ "(" ++ ppCSep ppExp xs ++ ")"
-ppExp (e :! e') = ppExp e ++ ";" ++ ppExp e'
-ppExp (e :// e') = ppExp e ++ "/" ++ ppExp e'
+ppExp :: Exp -> Doc
+ppExp (EV x) = text x
+ppExp (EI n) = integer n
+ppExp (EA x) = text $ "'" ++ x
+ppExp (e :& e') | isListExp e = text "[" <> ppListExp e'
+ppExp p@(_ :& _) = text "[" <+> ppExp' p
+ppExp (f :$ xs) = ppExp f <+> text "(" <+> (hcat $ punctuate comma (map ppExp xs)) <+> text ")"
+ppExp (e :! e') = ppExp e <+> semi <+> ppExp e'
+ppExp (e :// e') = ppExp e <+> text "/" <+> ppExp e'
 ppExp (EF xs ys) =
-  let clauses = ppCSep (\x -> ppClause x) ys in
-  "{" ++ clauses ++ "}"
+  let clauses = map ppClause ys in
+  braces $ hcat (punctuate comma clauses)
+ppExp (EX xs) = text "[|" <+> ppText ppExp xs
+ppExp (ES cs e) = text "shift" <+> brackets (hsep $ punctuate comma (map text cs)) <+> parens (ppExp e)
 
-ppExp' :: Exp -> String
-ppExp' (e :& EA "") = ppExp e ++ "]"
-ppExp' (e :& es) = ppExp e ++ "," ++ ppExp' es
+ppExp' :: Exp -> Doc
+ppExp' (e :& EA "") = ppExp e <+> text "]"
+ppExp' (e :& es) = ppExp e <+> text "," <+> ppExp' es
 ppExp' e = ppExp e
 
 isListExp :: Exp -> Bool
@@ -241,36 +241,36 @@ isListExp (e :& _) = isListExp e
 isListExp _ = False
 
 -- Special case for lists
-ppListExp :: Exp -> String
-ppListExp (e :& EA "") = ppExp e ++ "]"
-ppListExp (e :& es) = ppExp e ++ "|" ++ ppListExp es
-ppListExp (EA "") = "]"
-ppListExp _ = "ppListExp: invariant broken"
+ppListExp :: Exp -> Doc
+ppListExp (e :& EA "") = ppExp e <+> text "]"
+ppListExp (e :& es) = ppExp e <+> text "|" <+> ppListExp es
+ppListExp (EA "") = text "]"
+ppListExp _ = text "ppListExp: invariant broken"
 
-ppPat :: Pat -> String
+ppPat :: Pat -> Doc
 ppPat (PV x) = ppVPat x
-ppPat (PT x) = "{" ++ x ++ "}"
-ppPat (PC cmd ps k) = "{'" ++ cmd ++ "(" ++ args ++ ") -> " ++ k ++ "}"
-  where args = ppCSep ppVPat ps
+ppPat (PT x) = braces $ text x
+ppPat (PC cmd ps k) = braces $ text "'" <+> text cmd <+> parens args <+> text "->" <+> text k
+  where args = vcat $ punctuate comma (map ppVPat ps)
 
-ppVPat :: VPat -> String
-ppVPat (VPV x) = x
-ppVPat (VPI n) = show n
-ppVPat (VPA x) = "'" ++ x
-ppVPat (VPX xs) = "[|" ++ ppText ppVPat xs
+ppVPat :: VPat -> Doc
+ppVPat (VPV x) = text x
+ppVPat (VPI n) = integer n
+ppVPat (VPA x) = text $ "'" ++ x
+ppVPat (VPX xs) = text "[|" <+> ppText ppVPat xs
 ppVPat (v1 :&: v2 :&: v3) = ppVPat (v1 :&: (v2 :&: v3))
-ppVPat (v :&: v') | isListPat v = "[" ++ ppVPatList v'
-ppVPat p@(_ :&: _) = "[" ++ ppVPat' p
+ppVPat (v :&: v') | isListPat v = text "[" <+> ppVPatList v'
+ppVPat p@(_ :&: _) = text "[" <+> ppVPat' p
 
-ppVPatList :: VPat -> String
-ppVPatList (v :&: VPA "") = ppVPat v ++ "]"
-ppVPatList (v :&: vs) = ppVPat v ++ "|" ++ ppVPatList vs
-ppVPatList (VPA "") = "]"
+ppVPatList :: VPat -> Doc
+ppVPatList (v :&: VPA "") = ppVPat v <+> text "]"
+ppVPatList (v :&: vs) = ppVPat v <+> text "|" <+> ppVPatList vs
+ppVPatList (VPA "") = text "]"
 ppVPatList _ = error "ppVPatList: broken invariant"
 
-ppVPat' :: VPat -> String
-ppVPat' (v :&: VPA "") = ppVPat v ++ "]"
-ppVPat' (v :&: vs) = ppVPat v ++ "," ++ ppVPat' vs
+ppVPat' :: VPat -> Doc
+ppVPat' (v :&: VPA "") = ppVPat v <+> text "]"
+ppVPat' (v :&: vs) = ppVPat v <+> text "," <+> ppVPat' vs
 ppVPat' v = ppVPat v
 
 isListPat :: VPat -> Bool

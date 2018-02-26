@@ -71,7 +71,7 @@ desugarTopTm (DefTm def a) = DefTm <$> desugarMHDef def <*> pure (refToDesug a)
 -- explicit refinements:
 -- + type variables get fresh ids
 desugarDataT :: DataT Refined -> Desugar (DataT Desugared)
-desugarDataT (DT dt ps                ctrs a) = do
+desugarDataT (DT dt ps ctrs a) = do
   -- id val & eff ty vars constructors
   -- generate fresh ids for ty vars
   xs' <- mapM (freshRigid . fst) ps
@@ -180,9 +180,7 @@ desugarPeg (Peg ab ty a) = Peg <$> desugarAb ab <*> desugarVType ty <*> pure (re
 
 -- nothing happens on this level
 desugarAb :: Ab Refined -> Desugar (Ab Desugared)
-desugarAb (Ab v (ItfMap m b) a) = do v' <- desugarAbMod v
-                                     m' <- mapM (mapM (mapM desugarTyArg)) m
-                                     return $ Ab v' (ItfMap m' (refToDesug b)) (refToDesug a)
+desugarAb (Ab v itfMap a) = Ab <$> desugarAbMod v <*> desugarItfMap itfMap <*> pure (refToDesug a)
 
 -- explicit desugaring:
 -- + replace effect type variables by corresponding MkAbRVar's of abModEnv,
@@ -200,8 +198,11 @@ desugarAbMod (AbVar x a) =
 
 -- nothing happens on this level
 desugarAdj :: Adj Refined -> Desugar (Adj Desugared)
-desugarAdj (Adj (ItfMap m b) a) = do m' <- mapM (mapM (mapM desugarTyArg)) m
-                                     return $ Adj (ItfMap m' (refToDesug b)) (refToDesug a)
+desugarAdj (Adj itfMap a) = Adj <$> desugarItfMap itfMap <*> pure (refToDesug a)
+
+desugarItfMap :: ItfMap Refined -> Desugar (ItfMap Desugared)
+desugarItfMap (ItfMap m a) = do m' <- mapM (mapM (mapM desugarTyArg)) m
+                                return $ ItfMap m' (refToDesug a)
 
 -- no explicit desugaring: clauses (and constituents) unaffected between Refine/Desugar phase
 desugarClause :: Clause Refined -> Desugar (Clause Desugared)
@@ -226,18 +227,21 @@ desugarPattern (ThkPat x a) = return $ ThkPat x (refToDesug a)
 
 desugarVPat :: ValuePat Refined -> Desugar (ValuePat Desugared)
 desugarVPat (VarPat x a) = return $ VarPat x (refToDesug a)
-desugarVPat (DataPat x xs a) = DataPat x <$> mapM desugarVPat xs <*> pure (refToDesug a)
+desugarVPat (DataPat x xs a) =
+  DataPat x <$> mapM desugarVPat xs <*> pure (refToDesug a)
 desugarVPat (IntPat i a) = return $ IntPat i (refToDesug a)
 desugarVPat (CharPat c a) = return $ CharPat c (refToDesug a)
 desugarVPat (StrPat s a) = return $ StrPat s (refToDesug a)
 
-
 desugarSComp :: SComp Refined -> Desugar (SComp Desugared)
-desugarSComp (SComp xs a) = SComp <$> mapM desugarClause xs <*> pure (refToDesug a)
+desugarSComp (SComp xs a) =
+  SComp <$> mapM desugarClause xs <*> pure (refToDesug a)
 
 desugarUse :: Use Refined -> Desugar (Use Desugared)
-desugarUse (App use xs a) = App <$> desugarUse use <*> mapM desugarTm xs <*> pure (refToDesug a)
+desugarUse (App use xs a) =
+  App <$> desugarUse use <*> mapM desugarTm xs <*> pure (refToDesug a)
 desugarUse (Op op a) = Op <$> desugarOperator op <*> pure (refToDesug a)
+desugarUse (Shift p t a) = Shift p <$> desugarUse t <*> pure (refToDesug a)
 
 desugarOperator :: Operator Refined -> Desugar (Operator Desugared)
 desugarOperator (Mono x a) = return $ Mono x (refToDesug a)
@@ -245,7 +249,8 @@ desugarOperator (Poly x a) = return $ Poly x (refToDesug a)
 desugarOperator (CmdId x a) = return $ CmdId x (refToDesug a)
 
 desugarDCon :: DataCon Refined -> Desugar (DataCon Desugared)
-desugarDCon (DataCon id xs a) = DataCon id <$> mapM desugarTm xs <*> pure (refToDesug a)
+desugarDCon (DataCon id xs a) =
+  DataCon id <$> mapM desugarTm xs <*> pure (refToDesug a)
 
 -- Helpers
 
