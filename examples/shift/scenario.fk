@@ -6,8 +6,6 @@ map f (x :: xs) = f x :: map f xs
 print : {String -> [Console]Unit}
 print s = map ouch s; unit
 
-data Bool = false | true
-
 if : Bool -> {X} -> {X} -> X
 if true  t f = t!
 if false t f = f!

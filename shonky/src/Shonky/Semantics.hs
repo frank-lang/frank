@@ -173,8 +173,15 @@ minus g [a1,a2] = VI (f a1 - f a2)
           _ -> error "minus: argument not an integer"
 minus g _ = error "minus: incorrect number of arguments, expected 2."
 
+eqc :: Env -> [Comp] -> Val
+eqc g [a1,a2] = (if (f a1) == (f a2) then VA "true" else VA "false") :&& VA ""
+  where f x = case x of
+          Ret (VX [c]) -> c
+          _ -> error "eqc: argument not a character"
+eqc g _ = error "eqc: incorrect number of arguments, expected 2."
+
 builtins :: M.Map String (Env -> [Comp] -> Val)
-builtins = M.fromList [("plus", plus), ("minus", minus)]
+builtins = M.fromList [("plus", plus), ("minus", minus), ("eqc", eqc)]
 
 -- Look-up a definition
 fetch :: Env -> String -> Val
@@ -415,7 +422,8 @@ txt (u :&& v)  = txt u ++ txt v
 
 envBuiltins :: Env
 envBuiltins = Empty :/ [DF "plus" [] []
-                       ,DF "minus" [] []]
+                       ,DF "minus" [] []
+                       ,DF "eqc"   [] []]
 
 prog :: Env -> [Def Exp] -> Env
 prog g ds = g' where

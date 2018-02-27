@@ -6,8 +6,6 @@
 
 data Zero =
 
-data Bool = tt | ff
-
 data Nat = zero | suc Nat
 
 data List' X = nil' | cons' X (List' X)
@@ -33,14 +31,14 @@ snd : X -> Y -> Y
 snd x y = y
 
 if : Bool -> {X} -> {X} -> X
-if tt t f = t!
-if ff t f = f!
+if true t f = t!
+if false t f = f!
 
 on : X -> {X -> Y} -> Y
 on x f = f x
 
 shortAnd : Bool -> {Bool} -> Bool
-shortAnd x c = on x {tt -> c! | ff -> ff}
+shortAnd x c = on x {true -> c! | false -> false}
 
 -- Section 2.4
 

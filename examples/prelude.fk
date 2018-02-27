@@ -1,6 +1,5 @@
--- Begin Prelude ---------------------------------------------------------------
+-- Begin Prelude -------------------------------------------------------------
 -- Data types
-data Bool = false | true
 data Maybe X = nothing | just X
 data Pair X Y = pair X Y
 

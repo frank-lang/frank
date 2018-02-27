@@ -24,8 +24,6 @@ interface Abort = aborting : Zero
 abort : {[Abort]X}
 abort! = case aborting! {}
 
-data Bool = true | false
-
 interface Choice = choice : Bool
 --- end of standard stuff ---
 

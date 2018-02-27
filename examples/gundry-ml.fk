@@ -1,0 +1,61 @@
+{-- An algebraic effects and handler implementation of Gundry's
+    rational reconstruction algorithm for Hindley-Milner type
+    inference. --}
+
+
+{-- Preliminary Definitions for a Prelude --}
+
+-- The representation for bound type and term variables
+data Nat = zz | suc Nat
+
+interface Abort = abort X: X
+
+catch : <Abort>X -> {X} -> X
+catch <abort -> _> h = h!
+catch      x       _ = x
+
+-- Equality on natural numbers
+eqN : Nat -> Nat -> Bool
+eqN zz zz = true
+eqN (suc n) (suc m) = eqN n m
+
+if : Bool -> {X} -> {X} -> X
+if true t f = t!
+if false t f = f!
+
+map : {{X -> Y} -> List X -> List Y}
+map f []        = []
+map f (x :: xs) = f x :: map f xs
+
+print : {String -> [Console]Unit}
+print s = map ouch s; unit
+
+{-- Parsing --}
+
+interface Parser = accept : Char -> Unit
+
+parse : <Parser>Unit -> [Console,Abort]Unit
+parse   <accept c -> k> = if (eqc inch! c) {parse (k unit)} {abort!}
+parse      unit         = unit
+
+-- Parse a symbol
+symbol : String -> [Parser]Unit
+symbol (x :: xs) = accept x; symbol xs
+symbol    []     = unit
+
+{---------------------}
+{-- The Main Begins --}
+{---------------------}
+
+data Ty = base Nat | arr Ty Ty
+
+data Sch = mono Ty | poly Sch
+
+data Tm = var Nat | lam Tm | app Tm Tm | bnd Tm Tm
+
+data Ctx = emp | buv Ctx Nat | bdv Ctx Nat Ty | btv Ctx Nat Sch | mrk Ctx
+
+data Suffix = nuffin | hole Suffix Nat | defn Suffix Nat Ty
+
+main : {[Console]String}
+main! = catch (parse (symbol "hello"); "success!") {"failed!"}

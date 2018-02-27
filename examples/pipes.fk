@@ -3,7 +3,6 @@
 --- start of standard stuff ---
 data Zero =     -- empty type
 
-data Bool = true | false
 data Maybe X = nothing | just X
 
 append : List X -> List X -> List X

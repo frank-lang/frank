@@ -39,7 +39,9 @@ exorcise (MkProg xs) = (prog, DefTm (head evalDef) a)
   where prog = MkProg (map (swap DataTm a) dts ++
                        map (swap ItfTm a) itfs ++
                        map (swap DefTm a) hdrs)
-        (dts,itfs,defs) = ([d | DataTm d _ <- xs], [i | ItfTm i _ <- xs], [d | DefTm d _ <- xs])
+        dts = [d | DataTm d _ <- xs]
+        itfs = [i | ItfTm i _ <- xs]
+        defs = [d | DefTm d _ <- xs]
         (evalDef,hdrs) = partition isEvalTm defs
         isEvalTm (Def id _ _ _) = id == "%eval"
         a = Desugared Generated

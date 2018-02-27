@@ -8,8 +8,6 @@
 data MaybeThunk X = thunk {X}
                   | value X
 
-data Bool = false | true
-
 interface Force [F] = force X: MaybeThunk X [F|] -> X
                     | forceIf X: Bool -> MaybeThunk X [F|] -> MaybeThunk X [F|]
 

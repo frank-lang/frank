@@ -1,10 +1,9 @@
 -- #desc Compiler Nontermination Issue No. 3
 -- #return 1
-data Bool = True | False
 
 iffy : Bool -> {X} -> {X} -> X
-iffy True t _  = t!
-iffy False _ f = f!
+iffy true t _  = t!
+iffy false _ f = f!
 
 main : []Int
-main! = iffy True {1} {2}
+main! = iffy true {1} {2}

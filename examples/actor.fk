@@ -107,12 +107,8 @@ writingActor! = let you = spawn nicePrintActor in
 ------------------------------------------------------------------------------
 
 shiftBody : {{[E|Actor X [E|]]Unit} ->
-            {[E|Actor X [E|], Co [E|RefState], RefState]Unit}}
+            [F|]{[E|Actor X [E|], Co [E|RefState], RefState]Unit}}
 shiftBody m = {shift <RefState, Co> m!}
-
--- CM: Why does this type signature not typecheck?
--- shiftBody : {{[Actor X]Unit} -> {[Actor X, Co [RefState], RefState]Unit}}
--- shiftBody m = {shift <RefState, Co> m!}
 
 -- stupid pretty-printer hack :)
 dummy : {Unit}

@@ -1,8 +1,7 @@
 -- #desc   Due to not only considering active fragments on APP, shadowed instantiations are regarded
--- #return cannot unify abilities [£ | State ( Bool ) , State Int] (line 11 , column 8) and [£ | State Int] (line 19 , column 8)
+-- #return cannot unify abilities [£ | State ( Bool ) , State Int] (line 10 , column 8) and [£ | State Int] (line 18 , column 8)
 
 --- start of standard stuff ---
-data Bool = true | false
 interface State X = get: X
                   | put: X -> Unit
 --- end of standard stuff ---

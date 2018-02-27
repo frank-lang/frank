@@ -1,7 +1,6 @@
 -- #desc   Mixing in some shadowed interface instantiations to make sure they  matter
--- #return port contains inactive instances (line 8 , column 17)
+-- #return port contains inactive instances (line 7 , column 17)
 
-data Bool = true | false
 interface State X = put: X -> Unit
                   | get: X
 

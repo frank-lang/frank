@@ -1,8 +1,6 @@
 {--- Functional programming with Frank ---}
 
 -- some data types
-data Bool = true | false
-
 data Nat = zero | suc Nat
 
 data Zero =     -- empty type

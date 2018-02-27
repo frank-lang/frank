@@ -1,5 +1,3 @@
--- program does not typecheck, but should
-
 map : {{X -> Y} -> List X -> List Y}
 map f []        = []
 map f (x :: xs) = f x :: map f xs
@@ -7,7 +5,6 @@ map f (x :: xs) = f x :: map f xs
 print : {String -> [Console]Unit}
 print s = map ouch s; unit
 
-data Bool = false | true
 data Pair X Y = pair X Y
 
 if : Bool -> {X} -> {X} -> X
