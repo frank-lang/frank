@@ -22,7 +22,6 @@ refine :: Prog Raw -> Either String (Prog Refined)
 refine prog = evalState (runExceptT (refine' prog)) initRefine
 
 -- Explicit refinements:
--- + check if main function exists
 -- + concretise epsilons in top level definitions
 -- + built-in data types, interfaces, operators are added
 refine' :: Prog Raw -> Refine (Prog Refined)
@@ -53,17 +52,10 @@ refine' (MkProg xs) = do
   -- Check uniqueness of hdrs w.r.t builtin ones
   -- checkUniqueIds ([h | (DefTm h _) <- hdrs] ++ builtinMHDefs)
   --   (errorRefDuplTopTm "operator")
-  if existsMain hdrs then
-    return $ MkProg (map (\dt -> DataTm dt a) builtinDataTs ++ dtTms ++
-                     map (\itf -> ItfTm itf a) builtinItfs ++ itfTms ++
-                     map (\hdr -> DefTm hdr a) builtinMHDefs ++ hdrs)
-  else throwError errorRefNoMainFunction
+  return $ MkProg (map (\dt -> DataTm dt a) builtinDataTs ++ dtTms ++
+                   map (\itf -> ItfTm itf a) builtinItfs ++ itfTms ++
+                   map (\hdr -> DefTm hdr a) builtinMHDefs ++ hdrs)
   where a = Refined BuiltIn
-
-existsMain :: [TopTm Refined] -> Bool
-existsMain (DefTm (Def id _ _ _) _ : xs) = id == "main" || existsMain xs
-existsMain [] = False
-existsMain (_ : xs) = error "invalid top term: expected multihandler"
 
 -- Explicit refinements:
 -- + data type has unique effect & type variables

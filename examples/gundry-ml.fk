@@ -2,33 +2,7 @@
     rational reconstruction algorithm for Hindley-Milner type
     inference. --}
 
-
-{-- Preliminary Definitions for a Prelude --}
-
--- The representation for bound type and term variables
-data Nat = zz | suc Nat
-
-interface Abort = abort X: X
-
-catch : <Abort>X -> {X} -> X
-catch <abort -> _> h = h!
-catch      x       _ = x
-
--- Equality on natural numbers
-eqN : Nat -> Nat -> Bool
-eqN zz zz = true
-eqN (suc n) (suc m) = eqN n m
-
-if : Bool -> {X} -> {X} -> X
-if true t f = t!
-if false t f = f!
-
-map : {{X -> Y} -> List X -> List Y}
-map f []        = []
-map f (x :: xs) = f x :: map f xs
-
-print : {String -> [Console]Unit}
-print s = map ouch s; unit
+include prelude
 
 {-- Parsing --}
 

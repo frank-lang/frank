@@ -1,13 +1,20 @@
 -- Begin Prelude -------------------------------------------------------------
 -- Data types
+data Zero =     -- empty type
+data Nat = zero | suc Nat
 data Maybe X = nothing | just X
 data Pair X Y = pair X Y
+
+-- Interfaces
+interface Abort = abort X: X
 
 not: {Bool -> Bool}
 not false = true
 not true  = false
 
--- Control structures
+{-- Control structures --}
+
+-- lazy conditional
 if : Bool -> {X} -> {X} -> X
 if true  t f = t!
 if false t f = f!
@@ -19,6 +26,13 @@ fst (pair x _) = x
 snd: Pair X Y -> Y
 snd (pair _ y) = y
 
+{-- Natural number operations --}
+
+-- Equality on natural numbers
+eqN : Nat -> Nat -> Bool
+eqN zero zero = true
+eqN (suc n) (suc m) = eqN n m
+
 -- List operations
 rev' : {List X -> List X -> List X}
 rev' []        ys = ys
@@ -27,9 +41,9 @@ rev' (x :: xs) ys = rev' xs (x :: ys)
 rev : {List X -> List X}
 rev xs = rev' xs []
 
-app : {List X -> List X -> List X}
-app []        ys = ys
-app (x :: xs) ys = x :: (app xs ys)
+append : {List X -> List X -> List X}
+append []        ys = ys
+append (x :: xs) ys = x :: (append xs ys)
 
 map : {{X -> Y} -> List X -> List Y}
 map f []        = []
@@ -39,6 +53,10 @@ elem : {{X -> X -> Bool} -> List X -> X -> Bool}
 elem _ [] _ = false
 elem eq (x::xr) y = if (eq x y) {true} {elem eq xr y}
 
+head : {List X -> [Abort]X}
+head []        = abort!
+head (x :: xs) = x
+
 find: {{X -> Bool} -> List X -> Maybe X}
 find _ [] = nothing
 find p (x::xr) = if (p x) {just x} {find p xr}
@@ -47,10 +65,14 @@ lookup: {{X -> X -> Bool} -> X -> List (Pair X Y) -> Maybe Y}
 lookup _ _ [] = nothing
 lookup eq x' ((pair x y)::xr) = if (eq x x') {just y} {lookup eq x' xr}
 
+{-- Handlers for basic interfaces --}
+
+-- Exception handler
+catch : <Abort>X -> {X} -> X
+catch <abort -> _> h = h!
+catch      x       _ = x
+
 -- I/O
 print : {String -> [Console]Unit}
 print s = map ouch s; unit
--- End Prelude -----------------------------------------------------------------
-
-main: {Unit}
-main! = unit
+-- End Prelude -------------------------------------------------------------

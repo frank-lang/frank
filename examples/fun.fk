@@ -1,35 +1,19 @@
 {--- Functional programming with Frank ---}
 
--- some data types
-data Nat = zero | suc Nat
-
-data Zero =     -- empty type
+include prelude
 
 -- (the Unit data type is built in)
 -- data Unit = unit
 
-data Pair X Y = pair X Y
-
-data Maybe X = nothing | just X
-
 -- (the list data type is built in)
 -- data List X = [] | X :: (List X)
-
-append : {List X -> List X -> List X}
-append []        ys = ys
-append (x :: xs) ys = x :: (append xs ys)
 
 t1 : {List Int}
 t1! = append [1, 2] [3, 4]
 
-map : {{X -> Y} -> List X -> List Y}
-map f []        = []
-map f (x :: xs) = f x :: map f xs
-
 map' : {{X -> [0]Y} -> List X -> [0]List Y}
 map' f []        = []
 map' f (x :: xs) = f x :: map' f xs
-
 
 t2 : {List Int}
 t2! = map {n -> n+1} [1, 2, 3]
@@ -50,9 +34,6 @@ t3! = map ouch "Hello world!\n"; unit
 --
 --   map : {{X -> [E|]Y} -> List X -> [E|]List Y}
 
-print : {String -> [Console]Unit}
-print s = map ouch s; unit
-
 -- ouch isn't allowed because badPrint doesn't have the Console ability
 --
 --badPrint : {String -> Unit}
@@ -60,20 +41,13 @@ print s = map ouch s; unit
 
 --- control
 
--- fst m n:
+-- kay m n:
 --   do m, do n, return the result of doing m
-fst : {X -> Y -> X}
-fst x y = x
-
--- snd m n:
---   do m, do n, return the result of doing n
-snd : {X -> Y -> Y}
-snd x y = y
-
--- m; n == snd m n
+kay : {X -> Y -> X}
+kay x y = x
 
 t4 : {[0|Console]Char}
-t4! = fst (inch!) (ouch 'f')
+t4! = kay (inch!) (ouch 'f')
 
 t5 : {[0|Console]Char}
 t5! = print "Please type a character\n"; inch!
@@ -85,11 +59,6 @@ iffy false t f = f
 
 t6 : {[0|Console]Unit}
 t6! = iffy true (print "T\n") (print "F\n")
-
--- lazy conditional
-if : Bool -> {X} -> {X} -> X
-if true  t f = t!
-if false t f = f!
 
 t7 : {[0|Console]Unit}
 t7! = if true {print "T\n"} {print "F\n"}
@@ -109,7 +78,6 @@ t8! = case inch! { 'a' -> 65
 -- if b t e = on b { true  -> t!
 --                 | false -> e! }
 
-
 --- some user-defined interfaces
 
 interface Send X = send : X -> Unit
@@ -121,28 +89,17 @@ interface State S = get : S
 
 interface Choice = choice : Bool
 
-interface Abort = aborting : Zero
-
---- exceptions
-
-abort : {[Abort]X}
-abort! = case aborting! {}
+{-- Alternative definition for Abort (see prelude) --}
+--interface Abort = aborting : Zero
+-- abort : {[Abort]X}
+-- abort! = case aborting! {}
   -- Zero is uninhabited, so no clauses are needed
-
-head : {List X -> [Abort]X}
-head []        = abort!
-head (x :: xs) = x
 
 foo : {[Console, Abort]Int}
 foo! = print "hello\n"; head [1,2,3]
 
 t9 : {[Abort]Int}
 t9! = head []
-
---- an exception handler
-catch : {<Abort>X -> {X} -> X}
-catch x               h = x
-catch <aborting -> k> h = h!
 
 bar : {[Abort]Unit}
 bar! = catch (abort!) {abort!}
@@ -158,8 +115,5 @@ t12! = catch (print "hello\n"; head []) { -1 }
 
 -- Dont delete these lines, they make this program into a unit test.
 -- #desc   examples/fun.fk
--- #return unit
-
--- just a stub: use --entry-point tXX to do something interesting
-main : {[0]Unit}
-main! = unit
+-- #flags  ~include examples/
+-- #return Compilation successful! (no main function defined)

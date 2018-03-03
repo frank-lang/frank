@@ -105,9 +105,10 @@ class TestHarnessLogger:
 
 """ Single test unit """
 class Result:
-    def __init__(self,test,desc,code,aout,eout,directive,regression):
+    def __init__(self,test,desc,flags,code,aout,eout,directive,regression):
         self.test = test ## filename
         self.desc = desc
+        self.flags = flags
         self.code = code
         self.aout = aout ## actual output
         self.eout = eout ## expected output
@@ -192,6 +193,7 @@ def check_fail(logger, res):
 
 def log_run(logger,status,res):
     log = [("File",res.test)
+          ,("Flags", " ".join(res.flags) if res.flags else "None")
           ,("Description",res.desc)
           ,("Directive", show_directive(*res.directive))
           ,("Status", status)
@@ -250,27 +252,36 @@ def get_desc(ds):
             return v
     return None
 
+def get_flags(ds):
+    for (k,v,args) in ds:
+        if k == "flags":
+            return [z for (x,y) in args for z in ["--" + x,y]]
+    return []
+
 def process_directives(logger, x, ds):
     rs = []
-    desc = get_desc(ds)
     for (k,v,args) in ds:
         if directive_has_result(k):
-            rs.append(process_directive(logger,x,desc,k,v,args))
+            rs.append(process_directive(logger,x,ds,k,v,args))
     return rs
 
-def process_directive(logger,x,desc,k,v,args):
+def process_directive(logger,x,ds,k,v,args):
     isRegression = True if os.path.basename(x).startswith('r') else False
     if k == "return":
-        p = Popen(["frank", x],stderr=PIPE,stdout=PIPE)
+        desc = get_desc(ds)
+        flags = get_flags(ds)
+        p = Popen(["frank"] + flags + [x],stderr=PIPE,stdout=PIPE)
         p.wait()
         ret = p.returncode
         try:
-            (out,err) = p.communicate(timeout=15)  #TODO: LC: Timeout does not work...
+            #TODO: LC: Timeout does not work...
+            (out,err) = p.communicate(timeout=15)
             out = err.decode("utf-8") + out.decode("utf-8")
         except TimeoutExpired:
             p.kill()
             out = "TIMEOUT"
-        res = Result(x,desc,ret,out.strip('\n'),v,(k,v,args),isRegression)
+        res = Result(x,desc,flags,ret,out.strip('\n'),v,(k,v,args),
+                     isRegression)
         return res
 
 def directive_has_result(k):

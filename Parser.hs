@@ -22,9 +22,6 @@ import qualified Text.Parser.Token.Highlight as Hi
 
 import qualified Data.ByteString.Char8 as Char8
 
-import Test.Tasty (TestTree, testGroup)
-import Test.Tasty.HUnit (testCase, assertEqual, assertFailure, Assertion)
-
 import BwdFwd
 import Syntax
 import ParserCommon
@@ -34,14 +31,22 @@ import Debug
 -- Top-level definitions --
 ---------------------------
 
-prog :: (MonadicParsing m) => m (Prog Raw)
-prog = MkProg <$ whiteSpace <*> do tts <- many def; eof; return tts
+prog :: (MonadicParsing m) => m (Prog Raw, [FilePath])
+prog = do whiteSpace
+          (tts,fs) <- liftM eplist (many defOrInc)
+          eof
+          return $ (MkProg tts,fs)
+
+defOrInc :: (MonadicParsing m) => m (Either (TopTm Raw) FilePath)
+defOrInc = choice [Left <$> def,
+                   Right <$> (reserved "include" >> identifier)]
+
 -- the eof disallows gibberish at the end of the file!
 
 def :: MonadicParsing m => m (TopTm Raw)
 def = attachLoc (DataTm <$> dataDef <|>
                  SigTm <$> try handlerTopSig <|>
-                 ClsTm <$> handlerTopCls <|>
+                 ClsTm <$> try handlerTopCls <|>
                  ItfTm <$> try itfDef <|>
                  ItfAliasTm <$> itfAliasDef)
 
@@ -211,8 +216,10 @@ abBody = provideLoc $ \a ->
            (do symbol "0"
                m <- option (ItfMap M.empty a) (symbol "|" *> itfInstances)
                return $ Ab (EmpAb a) m a) <|>
-           -- open ability:   [i_1, ..., i_n] (implicitly e := £) or [e | i_1, ..., i_n]
-           (do e <- option (AbVar "£" a) (try $ AbVar <$> identifier <* symbol "|" <*> pure a)
+           -- open ability:   [i_1, ..., i_n] (implicitly e := £) or
+           -- [e | i_1, ..., i_n]
+           (do e <- option (AbVar "£" a)
+                      (try $ AbVar <$> identifier <* symbol "|" <*> pure a)
                m <- itfInstances
                return $ Ab e m a)
 
@@ -472,35 +479,24 @@ getLoc = do r <- rend
             line <- line
             pos <- position
             case delta r of
-              (Directed _ l c _ _) -> return $ Raw $ InCode (fromIntegral l + 1, fromIntegral c + 1)
+              (Directed _ l c _ _) ->
+                return $ Raw $ InCode (fromIntegral l + 1, fromIntegral c + 1)
               _ -> error "precondition not fulfilled"
 
-attachLoc :: (MonadicParsing m) => m (Raw -> AnnotTFix Raw f) -> m (AnnotTFix Raw f)
+attachLoc :: (MonadicParsing m) => m (Raw -> AnnotTFix Raw f) ->
+             m (AnnotTFix Raw f)
 attachLoc parser = do a <- getLoc
                       parser <*> pure a
 
-provideLoc :: (MonadicParsing m) => (Raw -> m (AnnotTFix Raw f)) -> m (AnnotTFix Raw f)
+provideLoc :: (MonadicParsing m) => (Raw -> m (AnnotTFix Raw f)) ->
+              m (AnnotTFix Raw f)
 provideLoc parser = do a <- getLoc
                        parser a
 
-
--- Tests
-input = [ "tests/evalState.fk"
-        , "tests/listMap.fk"
-        , "tests/suspended_computations.fk"
-        , "tests/fib.fk"
-        , "tests/paper.fk"]
-
---outputc = map runCharParseFromFile input
---outputt = map runTokenParseFromFile input
-
-assertParsedOk :: (Show err, Show a, Eq a) => IO (Either err a) -> IO a
-                  -> Assertion
-assertParsedOk actual expected =
-  do x <- actual
-     case x of
-       Right ok -> do y <- expected
-                      assertEqual "parsing succeeded, but " y ok
-       Left err -> do y <- expected
-                      assertFailure ("parse failed with " ++ show err
-                                     ++ ", expected " ++ show y)
+-- Turn a list of eithers into a pair of lists
+eplist :: [Either a b] -> ([a],[b])
+eplist xs = g xs [] []
+  where g :: [Either a b] -> [a] -> [b] -> ([a],[b])
+        g [] as bs = (reverse as, reverse bs)
+        g (Left a : xs) as bs = g xs (a:as) bs
+        g (Right b : xs) as bs = g xs as (b:bs)
