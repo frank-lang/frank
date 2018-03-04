@@ -2,13 +2,20 @@
 
 include prelude
 
-interface Parser = accept : Char -> Unit
+interface CharParse = accept : Unit
+                    | reject : Unit
+		    | peek : Char
 
-parse : <Parser>Unit -> [Console,Abort]Unit
-parse   <accept c -> k> = if (eqc inch! c) {parse (k unit)} {abort!}
-parse      unit         = unit
+match : Char -> [CharParse]Unit
+match c = if (eqc peek! c) {accept!} {reject!}
+
+parse : <CharParse>Unit -> [Console,Abort]Unit
+parse   <accept -> k> = parse (k unit)
+parse   <peek   -> k> = parse (k inch!)
+parse   <reject -> k> = abort!
+parse      unit       = unit
 
 -- Parse a symbol
-symbol : String -> [Parser]Unit
-symbol (x :: xs) = accept x; symbol xs
+symbol : String -> [CharParse]Unit
+symbol (x :: xs) = match x; symbol xs
 symbol    []     = unit
