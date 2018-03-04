@@ -127,11 +127,11 @@ errorUnifItfMaps :: ItfMap Desugared -> ItfMap Desugared -> String
 errorUnifItfMaps m1 m2 =
   "cannot unify interface maps " ++ (show $ ppItfMap m1) ++ " (" ++ (show $ ppSourceOf m1) ++ ")" ++ " and " ++ (show $ ppItfMap m2) ++ " (" ++ (show $ ppSourceOf m2) ++ ")"
 
-errorShiftAdj :: Use Desugared -> Ab Desugared -> String
-errorShiftAdj shift@(Shift p _ _) ab =
+errorLiftAdj :: Use Desugared -> Ab Desugared -> String
+errorLiftAdj lift@(Lift p _ _) ab =
   "<" ++ (show $ ppItfs p) ++
-  "> is not a valid adjustment for shift in ambient " ++ (show $ ppAb ab) ++
-  " (" ++  (show $ ppSourceOf shift) ++ ")"
+  "> is not a valid adjustment for lift in ambient " ++ (show $ ppAb ab) ++
+  " (" ++  (show $ ppSourceOf lift) ++ ")"
 
 errorUnifSolveOccurCheck :: String
 errorUnifSolveOccurCheck = "solve: occurs check failure"
@@ -160,10 +160,10 @@ logBeginInferUse u@(Op x _) = ifDebugTypeCheckOnThen $ do
 logBeginInferUse u@(App f xs _) = ifDebugTypeCheckOnThen $ do
   amb <- getAmbient
   debugTypeCheckM $ "begin infer use of app: Under curr. amb. " ++ show (ppAb amb) ++ "\n   infer type of " ++ show (ppUse u) ++ "\n\n"
-logBeginInferUse u@(Shift p t _) = ifDebugTypeCheckOnThen $ do
+logBeginInferUse u@(Lift p t _) = ifDebugTypeCheckOnThen $ do
   amb <- getAmbient
-  debugTypeCheckM $ "begin infer use of shift: Under curr. amb. " ++
-    show (ppAb amb) ++ " shifted by <" ++ (show $ ppItfs p) ++
+  debugTypeCheckM $ "begin infer use of lift: Under curr. amb. " ++
+    show (ppAb amb) ++ " lifted by <" ++ (show $ ppItfs p) ++
     ">\n   infer type of " ++ show (ppUse u) ++ "\n\n"
 
 
@@ -176,10 +176,10 @@ logEndInferUse u@(Op x _) ty = ifDebugTypeCheckOnThen $ do
 logEndInferUse u@(App f xs _) ty = ifDebugTypeCheckOnThen $ do
   amb <- getAmbient
   debugTypeCheckM $ "ended infer use of app: Under curr. amb. " ++ show (ppAb amb) ++ "\n   infer type of " ++ show (ppUse u) ++ "\n   gives " ++ show (ppVType ty) ++ "\n\n"
-logEndInferUse u@(Shift p t _) ty = ifDebugTypeCheckOnThen $ do
+logEndInferUse u@(Lift p t _) ty = ifDebugTypeCheckOnThen $ do
   amb <- getAmbient
-  debugTypeCheckM $ "ended infer use of shift: Under curr. amb. " ++
-    show (ppAb amb) ++ " shifted by <" ++ (show $ ppItfs p) ++
+  debugTypeCheckM $ "ended infer use of lift: Under curr. amb. " ++
+    show (ppAb amb) ++ " lifted by <" ++ (show $ ppItfs p) ++
     ">\n   infer type of " ++ show (ppUse u) ++
     "\n   gives " ++ show (ppVType ty) ++ "\n\n"
 
@@ -402,8 +402,8 @@ ppUse (RawId x _) = text x
 ppUse (RawComb u args _) = PP.lparen <> ppUse u <+> ppArgs args <> PP.rparen
 ppUse (Op op _) = ppOperator op
 ppUse (App u args _) = PP.lparen <> ppUse u <+> ppArgs args <> PP.rparen
-ppUse (Shift p t _) =
-  PP.parens $ text "shift <" <+> ppItfs p <+> text "> " <+> ppUse t
+ppUse (Lift p t _) =
+  PP.parens $ text "lift <" <+> ppItfs p <+> text "> " <+> ppUse t
 
 -- TODO: LC: fix parenthesis output...
 ppArgs :: (Show a, HasSource a) => [Tm a] -> Doc

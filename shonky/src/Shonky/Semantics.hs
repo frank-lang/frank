@@ -56,7 +56,7 @@ data Frame
   | Qed Val
   | Def Env [Def Val] String [Def Exp] Exp
   | Txt Env [Char] [Either Char Exp]              -- current char of string can be processed. env, already computed reversed beginning, rest are recorded
-  | Shi [String]                                  -- commands to skip below this frame (when looking at the frame stack)
+  | Lif [String]                                  -- commands to skip below this frame (when looking at the frame stack)
   deriving Show
 
 type Agenda = [Frame]
@@ -138,7 +138,7 @@ ppFrame (Arg hs f cs g hss es) = text "Arg" <+> align (vcat [text "hs =" <+> (te
 ppFrame (Seq g e)              = text "Seq" <+> ppEnv g <+> ppExp e
 ppFrame (Qes g e)              = text "Qes" <+> ppEnv g <+> ppExp e
 ppFrame (Qed v)                = text "Qed" <+> ppVal v
-ppFrame (Shi sc)               = text "Shi" <+> (text . show) sc
+ppFrame (Lif sc)               = text "Lif" <+> (text . show) sc
 
 ppEnv :: Env -> Doc
 ppEnv g = bracketed empty (map ((bracketed line) . (map ppDefVal)) (envToList g))
@@ -208,7 +208,7 @@ compute g (e :// f)    ls = compute g e (Qes g f : ls)   -- 2) Composition. comp
 compute g (EF hss pes) ls = consume (VF g hss pes) ls    -- 1) feed in function
 compute g (ds :- e)    ls = define g [] ds e ls          -- (not used by Frank)
 compute g (EX ces)     ls = combine g [] ces ls          -- 2) compute string
-compute g (ES sc e)    ls = compute g e (Shi sc : ls)    -- 2) add commands to be skipped in `ls`
+compute g (ES sc e)    ls = compute g e (Lif sc : ls)    -- 2) add commands to be skipped in `ls`
 
 -- Take val `v` and top-frame from stack, apply it to `v` in
 consume :: Val -> Agenda -> Comp
@@ -225,7 +225,7 @@ consume v (Qes g e             : ls) = compute g e (Qed v : ls)               --
 consume _ (Qed v               : ls) = consume v (ls)                         -- LC: Bug here? Why discard argument? (but not used by Frank so far anyway)
 consume v (Def g dvs x des e   : ls) = define g ((x := v) : dvs) des e (ls)   -- (not used by Frank)
 consume v (Txt g cs ces        : ls) = combine g (revapp (txt v) cs) ces (ls) -- (not used by Frank)
-consume v (Shi sc              : ls) = consume v ls                           -- ignore shift when value is obtained
+consume v (Lif sc              : ls) = consume v ls                           -- ignore lift when value is obtained
 consume v []                         = Ret v
 
 -- inch and ouch commands in the IO monad
@@ -321,7 +321,7 @@ command c vs ks 0 (Arg hs f cs g hss es : ls)                                   
   | c `elem` hs = args f (Call c vs ks : cs) g hss es ls                        --   then fix command-call as argument and continue with `args`
 command c vs ks n (k@(Arg hs f cs g hss es) : ls)
   | c `elem` hs = command c vs (k : ks) (n-1) ls
-command c vs ks n (Shi sc : ls) = command c vs (Shi sc : ks) (n+count) ls
+command c vs ks n (Lif sc : ls) = command c vs (Lif sc : ks) (n+count) ls
   where count = length (filter (== c) sc)
 command c vs ks n (k : ls) = command c vs (k : ks) n ls                         -- skip current handler `k`, remove one interface instantiation from `cts` and recurse
 

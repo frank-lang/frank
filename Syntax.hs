@@ -236,7 +236,7 @@ data UseF :: ((* -> *) -> (* -> *)) -> * -> * where
   MkRawComb :: r -> [TFix (AnnotT Raw) TmF] -> UseF (AnnotT Raw) r
   MkOp :: NotRaw (t Identity ()) => TFix t OperatorF -> UseF t r
   MkApp :: NotRaw (t Identity ()) => r -> [TFix t TmF] -> UseF t r
-  MkShift :: S.Set Id -> r -> UseF t r
+  MkLift :: S.Set Id -> r -> UseF t r
 deriving instance (Show (TFix t OperatorF),
                    Show (TFix t TmF),
                    Show (TFix t ItfMapF),
@@ -250,7 +250,7 @@ pattern RawId x a = Fx (AnnF (MkRawId x, a))
 pattern RawComb f xs a = Fx (AnnF (MkRawComb f xs, a))
 pattern Op op a = Fx (AnnF (MkOp op, a))
 pattern App f xs a = Fx (AnnF (MkApp f xs, a))
-pattern Shift itfs tm a = Fx (AnnF (MkShift itfs tm, a))
+pattern Lift itfs tm a = Fx (AnnF (MkLift itfs tm, a))
 
 -- Tm here = 'construction' in the paper
 
@@ -654,7 +654,7 @@ isItfMapEmpty (ItfMap m _) = M.null m
 removeItfs :: ItfMap t -> S.Set Id -> ItfMap t
 removeItfs (ItfMap m a) p =
   let upd sx = case sx of
-        BEmp -> error "shift invariant broken"
+        BEmp -> error "lift invariant broken"
         BEmp :< _ -> Nothing
         sy :< _ -> Just sy
   in

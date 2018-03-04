@@ -24,8 +24,8 @@ data Exp
   | [Def Exp] :- Exp              -- ? (not used by Frank)
   | EX [Either Char Exp]          -- string concatenation expression
     -- (used only for characters in source Frank (Left c), but used by strcat)
-  | ES [String] Exp               -- shift
-    --  [String]: set of commands-to-be-shifted
+  | ES [String] Exp               -- lift
+    --  [String]: set of commands-to-be-lifted
   deriving (Show, Eq)
 infixr 6 :&
 infixl 5 :$
@@ -229,7 +229,7 @@ ppExp (EF xs ys) =
   let clauses = map ppClause ys in
   braces $ hcat (punctuate comma clauses)
 ppExp (EX xs) = text "[|" <+> ppText ppExp xs
-ppExp (ES cs e) = text "shift" <+> brackets (hsep $ punctuate comma (map text cs)) <+> parens (ppExp e)
+ppExp (ES cs e) = text "lift" <+> brackets (hsep $ punctuate comma (map text cs)) <+> parens (ppExp e)
 
 ppExp' :: Exp -> Doc
 ppExp' (e :& EA "") = ppExp e <+> text "]"

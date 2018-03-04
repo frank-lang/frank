@@ -48,7 +48,7 @@ find (CmdId x a) =
                       let m = ItfMap (M.fromList [(itf, BEmp :< ps)]) a
                       unifyAb amb (Ab (AbFVar v a) m a)
                       return $ Just ps
-       Just _ -> return mps          
+       Just _ -> return mps
      logBeginFindCmd x itf mps
      case res of
        Nothing -> throwError $ errorFindCmdNotPermit x a itf amb
@@ -178,11 +178,11 @@ checkPort p@(Port (Adj im _) ty _) = do
 --    - Infer type of f
 --    - If this susp. comp. type is known, check the arguments are well-typed
 --    - If not, create fresh type pattern and unify (constraining for future)
--- 3) Shift rule
+-- 3) Lift rule
 --    - Get ambient and expand it (substitute all flexible variables)
---    - Check that instances to be shifted are applicable for this ambient:
---      - Check "(amb - shifted) + shifted = amb"
---    - Recursively infer use of term, but under ambient "amb - shifted"
+--    - Check that instances to be lifted are applicable for this ambient:
+--      - Check "(amb - lifted) + lifted = amb"
+--    - Recursively infer use of term, but under ambient "amb - lifted"
 inferUse :: Use Desugared -> Contextual (VType Desugared)
 inferUse u@(Op x _) =                                                           -- Var, PolyVar, Command rules
   do logBeginInferUse u
@@ -242,16 +242,16 @@ inferUse app@(App f xs _) =                                                     
         -- Check typing tm: ty in ambient [adj]
         checkArg :: Port Desugared -> Tm Desugared -> Contextual ()
         checkArg (Port adj ty _) tm = inAdjustedAmbient adj (checkTm tm ty)
-inferUse shift@(Shift itfs t _) =
-  do logBeginInferUse shift
+inferUse lift@(Lift itfs t _) =
+  do logBeginInferUse lift
      amb <- getAmbient >>= expandAb
      let (Ab v p@(ItfMap m _) a) = amb
      -- Check that all the interfaces are in the ambient
      if all (\x -> M.member x m) (S.toList itfs) then
        do res <- inAmbient (Ab v (removeItfs p itfs) a) (inferUse t)
-          logEndInferUse shift res
+          logEndInferUse lift res
           return res
-     else throwError $ errorShiftAdj shift amb
+     else throwError $ errorLiftAdj lift amb
 
 -- 2nd major TC function: Check that term (construction) has given type
 checkTm :: Tm Desugared -> VType Desugared -> Contextual ()

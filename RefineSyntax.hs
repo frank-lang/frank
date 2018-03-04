@@ -362,12 +362,12 @@ refineUse (RawComb x xs a) =
        Left use -> do xs' <- mapM refineTm xs
                       return $ Left $ App use xs' (rawToRef a)
        Right tm -> throwError $ errorRefExpectedUse tm
-refineUse (Shift itfs t a) =
+refineUse (Lift itfs t a) =
   -- First check the existence of the interfaces
   do mapM_ exists (S.toList itfs)
      t' <- refineUse t
      case t' of
-       Left u   -> return $ Left $ Shift itfs u (rawToRef a)
+       Left u   -> return $ Left $ Lift itfs u (rawToRef a)
        Right tm -> throwError $ errorRefExpectedUse tm
   where exists :: Id -> Refine ()
         exists x =

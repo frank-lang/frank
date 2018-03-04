@@ -162,9 +162,9 @@ compileTm (DCon d _) = compileDataCon d
 compileUse :: NotRaw a => Use a -> Compile S.Exp
 compileUse (Op op _) = compileOp op
 compileUse (App use xs _) = (S.:$) <$> compileUse use <*> mapM compileTm xs
-compileUse (Shift p t _) = do e <- compileUse t
-                              cmds <- msum <$> mapM getCCmds (S.toList p)
-                              return $ S.ES cmds e
+compileUse (Lift p t _) = do e <- compileUse t
+                             cmds <- msum <$> mapM getCCmds (S.toList p)
+                             return $ S.ES cmds e
 
 compileDataCon :: NotRaw a => DataCon a -> Compile S.Exp
 compileDataCon (DataCon id xs _) = do xs' <- mapM compileTm xs

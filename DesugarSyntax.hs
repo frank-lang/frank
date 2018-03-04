@@ -241,7 +241,7 @@ desugarUse :: Use Refined -> Desugar (Use Desugared)
 desugarUse (App use xs a) =
   App <$> desugarUse use <*> mapM desugarTm xs <*> pure (refToDesug a)
 desugarUse (Op op a) = Op <$> desugarOperator op <*> pure (refToDesug a)
-desugarUse (Shift p t a) = Shift p <$> desugarUse t <*> pure (refToDesug a)
+desugarUse (Lift p t a) = Lift p <$> desugarUse t <*> pure (refToDesug a)
 
 desugarOperator :: Operator Refined -> Desugar (Operator Desugared)
 desugarOperator (Mono x a) = return $ Mono x (refToDesug a)
