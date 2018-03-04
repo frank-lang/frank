@@ -1,0 +1,14 @@
+{-- ML syntax parsing --}
+
+include prelude
+
+interface Parser = accept : Char -> Unit
+
+parse : <Parser>Unit -> [Console,Abort]Unit
+parse   <accept c -> k> = if (eqc inch! c) {parse (k unit)} {abort!}
+parse      unit         = unit
+
+-- Parse a symbol
+symbol : String -> [Parser]Unit
+symbol (x :: xs) = accept x; symbol xs
+symbol    []     = unit

@@ -1,0 +1,12 @@
+{-- The main module for an algebraic effects and handler implementation of
+    Gundry's rational reconstruction algorithm of Hindley-Milner type
+    inference. --}
+
+include parsing
+
+{---------------------}
+{-- The Main Begins --}
+{---------------------}
+
+main : {[Console]String}
+main! = print ">> "; catch (parse (symbol "hello"); "success!") {"failed!"}
