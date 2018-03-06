@@ -1,0 +1,12 @@
+-- #desc let-bound handler
+-- #return 42
+
+interface Reader S = ask : S
+
+reader : {S -> <Reader S>X -> X}
+reader s <m> = let h = { <ask -> k> -> h (k s)
+                       | x          -> x}
+               in h m!
+
+main : {Bool}
+main! = reader 42 ask!
