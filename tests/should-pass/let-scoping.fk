@@ -1,0 +1,8 @@
+-- #desc let bindings should shadow top-level definitions
+-- #return 42
+
+clash : {Int -> Int -> Int}
+clash x y = x + y
+
+main : {Int}
+main! = let clash = {n -> n} in clash 42
