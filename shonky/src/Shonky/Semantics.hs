@@ -80,20 +80,14 @@ envToList g = envToList' g []
 -- it resorts to invoking show.
 
 ppVal :: Val -> Doc
-ppVal (VA s)                           = text $ "'" ++ s   -- TODO: error message here?
-ppVal (VI n)                           = integer n
+ppVal (VA s)  = text $ "'" ++ s   -- TODO: error message here?
+ppVal (VI n)  = integer n
 ppVal v@(VA "cons" :&& (VX [_] :&& _)) = dquotes (ppStringVal v)
 ppVal (VA "cons"   :&& (v :&& w))      = brackets $ ppVal v <> ppListVal w
 ppVal (VA "nil"    :&& _)              = brackets empty
 ppVal (VA k        :&& v)              = text k <> ppConsArgs v
 ppVal (VX [c])                         = text $ "'" ++ [c] ++ "'"
-ppVal (VF g hss es)                    = text "[anon. fct.: " <+> align (vcat [text "hss =" <+> (text . show) hss,
-                                                                               text "es =" <+> align (vcat $ map ppClause es)] <+> text "]")
-ppVal (VB f g)                         = text $ "[built-in function " ++ f ++ " ]"
-ppVal (VC c)                           = text "[comp:" <+> ppComp c <+> text "]"
-ppVal (VR c)                           = text $ "[ioref: " ++ show c ++ "]"
-ppVal (VK a)                           = text "[skipped agenda:" <+> ppSkippedAgenda a <+> text "]"
-ppVal v                                = text $ "[COMPLEX VALUE: " ++ show v ++ "]"
+ppVal v = text $ "[COMPLEX VALUE: " ++ show v ++ "]"
 
 -- parentheses if necessary
 ppValp :: Val -> Doc
