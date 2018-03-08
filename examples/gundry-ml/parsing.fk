@@ -2,20 +2,100 @@
 
 include prelude
 
-interface CharParse = accept : Unit
-                    | reject : Unit
-		    | peek : Char
+-- First is the current sequence of characters consumed during a valid parse
+-- Second is the sequence of characters in our input buffer not-yet-consumed
+-- by a valid parse
+-- Third is the running state of a parent parse.
+data PS = None | Top String String PS
 
-match : Char -> [CharParse]Unit
-match c = if (eqc peek! c) {accept!} {reject!}
+interface PState = [State PS]
 
-parse : <CharParse>Unit -> [Console,Abort]Unit
-parse   <accept -> k> = parse (k unit)
-parse   <peek   -> k> = parse (k inch!)
-parse   <reject -> k> = abort!
-parse      unit       = unit
+interface Scan = next : Char
+
+interface Parser = [Abort,Abort,Console,PState]
+
+match : Char -> [Scan,Abort]Unit
+match c = if (eqc next! c) {unit} {abort!}
+
+-- Return the currently unconsumed input we've already inch'ed
+lookahead : PS -> String
+lookahead (Top _ xs _) = xs
+lookahead  None        = []
+
+getc : [Console,PState]Char
+getc! =
+  case get! {(Top xs [] p) -> case inch! {c -> put (Top (c :: xs) [] p); c}
+            |(Top xs (c :: ys) p) -> put (Top (c :: xs) ys p); c
+            | None -> case inch! {c -> put (Top [c] [] None); c}}
+
+addps : String -> PS -> [Console,PState]Unit
+addps xs (Top ys [] p) = put (Top ys xs p)
+addps _  (Top _  xs _) =
+  print "unconsumed input "; print xs; print " unexpected\n"
+addps xs None = put (Top [] xs None)
+
+bind : X -> {X -> Y} -> Y
+bind x f  = f x
+
+tryParse : <Scan,Abort>X -> [Abort,Console,PState]X
+tryParse   <next -> k>  = tryParse (k getc!)
+tryParse   <abort -> _>  =
+  case get! {(Top xs ys t) -> addps (append (rev xs) ys) t; abort!
+            |      _       -> abort!}
+tryParse        x       = x
+
+-- DOES NOT TYPECHECK:
+--try : {[Scan,Abort]X} -> [Abort,Console,PState]X
+--try p = case get! {t -> put (Top [] (lookahead t) t); tryParse p!}
+
+-- Implement a choice of parsers: first apply p, if it succeeds return the
+-- value obtained. If p fails, apply q.
+-- DOES NOT TYPECHECK:
+-- choice : <Choice [Abort,Console,PState]>X -> [Abort,Console,PState]X
+-- choice x = x
+-- choice <choose p q -> k> = case (catch (choice p!) {choice q!})
+--        	       	      	   {x -> choice (k x)}
+--
+-- I expect (choose p q) handled as above to be equivalent to:
+--     catch p! {q!}
+-- which does typecheck.
+
+-- This definition typechecks but looks horrible!
+choice : List {[Abort,Abort]X} -> [Abort]X
+choice    []     = abort!
+choice (x :: xs) = catch x! {choice xs}
+
+some : {{[Abort,Abort,Console,PState]X} ->
+        [Abort,Abort,Console,PState]List X}
+some p = p! :: (shift <Abort> (many p))
+
+many : {{[Abort,Abort,Console,PState]X} -> [Abort,Console,PState]List X}
+many p = catch (some p) {[]}
+
+parse : <Scan,Abort,PState>X -> [Abort,Console]X
+parse   x   = x
+parse   <m> = evalState None (tryParse m!)
 
 -- Parse a symbol
-symbol : String -> [CharParse]Unit
+symbol : String -> [Abort,Scan]Unit
 symbol (x :: xs) = match x; symbol xs
 symbol    []     = unit
+
+pLike : {{[Parser]X} -> {X -> [Parser]Bool} -> [Parser]X}
+pLike p f = case p! {x -> if (f x) {x} {abort!}}
+
+gap : {[Abort,Abort,Console,PState]Unit}
+gap! = many {pLike getc isSpace}; unit
+
+-- ML specific parsers
+
+identifier : {[Abort,Abort,Console,PState]String}
+identifier! = some {pLike getc isAlphaNum}
+
+-- Inference is able to marry the requirement [E|Abort,Abort]
+-- with what is given [E'|Abort].
+main : [Console]Unit
+main! = catch (parse (choice [{tryParse (symbol "lieu")}
+                             ,{tryParse (symbol "lassie")}
+                             ,{print identifier!}]))
+              {print "failed\n"}

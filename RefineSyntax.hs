@@ -504,11 +504,19 @@ builtinItfAliases :: [ItfAlias Raw]
 builtinItfAliases = []
 
 builtinMHDefs :: [MHDef Refined]
-builtinMHDefs = map (makeIntBinOp (Refined BuiltIn)) "+-" ++ [caseDef, charEq]
+builtinMHDefs = map (makeIntBinOp (Refined BuiltIn)) "+-" ++
+                [caseDef, charEq, alphaNumPred]
 
 charEq :: MHDef Refined
 charEq = Def "eqc" (CType [Port (Adj (ItfMap M.empty a) a) (CharTy a) a
                           ,Port (Adj (ItfMap M.empty a) a) (CharTy a) a]
+                          (Peg (Ab (AbVar "£" a) (ItfMap M.empty a) a)
+                               (DTTy "Bool" [] a) a) a) [] a
+  where a = Refined BuiltIn
+
+alphaNumPred :: MHDef Refined
+alphaNumPred = Def "isAlphaNum"
+               (CType [Port (Adj (ItfMap M.empty a) a) (CharTy a) a]
                           (Peg (Ab (AbVar "£" a) (ItfMap M.empty a) a)
                                (DTTy "Bool" [] a) a) a) [] a
   where a = Refined BuiltIn

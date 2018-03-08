@@ -3,6 +3,7 @@ module Shonky.Semantics where
 import Control.Monad
 import Debug.Trace
 import System.IO
+import Data.Char
 import Data.IORef
 import Data.List
 import Text.PrettyPrint.Leijen hiding ((<$>))
@@ -174,8 +175,19 @@ eqc g [a1,a2] = (if (f a1) == (f a2) then VA "true" else VA "false") :&& VA ""
           _ -> error "eqc: argument not a character"
 eqc g _ = error "eqc: incorrect number of arguments, expected 2."
 
+alphaNumPred :: Env -> [Comp] -> Val
+alphaNumPred g [a] =
+  (if isAlphaNum (f a) then VA "true" else VA "false") :&& VA ""
+  where f x = case x of
+          Ret (VX [c]) -> c
+          _ -> error "alphaNumPred: argument not a character"
+alphaNumPred g _ =
+  error "alphaNumPred: incorrect number of arguments, expected 2."
+
+
 builtins :: M.Map String (Env -> [Comp] -> Val)
-builtins = M.fromList [("plus", plus), ("minus", minus), ("eqc", eqc)]
+builtins = M.fromList [("plus", plus), ("minus", minus), ("eqc", eqc)
+                      ,("isAlphaNum", alphaNumPred)]
 
 -- Look-up a definition
 fetch :: Env -> String -> Val

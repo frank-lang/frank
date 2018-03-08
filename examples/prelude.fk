@@ -4,9 +4,15 @@ data Zero =     -- empty type
 data Nat = zero | suc Nat
 data Maybe X = nothing | just X
 data Pair X Y = pair X Y
+data Either X Y = left X | right Y
 
 -- Interfaces
 interface Abort = abort X: X
+
+interface Choice = choose X: {[Choice] X} -> {[Choice] X} -> X
+
+interface State X = get : X
+	          | put : X -> Unit
 
 not: {Bool -> Bool}
 not false = true
@@ -71,6 +77,35 @@ lookup eq x' ((pair x y)::xr) = if (eq x x') {just y} {lookup eq x' xr}
 catch : <Abort>X -> {X} -> X
 catch <abort -> _> h = h!
 catch      x       _ = x
+
+-- Run for State: return the value result and the final state as a pair.
+runState : X -> <State X>Y -> Pair X Y
+runState   x    <put x' -> k>  = runState x' (k unit)
+runState   x    <get    -> k>  = runState x (k x)
+runState   x         y         = pair x y
+
+
+-- Evaluation for State: return the value result of the stateful computation.
+evalState : X -> <State X>Y    -> Y
+evalState   x    <put x' -> k>  = evalState x' (k unit)
+evalState   x    <get    -> k>  = evalState x (k x)
+evalState   x         y         = y
+
+-- Execution for State: return the final state of the stateful computation
+execState : X -> <State X>Y     -> X
+execState   x    <put x' -> k>  = execState x' (k unit)
+execState   x    <get    -> k>  = execState x (k x)
+execState   x         y         = x
+
+{-- Character-based predicates --}
+
+isSpace : Char -> Bool
+isSpace ' '  = true
+isSpace '\t' = true
+isSpace '\n' = true
+isSpace '\r' = true
+isSpace '\f' = true
+isSpace  _   = false
 
 -- I/O
 print : {String -> [Console]Unit}
