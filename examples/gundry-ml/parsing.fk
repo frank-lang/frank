@@ -112,7 +112,5 @@ parsers! = choice ([{tryParse (symbol "lieu")}
                    ,{tryParse (symbol "lassie")}
                    ,{print identifier!}])
 
--- Inference is able to marry the requirement [E|Abort,Abort]
--- with what is given [E'|Abort].
 main : [Console]Unit
 main! = catch (parse parsers!) {print "failed\n"}
