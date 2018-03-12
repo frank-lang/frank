@@ -10,58 +10,10 @@ data PS = None | Top String String PS
 
 interface PState = [State PS]
 
-interface Scan = next : Char
+interface Scan = peek : Char
+               | accept : Unit
 
-interface Parser = [Abort,Console,PState]
-
-match : Char -> [Scan,Abort]Unit
-match c = if (eqc next! c) {unit} {abort!}
-
--- Return the currently unconsumed input we've already inch'ed
-lookahead : PS -> String
-lookahead (Top _ xs _) = xs
-lookahead  None        = []
-
-getc : [Console,PState]Char
-getc! =
-  case get! {(Top xs [] p) -> case inch! {c -> put (Top (c :: xs) [] p); c}
-            |(Top xs (c :: ys) p) -> put (Top (c :: xs) ys p); c
-            | None -> case inch! {c -> put (Top [c] [] None); c}}
-
-addps : String -> PS -> [Console,PState]Unit
-addps xs (Top ys [] p) = put (Top ys xs p)
-addps _  (Top _  xs _) =
-  print "unconsumed input "; print xs; print " unexpected\n"
-addps xs None = put (Top [] xs None)
-
-bind : X -> {X -> Y} -> Y
-bind x f  = f x
-
-tryParse : <Scan,Abort>X -> [Abort,Console,PState]X
-tryParse   <next -> k>  = tryParse (k getc!)
-tryParse   <abort -> _>  =
-  case get! {(Top xs ys t) -> addps (append (rev xs) ys) t; abort!
-            |      _       -> abort!}
-tryParse        x       = x
-
--- DOES NOT TYPECHECK:
---try : {[Scan,Abort]X} -> [Abort,Console,PState]X
---try p = case get! {t -> put (Top [] (lookahead t) t); tryParse p!}
-
--- Implement a choice of parsers: first apply p, if it succeeds return the
--- value obtained. If p fails, apply q.
--- DOES NOT TYPECHECK:
--- choice : <Choice [Abort,Console,PState]>X -> [Abort,Console,PState]X
--- choice x = x
--- choice <choose p q -> k> = case (catch (choice p!) {choice q!})
---        	       	      	   {x -> choice (k x)}
---
--- I expect (choose p q) handled as above to be equivalent to:
---     catch p! {q!}
--- which does typecheck.
-
-id : X -> X
-id x = x
+interface Parser = [Abort,Console,PState,Scan]
 
 shift1Abort : {{[E|Abort]X} -> {[E|Abort,Abort]X}}
 shift1Abort m = {(shift <Abort> (shift <Abort> (shift1Abort' m!)))!}
@@ -70,47 +22,98 @@ shift1Abort' : <Abort>X -> [E|]{[E|Abort,Abort]X}
 shift1Abort'  x           = {x}
 shift1Abort' <abort -> k> = {case abort! {x -> (shift1Abort {k x})!}}
 
-choiceWL : <Choice [Abort,Console,PState]>X -> [Abort,Console,PState]X
-choiceWL x = x
-choiceWL <choose p q -> k> =
-  case (catch ((shift1Abort {choiceWL p!})!) {choiceWL q!})
-  {x -> choiceWL (k x)}
+match : Char -> [Abort,Scan]Unit
+match c = if (eqc peek! c) {accept!} {abort!}
 
--- This definition typechecks using the shift1Abort trick!
+peekc : [Console,PState]Char
+peekc! =
+  case get! {(Top xs [] p) -> let c = inch! in ouch c; put (Top xs [c] p); c
+            |(Top xs (c :: ys) p) -> c
+            | None -> let c = inch! in ouch c; put (Top [] [c] None); c}
+
+acceptc : [Abort,PState]Unit
+acceptc! =
+  case get! {(Top xs (c :: ys) p) -> put (Top (c :: xs) ys p)
+            | _ -> abort!}
+
+printPS : {PS -> [Console]Unit}
+printPS (Top xs ys t) =
+  print "Top: (<"; print xs; print ">, <"; print ys; print ">, ";
+  printPS t; print ")"
+printPS None = print "None"
+
+backtrack : [Abort,Console,PState]X
+backtrack! = case get!
+  {(Top xs ys t) -> addps (append (rev xs) ys) t; abort!
+  |      _       -> abort!}
+
+addps : String -> PS -> [Console,PState]Unit
+addps xs (Top ys [] p) = put (Top ys xs p)
+addps xs None = put (Top [] xs None)
+addps xs t =
+  print "error?: (<"; print xs; print ">, "; printPS t; print ")\n"
+
+bind : X -> {X -> Y} -> Y
+bind x f  = f x
+
+printState : [Console,PState]Unit
+printState! = print "\n"; printPS get!; print "\n"
+
+scanner : <Scan>X -> [Abort,Console,PState]X
+scanner   <peek -> k>   = scanner (k peekc!)
+scanner   <accept -> k> = scanner (k acceptc!)
+scanner x = x
+
+tryParse : <Abort>X -> [Abort,Console,PState]X
+tryParse   <abort -> _>  = backtrack!
+tryParse        x        = x
+
+try : {<Abort,Scan>X -> [Abort,Console,PState]X}
+try <p> = case get! {(Top xs ys t) ->
+                        put (Top [] ys (Top xs [] t)); scanner (tryParse p!)
+                    | None -> put (Top [] [] None); scanner (tryParse p!)}
+
+-- This definition of choice typechecks using the shift1Abort trick!
 choice : List {[Abort]X} -> [Abort]X
 choice    []     = abort!
 choice (x :: xs) = catch (shift1Abort x)! {choice xs}
 
-some : {{[Abort,Console,PState]X} -> [Abort,Console,PState]List X}
-some p = p! :: many p
+some : {{[Abort]X} -> [Abort]List X}
+some p = p! :: (shift <Abort> (many p))
 
-many : {{[Abort,Console,PState]X} -> [Abort,Console,PState]List X}
-many p = catch (shift1Abort {some p})! {[]}
+many : {{[Abort]X} -> List X}
+many p = catch (some p) {[]}
 
-parse : <Scan,Abort,PState>X -> [Abort,Console]X
+parse : <Abort,PState,Scan>X -> [Abort,Console]X
 parse   x   = x
-parse   <m> = evalState None (tryParse m!)
+parse   <m> = evalState None (scanner (tryParse m!))
 
 -- Parse a symbol
 symbol : String -> [Abort,Scan]Unit
 symbol (x :: xs) = match x; symbol xs
 symbol    []     = unit
 
-pLike : {{[Parser]X} -> {X -> [Parser]Bool} -> [Parser]X}
-pLike p f = case p! {x -> if (f x) {x} {abort!}}
+pLike : {{[Abort,Scan]X} -> {X -> [Abort,Scan]Bool} -> [Abort,Scan]X}
+pLike p f = let x = p! in
+            if (f x) {accept!; x} {abort!}
 
-gap : {[Abort,Console,PState]Unit}
-gap! = many {pLike getc isSpace}; unit
+gap : {[Abort,Scan]Unit}
+gap! = many {pLike peek isSpace}; unit
 
 -- ML specific parsers
 
-identifier : {[Abort,Console,PState]String}
-identifier! = some {pLike getc isAlphaNum}
+identifier : {[Abort,Scan]String}
+identifier! = some {pLike peek isAlphaNum}
 
-parsers : [Abort,Console,PState]Unit
-parsers! = choice ([{tryParse (symbol "lieu")}
-                   ,{tryParse (symbol "lassie")}
+imperative : {[Parser]Unit}
+imperative! = try (symbol "make"; gap!;
+                        choice [{try (symbol "it!")}
+                               ,{try (symbol "install")}])
+
+parsers : [Parser]Unit
+parsers! = choice ([imperative
+                   ,{try (symbol "lassie")}
                    ,{print identifier!}])
 
 main : [Console]Unit
-main! = catch (parse parsers!) {print "failed\n"}
+main! = catch (parse parsers!) {print "\nfailed\n"}
