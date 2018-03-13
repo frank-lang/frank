@@ -1,6 +1,7 @@
 {-- ML syntax parsing --}
 
 include prelude
+include syntax
 
 -- First is the current sequence of characters consumed during a valid parse
 -- Second is the sequence of characters in our input buffer not-yet-consumed
@@ -13,7 +14,7 @@ interface PState = [State PS]
 interface Scan = peek : Char
                | accept : Unit
 
-interface Parser = [Abort,Console,PState,Scan]
+interface Parser = [Abort,Scan]
 
 shift1Abort : {{[E|Abort]X} -> {[E|Abort,Abort]X}}
 shift1Abort m = {(shift <Abort> (shift <Abort> (shift1Abort' m!)))!}
@@ -22,7 +23,15 @@ shift1Abort' : <Abort>X -> [E|]{[E|Abort,Abort]X}
 shift1Abort'  x           = {x}
 shift1Abort' <abort -> k> = {case abort! {x -> (shift1Abort {k x})!}}
 
-match : Char -> [Abort,Scan]Unit
+shift1Scan : {{[E|Scan]X} -> {[E|Scan,Scan]X}}
+shift1Scan m = {(shift <Scan> (shift <Scan> (shift1Scan' m!)))!}
+
+shift1Scan' : <Scan>X -> [E|]{[E|Scan,Scan]X}
+shift1Scan'  x           = {x}
+shift1Scan' <accept -> k> = {case accept! {x -> (shift1Scan {k x})!}}
+shift1Scan' <peek -> k> = {case peek! {x -> (shift1Scan {k x})!}}
+
+match : Char -> [Parser]Unit
 match c = if (eqc peek! c) {accept!} {abort!}
 
 peekc : [Console,PState]Char
@@ -64,11 +73,18 @@ scanner   <peek -> k>   = scanner (k peekc!)
 scanner   <accept -> k> = scanner (k acceptc!)
 scanner x = x
 
+scriber : <Scan>X -> [Scan,State Bool]X
+scriber   <peek -> k>   = let x = peek! in scriber (k x)
+scriber   <accept -> k> = let x = accept! in
+                          if get! {unit} {put true}; scriber (k x)
+scriber x = x
+
+
 tryParse : <Abort>X -> [Abort,Console,PState]X
 tryParse   <abort -> _>  = backtrack!
 tryParse        x        = x
 
-try : {<Abort,Scan>X -> [Abort,Console,PState]X}
+try : {<Parser>X -> [Abort,Console,PState]X}
 try <p> = case get! {(Top xs ys t) ->
                         put (Top [] ys (Top xs [] t)); scanner (tryParse p!)
                     | None -> put (Top [] [] None); scanner (tryParse p!)}
@@ -76,7 +92,10 @@ try <p> = case get! {(Top xs ys t) ->
 -- This definition of choice typechecks using the shift1Abort trick!
 choice : List {[Abort]X} -> [Abort]X
 choice    []     = abort!
-choice (x :: xs) = catch (shift1Abort x)! {choice xs}
+choice (x :: xs) =  let m = shift1Abort x in catch m! {choice xs}
+
+-- BUG: Typechecker goes into an infinite look typing the thunk below:
+---{x -> if get! {abort!} {shift <State> (shift1Scan x)!}}}
 
 some : {{[Abort]X} -> [Abort]List X}
 some p = p! :: (shift <Abort> (many p))
@@ -89,31 +108,45 @@ parse   x   = x
 parse   <m> = evalState None (scanner (tryParse m!))
 
 -- Parse a symbol
-symbol : String -> [Abort,Scan]Unit
+symbol : String -> [Parser]Unit
 symbol (x :: xs) = match x; symbol xs
 symbol    []     = unit
 
-pLike : {{[Abort,Scan]X} -> {X -> [Abort,Scan]Bool} -> [Abort,Scan]X}
+pLike : {{[Parser]X} -> {X -> [Parser]Bool} -> [Parser]X}
 pLike p f = let x = p! in
             if (f x) {accept!; x} {abort!}
 
-gap : {[Abort,Scan]Unit}
+gap : {[Parser]Unit}
 gap! = many {pLike peek isSpace}; unit
 
 -- ML specific parsers
 
-identifier : {[Abort,Scan]String}
-identifier! = some {pLike peek isAlphaNum}
+lexeme : {{[Parser]X} -> [Parser]X}
+lexeme p = let x = p! in gap!; x
 
-imperative : {[Parser]Unit}
-imperative! = try (symbol "make"; gap!;
-                        choice [{try (symbol "it!")}
-                               ,{try (symbol "install")}])
+reserved : {String -> [Parser]Unit}
+reserved x = lexeme {symbol x}
 
-parsers : [Parser]Unit
-parsers! = choice ([imperative
-                   ,{try (symbol "lassie")}
-                   ,{print identifier!}])
+identifier : {[Parser]String}
+identifier! = lexeme {some {pLike peek isAlphaNum}}
 
-main : [Console]Unit
-main! = catch (parse parsers!) {print "\nfailed\n"}
+--BUG: (tryParse parseLet) as the first element of the list below should
+-- generate a type error, correct term is {tryParse parseLet!}
+parseTm : [Console,Parser,PState]Tm
+parseTm! = choice [{try parseLet!}, {var identifier!}]
+
+parseLet : [Console,Parser,PState]Tm
+parseLet! = let x = reserved "let"; identifier! in
+            let s = reserved "="; parseTm! in
+            let t = reserved "in"; parseTm! in bnd x s t
+
+imperative : {[Abort,Console,PState]Unit}
+imperative! = try (reserved "make";
+                        try (choice [{reserved "it!"}
+                                    ,{symbol "install"}]))
+
+prog : [Abort,Console,Scan,PState]Tm
+prog! = gap!; let x = parseTm! in symbol ";"; x
+
+main : [Console]Tm
+main! = catch (parse prog!) {var "failed"}

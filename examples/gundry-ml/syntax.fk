@@ -7,7 +7,7 @@ data Ty = base Nat | arr Ty Ty
 
 data Sch = mono Ty | poly Sch
 
-data Tm = var Nat | lam Tm | app Tm Tm | bnd Tm Tm
+data Tm = var String | lam Tm | app Tm Tm | bnd String Tm Tm
 
 data Ctx = emp | buv Ctx Nat | bdv Ctx Nat Ty | btv Ctx Nat Sch | mrk Ctx
 
