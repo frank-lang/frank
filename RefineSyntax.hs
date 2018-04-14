@@ -417,12 +417,12 @@ refineClause (Cls ps tm a) = do ps' <- mapM refinePattern ps
 --   match # of args
 refinePattern :: Pattern Raw -> Refine (Pattern Refined)
 refinePattern (VPat p a) = VPat <$> refineVPat p <*> (pure $ rawToRef a)
-refinePattern (CmdPat x ps k a) =
+refinePattern (CmdPat x n ps k a) =
   do cmds <- getRCmds
      case x `findPair` cmds of
-       Just n -> do checkArgs x n (length ps) a
-                    ps' <- mapM refineVPat ps
-                    return $ CmdPat x ps' k (rawToRef a)
+       Just n' -> do checkArgs x n' (length ps) a
+                     ps' <- mapM refineVPat ps
+                     return $ CmdPat x n ps' k (rawToRef a)
        Nothing -> throwError $ errorRefIdNotDeclared "command" x a
 refinePattern (ThkPat x a) = return $ ThkPat x (rawToRef a)
 

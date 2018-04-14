@@ -407,10 +407,18 @@ thunkPat = attachLoc $ do x <- identifier
 
 cmdPat :: MonadicParsing m => m (Pattern Raw)
 cmdPat = attachLoc $ do cmd <- identifier
+                        mn <- optional (
+                          do symbol "."
+                             integer)
+                        n <- (case mn of
+                          Nothing -> return 0
+                          Just n | n >= 0 -> return n)
+                        -- TODO LC: handle case of negative n
                         ps <- many valPat
                         symbol "->"
                         g <- identifier
-                        return (CmdPat cmd ps g)
+                        return (CmdPat cmd (fromIntegral n) ps g)
+                        -- TODO LC: fix this: consistent Integer vs Int
 
 valPat :: MonadicParsing m => m (ValuePat Raw)
 valPat = dataPat <|>

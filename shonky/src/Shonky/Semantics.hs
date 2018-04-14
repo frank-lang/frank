@@ -12,6 +12,8 @@ import qualified Data.Map.Strict as M
 
 import Shonky.Syntax
 
+import Debug.Trace
+
 -- There is no predefined Show instance
 instance Show (IORef a) where
   show _ = "<ioref>"
@@ -30,8 +32,8 @@ data Val
 
 -- comp: value or command call
 data Comp
-  = Ret Val                  -- value
-  | Call String [Val] Agenda -- command call: cmd-id, values, suspended agenda
+  = Ret Val                          -- value
+  | Call String Integer [Val] Agenda -- command call: cmd-id, cmd-level, values, suspended agenda
   deriving Show
 
 -- stack of (collections of definitions)
@@ -149,8 +151,8 @@ ppDefVal (DF f [] [])  = text f <+> text "->" <+> text "[empty function]"
 ppDefVal (DF f xs ys)  = ppDef (DF f xs ys)
 
 ppComp :: Comp -> Doc
-ppComp (Ret v)       = text "Ret" <+> ppVal v
-ppComp (Call c vs a) = text "Call" <+> text c <+> sep (map ppVal vs) <$$> ppAgenda a
+ppComp (Ret v)         = text "Ret" <+> ppVal v
+ppComp (Call c n vs a) = text "Call" <+> text c <> text "." <> integer n <+> sep (map ppVal vs) <$$> ppAgenda a
 
 sepBy :: Doc -> [Doc] -> Doc
 sepBy s ds = vcat $ punctuate s ds
@@ -204,7 +206,7 @@ compute g (EI n)       ls = consume (VI n) ls            -- 1) feed int
 compute g (a :& d)     ls = compute g a (Car g d : ls)   -- 2) compute head. save tail for later.
 compute g (f :$ as)    ls = compute g f (Fun g as : ls)  -- 2) Application. Compute function. Save args for later.
 compute g (e :! f)     ls = compute g e (Seq g f : ls)   -- 2) Sequence.    Compute 1st exp.  Save 2nd for later.
-compute g (e :// f)    ls = compute g e (Qes g f : ls)   -- 2) Composition. compute 1st exp.  save 2nd for later.
+compute g (e :// f)    ls = compute g e (Qes g f : ls)   -- 2) Composition. Compute 1st exp.  save 2nd for later.
 compute g (EF hss pes) ls = consume (VF g hss pes) ls    -- 1) feed in function
 compute g (ds :- e)    ls = define g [] ds e ls          -- (not used by Frank)
 compute g (EX ces)     ls = combine g [] ces ls          -- 2) compute string
@@ -229,27 +231,28 @@ consume v (Lif sc              : ls) = consume v ls                           --
 consume v []                         = Ret v
 
 -- inch and ouch commands in the IO monad
+-- only if the level is 0 --TODO LC: rethink this?
 ioHandler :: Comp -> IO Val
 ioHandler (Ret v) = return v
-ioHandler (Call "inch" [] ks) =
+ioHandler (Call "inch" 0 [] ks) =
   do c <- getChar
      -- HACK: for some reason backspace seems to produce '\DEL' instead of '\b'
      let c' = if c == '\DEL' then '\b' else c
      ioHandler (consume (VX [c']) (reverse ks))
-ioHandler comp@(Call "ouch" [VX [c]] ks) =
+ioHandler comp@(Call "ouch" 0 [VX [c]] ks) =
   do putChar c
      hFlush stdout
      ioHandler (consume (VA "unit" :&& VA "") (reverse ks))
-ioHandler (Call "new" [v] ks) =
+ioHandler (Call "new" 0 [v] ks) =
   do ref <- newIORef v
      ioHandler (consume (VR ref) (reverse ks))
-ioHandler (Call "write" [VR ref, v] ks) =
+ioHandler (Call "write" 0 [VR ref, v] ks) =
   do writeIORef ref v
      ioHandler (consume (VA "unit" :&& VA "") (reverse ks))
-ioHandler (Call "read" [VR ref] ks) =
+ioHandler (Call "read" 0 [VR ref] ks) =
   do v <- readIORef ref
      ioHandler (consume v (reverse ks))
-ioHandler (Call c vs ks) = error $ "Unhandled command: " ++ c ++ concat (map (\v -> " " ++ (show . ppVal) v) vs)
+ioHandler (Call c n vs ks) = error $ "Unhandled command: " ++ c ++ "." ++ show n ++ concat (map (\v -> " " ++ (show . ppVal) v) vs)
 
 -- A helper to simplify strings (list of characters)
 -- this allows regular list append [x|xs] to function like [|`x``xs`|] but
@@ -306,24 +309,30 @@ apply (VA a) cs ls =                                                        -- a
   -- commands are not handlers, so the cs must all be values
   command a (map (\ (Ret v) -> v) cs) [] 0 ls
 apply (VC (Ret v)) [] ls = consume v ls                               -- apply a value-thunk to 0 args (force)
-apply (VC (Call a vs ks)) [] ls = command a vs ks 0 ls  -- apply a command-thunk to 0 args (force)
+apply (VC (Call a n vs ks)) [] ls = command a vs ks n ls              -- apply a command-thunk to 0 args (force), `n` determines how many handlers to skip
 apply (VK sag) [Ret v] ag = consume v (revapp sag ag)                   -- execute a continuation by providing return value:
 apply f cs ls = error $ concat ["apply: ", show f, show cs, show ls]
 
--- given: cmd-id, args, skipped agenda, current agenda
+-- given:
+--    c:  cmd-id
+--    vs: evaluated args
+--    ks: skipped agenda
+--    n:  levels to skip
+--    ls: current agenda
 -- Assign command-request to a handler (fix argument) and continue with `args`.
 -- If there is no handler, just return a `Call` (comp. is stuck)
 --   cas: commands-already-skipped
 --   cts: commands-to-be-skipped
-command :: String -> [Val] -> SkippedAgenda -> Int -> Agenda -> Comp
-command c vs ks _ [] = Call c vs ks                                             -- if agenda is done (i.e. no handler there), return Call
-command c vs ks 0 (Arg hs f cs g hss es : ls)                                   -- if there is handler that can handle `c` and is not to be skipped (0),
-  | c `elem` hs = args f (Call c vs ks : cs) g hss es ls                        --   then fix command-call as argument and continue with `args`
-command c vs ks n (k@(Arg hs f cs g hss es) : ls)
-  | c `elem` hs = command c vs (k : ks) (n-1) ls
-command c vs ks n (Lif sc : ls) = command c vs (Lif sc : ks) (n+count) ls
-  where count = length (filter (== c) sc)
-command c vs ks n (k : ls) = command c vs (k : ks) n ls                         -- skip current handler `k`, remove one interface instantiation from `cts` and recurse
+command :: String -> [Val] -> SkippedAgenda -> Integer -> Agenda -> Comp
+command c vs ks n [] = Call c n vs ks                                           -- if agenda is done (i.e. no handler there), return Call
+command c vs ks n (k@(Arg hs f cs g hss es) : ls)                               -- if there is a handler that can handle `c` and is not to be skipped
+  | n < count = args f (Call c n vs ks : cs) g hss es ls                        --    (handler can handle `count` levels, command is lifted by `n` levels),
+                                                                                --    then fix command-call as argument and continue with `args`
+  | n >= count = command c vs (k : ks) (n-count) ls                             -- if there is a handler that can handle `c` but is to be skipped,
+  where count = toInteger$ length (filter (== c) hs)                            --    then skip that handler and recurse
+command c vs ks n (Lif sc : ls) = command c vs (Lif sc : ks) (n+count) ls       -- if there is a lift frame that lifts `c` for `count` times, then `n`
+  where count = toInteger $ length (filter (== c) sc)                           --    is augmented accordingly
+command c vs ks n (k : ls) = command c vs (k : ks) n ls                         -- skip current handler `k` and recurse
 
 -- given:  env, rules, evaluated args, frame stack
 -- selects first rule that matches and computes that expression
@@ -347,8 +356,9 @@ matches _ _ _ = Nothing
 match :: Env -> Pat -> Comp -> Maybe Env
 match g (PV q) (Ret v) = vmatch g q v         -- value matching, no binding
 match g (PT x) c = return (g :/ [x := VC c])  -- variable binding
-match g (PC c qs x) (Call c' vs ks) = do      -- command call matching: cmd parameters `vs`, continuation (future agenda)
+match g (PC c n qs x) (Call c' n' vs ks) = do -- command call matching: cmd parameters `vs`, continuation (future agenda)
   guard (c == c')
+  guard (n == n')
   g <- vmatches g qs vs
   return (g :/ [x := VK ks])  -- bind continuation var `x` to future agenda
 match _ _ _ = Nothing
@@ -430,7 +440,9 @@ load = prog envBuiltins
 loadFile :: String -> IO Env
 loadFile x = do
   s <- readFile (x ++ ".uf")
-  let Just (d, "") = parse pProg s
+  let Just (d, rest) = parse pProg s
+  traceM $ "parsed:\n\n" ++ (show $ vsep (map ppDef d)) ++ "\n\n"
+  traceM $ "rest: \n\n" ++ (show rest)
   return (prog envBuiltins d)
 
 -- Given env `g` and id `s`,

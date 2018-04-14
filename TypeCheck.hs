@@ -155,14 +155,7 @@ checkTopTm _ = return ()
 
 checkMHDef :: MHDef Desugared -> Contextual ()
 checkMHDef (Def id ty@(CType ps q _) cs _) = do
-  mapM_ checkPort ps
   mapM_ (\cls -> checkCls cls ps q) cs
-
-checkPort :: Port Desugared -> Contextual ()
-checkPort p@(Port (Adj im _) ty _) = do
-  if (stripInactiveOffItfMap im /= im) then
-    throwError $ errorTCPortContainsInactiveInstances p
-  else return ()
 
 -- 1st major TC function: Infer type of a "use"
 -- Functions below implement the typing rules described in the paper.
@@ -287,7 +280,6 @@ checkTm (DCon (DataCon k xs _) a) ty =
 --      - Unify the obtained type for cls_i with overall type ty
 checkSComp :: SComp Desugared -> VType Desugared -> Contextual ()               -- Comp rule
 checkSComp (SComp xs _) (SCTy (CType ps q _) _) = do
-  mapM_ checkPort ps
   mapM_ (\cls -> checkCls cls ps q) xs
 checkSComp (SComp xs a) ty = mapM_ (checkCls' ty) xs
   where checkCls' :: VType Desugared -> Clause Desugared -> Contextual ()
@@ -340,7 +332,7 @@ checkCls cls@(Cls pats tm _) ports (Peg ab ty _)
 -- Check that given pattern matches given port
 checkPat :: Pattern Desugared -> Port Desugared -> Contextual [TermBinding]
 checkPat (VPat vp _) (Port _ ty _) = checkVPat vp ty
-checkPat (CmdPat cmd xs g a) (Port adj ty b) =                                  -- P-Request rule
+checkPat (CmdPat cmd n xs g a) (Port adj ty b) =                                  -- P-Request rule
 -- interface itf q_1 ... q_m =
 --   cmd r_1 ... r_l: t_1 -> ... -> t_n -> y | ...
 

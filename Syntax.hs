@@ -85,7 +85,7 @@ implicitNear v = case getSource v of InCode (line, col) -> ImplicitNear (line, c
 class NotRaw a where
   idNotRaw :: a -> a
 instance NotRaw () where idNotRaw = Prelude.id
-instance NotRaw (AnnotT () Identity ()) where idNotRaw = Prelude.id
+instance NotRaw (AnnotT a Identity ()) where idNotRaw = Prelude.id
 
 class NotDesugared a where
   idNotDesugared :: a -> a
@@ -103,7 +103,6 @@ newtype Refined = Refined Source
   deriving (Show, Eq)
 instance NotDesugared Refined where idNotDesugared = Prelude.id
 instance NotRaw Refined where idNotRaw = Prelude.id
-instance NotRaw (AnnotT Refined Identity ()) where idNotRaw = Prelude.id
 instance HasSource Refined where getSource (Refined s) = s
 
 -- desugaring of types:
@@ -112,7 +111,6 @@ instance HasSource Refined where getSource (Refined s) = s
 newtype Desugared = Desugared Source
   deriving (Show, Eq)
 instance NotRaw Desugared where idNotRaw = Prelude.id
-instance NotRaw (AnnotT Desugared Identity ()) where idNotRaw = Prelude.id
 instance HasSource Desugared where getSource (Desugared s) = s
 
 {-- The raw syntax as parsed in from the file and the refined syntax produced
@@ -359,7 +357,7 @@ pattern Cmd x ps tys ty a = Fx (AnnF (MkCmd x ps tys ty, a))
 
 data PatternF :: ((* -> *) -> (* -> *)) -> * -> * where
   MkVPat :: TFix t ValuePatF -> PatternF t r
-  MkCmdPat :: Id -> [TFix t ValuePatF] -> Id -> PatternF t r
+  MkCmdPat :: Id -> Int -> [TFix t ValuePatF] -> Id -> PatternF t r
   MkThkPat :: Id -> PatternF t r
 deriving instance (Show (TFix t ValuePatF),
                    Show r, Show (TFix t PatternF)) => Show (PatternF t r)
@@ -367,7 +365,7 @@ deriving instance (Eq (TFix t ValuePatF),
                    Eq r, Eq (TFix t PatternF)) => Eq (PatternF t r)
 type Pattern a = AnnotTFix a PatternF
 pattern VPat vp a = Fx (AnnF (MkVPat vp, a))
-pattern CmdPat x vps k a = Fx (AnnF (MkCmdPat x vps k, a))
+pattern CmdPat x n vps k a = Fx (AnnF (MkCmdPat x n vps k, a))
 pattern ThkPat x a = Fx (AnnF (MkThkPat x, a))
 
 -- TODO: should we compile away string patterns into list of char patterns?

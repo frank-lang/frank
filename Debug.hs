@@ -263,6 +263,8 @@ sep = PP.sep
 nest = PP.nest
 vcat = PP.vcat
 hcat = PP.hcat
+empty = PP.empty
+int = PP.int
 
 type Doc = PP.Doc
 
@@ -302,12 +304,14 @@ ppClause id (Cls ps tm _) = text id <+>
 
 ppPattern :: (Show a, HasSource a) => Pattern a -> Doc
 ppPattern (VPat vp _) = ppValuePat vp
-ppPattern (CmdPat x vps k _) = text "<" <+>
-                               text x <+>
-                               (hcat . map ppValuePat) vps <+>
-                               text "->" <+>
-                               text k <+>
-                               text ">"
+ppPattern (CmdPat x n vps k _) = text "<" <+>
+                                 text x <>
+                                 (if n == 0 then empty
+                                            else text "." <> int n) <+>
+                                 (hcat . map ppValuePat) vps <+>
+                                 text "->" <+>
+                                 text k <+>
+                                 text ">"
 ppPattern (ThkPat x _) = text x
 
 ppValuePat :: (Show a, HasSource a) => ValuePat a -> Doc
