@@ -9,6 +9,7 @@ import io
 import os
 from subprocess import Popen,PIPE,TimeoutExpired
 
+frankPath = "/home/luk/dev/frank/.stack-work/install/x86_64-linux-nopie/lts-7.8/8.0.1/bin/frank"
 
 class TestHarnessLogger:
     """Defines the logger for the test harness.
@@ -261,7 +262,7 @@ def process_directives(logger, x, ds):
 def process_directive(logger,x,desc,k,v,args):
     isRegression = True if os.path.basename(x).startswith('r') else False
     if k == "return":
-        p = Popen(["frank", x],stderr=PIPE,stdout=PIPE)
+        p = Popen([frankPath, x],stderr=PIPE,stdout=PIPE)
         p.wait()
         ret = p.returncode
         try:

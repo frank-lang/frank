@@ -95,9 +95,6 @@ errorRefItfAlCycle x = "interface alias " ++ show x ++ " is defined in terms of 
 errorTCNotInScope :: Operator Desugared -> String
 errorTCNotInScope op = "'" ++ getOpName op ++ "' not in scope (" ++ (show $ ppSourceOf op) ++ ")"
 
-errorTCPortContainsInactiveInstances :: Port Desugared -> String
-errorTCPortContainsInactiveInstances p = "port contains inactive instances (" ++ (show $ ppSourceOf p) ++ ")"
-
 errorTCPatternPortMismatch :: Clause Desugared -> String
 errorTCPatternPortMismatch cls = "number of patterns not equal to number of ports (" ++ (show $ ppSourceOf cls) ++ ")"
 
