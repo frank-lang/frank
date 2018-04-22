@@ -19,13 +19,15 @@ data Exp
   | Exp :! Exp                    -- composition (;)
   | Exp :// Exp                   -- composition (o)
   | EF [[String]] [([Pat], Exp)]  -- handler
-    --   [[String]]:     for each arg pos, which commands are handled?
+    --   [[String]]:     for each arg pos, which commands are handled
+    --                   and how often (potentially multiple occurrences)?
     --   [([Pat], Exp)]: pattern matching rules
   | [Def Exp] :- Exp              -- ? (not used by Frank)
   | EX [Either Char Exp]          -- string concatenation expression
-    -- (used only for characters in source Frank (Left c), but used by strcat)
-  | ES [String] Exp               -- shift
-    --  [String]: set of commands-to-be-shifted
+    -- (used only for characters in source Frank (Left c), but used by
+    -- strcat)
+  | ES [String] Exp               -- lift
+    --  [String]: set of commands-to-be-lifted
   deriving (Show, Eq)
 infixr 6 :&
 infixl 5 :$
@@ -33,14 +35,19 @@ infixr 4 :!
 
 data Def v
   = String := v                          -- value def
-  | DF String [[String]] [([Pat], Exp)]  -- function def
+  | DF String [[String]] [([Pat], Exp)]  -- handler def
   deriving (Show, Eq)
 
+{--
+ -- Datatype of Patterns:
+ --   * PV is for value patterns,
+ --   * PT is for variable patterns,
+ --   * PC is for command patterns.
+ --}
 data Pat
-  = PV VPat                   -- value pattern
-  | PT String                 -- variable pattern
-  | PC String [VPat] String
-    -- command pattern: cmd-id, arg-patterns, continuation-var
+  = PV VPat
+  | PT String
+  | PC String Integer [VPat] String
   deriving (Show, Eq)
 
 data VPat
@@ -87,6 +94,8 @@ pExp = (((ES <$ pGap <* pP "shift" <* pGap <* pP "<" <* pGap <*>
           (id <$ pP "(" <*> pCSep (many (pId <* pGap)) ")"
               <* pGap <* pP ":" <* pGap
            <|> pure []) <*> pCSep pClause "" <* pGap <* pP "}"
+       <|> ES <$ pP "^" <* pP "[" <*> pCSep pId "]" <* pP "("
+           <*> pExp <* pP ")"
        ) >>= pApp)
        <|> (:-) <$ pP "{|" <*> pProg <* pP "|}" <* pGap <*> pExp
      where thunk e = EF [] [([], e)]
@@ -116,6 +125,7 @@ pApp f = (((f :$) <$ pP "(" <*> pCSep pExp ")") >>= pApp)
        <|> (((f ://) <$ pP "/" <* pGap <*> pExp) >>= pApp)
        <|> pure f
 
+-- Parses a comma-separated list, with `t` at its end
 pCSep :: P x -> String -> P [x]
 pCSep p t = pGap *> ((:) <$> p <*> pMore <|> [] <$ pP t) where
   pMore =  pGap *> ((:) <$ pP "," <* pGap <*> p <*> pMore <|> [] <$ pP t)
@@ -138,7 +148,7 @@ pRules f = DF f <$>
 
 pPat :: P Pat
 pPat = PT <$ pP "{" <* pGap <*> pId <* pGap <* pP "}"
-   <|> PC <$ pP "{" <* pGap <* pP "'" <*> pId <* pP "(" <*> pCSep pVPat ")"
+   <|> PC <$ pP "{" <* pGap <* pP "'" <*> pId <* pP "." <*> pInteger <* pP "(" <*> pCSep pVPat ")"
           <* pGap <* pP "->" <* pGap <*> pId <* pGap <* pP "}"
    <|> PV <$> pVPat
 
@@ -200,9 +210,6 @@ ppDef p@(DF id hss es) = header <$$> vcat cs
         cs = punctuate comma $
                map (\x -> text id <> (nest 3 (ppClause (<$$>) x))) es
 
-ppCSep :: (a -> String) -> [a] -> String
-ppCSep f xs = intercalate "," $ map f xs
-
 ppText :: (a -> Doc) -> [Either Char a] -> Doc
 ppText f ((Left c) : xs) = (text $ escChar c) <> (ppText f xs)
 ppText f ((Right x) : xs) = text "`" <> f x <> text "`" <> (ppText f xs)
@@ -237,7 +244,7 @@ ppExp (EF xs ys) =
   braces $ hcat (punctuate comma clauses)
 ppExp (EX xs) = text "[|" <> ppText ppExp xs
 ppExp (ES cs e) = let args = hsep $ punctuate comma (map text cs) in
-  text "shift" <+> angles args <+> parens (ppExp e)
+  text "^" <+> angles args <+> parens (ppExp e)
 
 ppExp' :: Exp -> Doc
 ppExp' (e :& EA "") = ppExp e <> rbracket
@@ -258,8 +265,9 @@ ppListExp _ = text "ppListExp: invariant broken"
 ppPat :: Pat -> Doc
 ppPat (PV x) = ppVPat x
 ppPat (PT x) = braces $ text x
-ppPat (PC cmd ps k) = let args = hcat $ punctuate comma (map ppVPat ps) in
-  braces $ text "'" <> text cmd <> parens args <+> text "->" <+> text k
+ppPat (PC cmd n ps k) = let args = hcat $ punctuate comma (map ppVPat ps) in
+  let cmdtxt = text (cmd ++ ".") <> integer n in
+  braces $ text "'" <> cmdtxt <> parens args <+> text "->" <+> text k
 
 ppVPat :: VPat -> Doc
 ppVPat (VPV x) = text x

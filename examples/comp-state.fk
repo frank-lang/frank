@@ -10,7 +10,7 @@ evalGet s <get -> k> = evalGet s (k s)
 evalGet s x          = x
 
 evalPut : {<Put S>X -> [Get S]X}
-evalPut <put s -> k> = shift <Get> (evalGet s (evalPut (k unit)))
+evalPut <put s -> k> = lift <Get> (evalGet s (evalPut (k unit)))
 evalPut x            = x
 
 evalState : {S -> <State S>X -> X}

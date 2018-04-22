@@ -84,10 +84,12 @@ interface Send X = send : X -> Unit
 
 interface Receive X = receive : X
 
-interface State S = get : S
-                  | put : S -> Unit
+-- Defined in prelude
+--interface State S = get : S
+--                  | put : S -> Unit
 
-interface Choice = choice : Bool
+-- Alternative definition for Choice (see prelude)
+--interface Choice = choice : Bool
 
 {-- Alternative definition for Abort (see prelude) --}
 --interface Abort = aborting : Zero

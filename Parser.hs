@@ -344,7 +344,7 @@ unOperation = provideLoc $ \a -> do
 
 -- use
 use :: MonadicParsing m => m (Tm Raw) -> m (Use Raw)
-use p = shift (ncuse p) <|>                           -- shift [...] ncuse
+use p = lift (ncuse p) <|>                            -- lift [...] ncuse
         cuse p                                        -- cuse
 
 -- comb use
@@ -370,12 +370,12 @@ ause :: MonadicParsing m => m (Tm Raw) -> m (Use Raw)
 ause p = parens (use p) <|>                           -- (use)
          idUse                                        -- x
 
-shift :: MonadicParsing m => m (Use Raw) -> m (Use Raw)
-shift p = attachLoc $ do -- shift <I_1,I_2,...,I_n> stm
-            reserved "shift"
+lift :: MonadicParsing m => m (Use Raw) -> m (Use Raw)
+lift p = attachLoc $ do -- lift <I_1,I_2,...,I_n> stm
+            reserved "lift"
             xs <- angles (sepBy identifier (symbol ","))
             t <- p
-            return $ Shift (S.fromList xs) t
+            return $ Lift (S.fromList xs) t
 
 idUse :: MonadicParsing m => m (Use Raw)
 idUse = attachLoc $ do x <- identifier
@@ -414,10 +414,18 @@ thunkPat = attachLoc $ do x <- identifier
 
 cmdPat :: MonadicParsing m => m (Pattern Raw)
 cmdPat = attachLoc $ do cmd <- identifier
+                        mn <- optional (
+                          do symbol "."
+                             integer)
+                        n <- (case mn of
+                          Nothing -> return 0
+                          Just n | n >= 0 -> return n)
+                        -- TODO LC: handle case of negative n
                         ps <- many valPat
                         symbol "->"
                         g <- identifier
-                        return (CmdPat cmd ps g)
+                        return (CmdPat cmd (fromIntegral n) ps g)
+                        -- TODO LC: fix this: consistent Integer vs Int
 
 valPat :: MonadicParsing m => m (ValuePat Raw)
 valPat = dataPat <|>

@@ -48,7 +48,7 @@ find (CmdId x a) =
                       let m = ItfMap (M.fromList [(itf, BEmp :< ps)]) a
                       unifyAb amb (Ab (AbFVar v a) m a)
                       return $ Just ps
-       Just _ -> return mps          
+       Just _ -> return mps
      logBeginFindCmd x itf mps
      case res of
        Nothing -> throwError $ errorFindCmdNotPermit x a itf amb
@@ -155,14 +155,7 @@ checkTopTm _ = return ()
 
 checkMHDef :: MHDef Desugared -> Contextual ()
 checkMHDef (Def id ty@(CType ps q _) cs _) = do
-  mapM_ checkPort ps
   mapM_ (\cls -> checkCls cls ps q) cs
-
-checkPort :: Port Desugared -> Contextual ()
-checkPort p@(Port (Adj im _) ty _) = do
-  if (stripInactiveOffItfMap im /= im) then
-    throwError $ errorTCPortContainsInactiveInstances p
-  else return ()
 
 -- 1st major TC function: Infer type of a "use"
 -- Functions below implement the typing rules described in the paper.
@@ -178,11 +171,11 @@ checkPort p@(Port (Adj im _) ty _) = do
 --    - Infer type of f
 --    - If this susp. comp. type is known, check the arguments are well-typed
 --    - If not, create fresh type pattern and unify (constraining for future)
--- 3) Shift rule
+-- 3) Lift rule
 --    - Get ambient and expand it (substitute all flexible variables)
---    - Check that instances to be shifted are applicable for this ambient:
---      - Check "(amb - shifted) + shifted = amb"
---    - Recursively infer use of term, but under ambient "amb - shifted"
+--    - Check that instances to be lifted are applicable for this ambient:
+--      - Check "(amb - lifted) + lifted = amb"
+--    - Recursively infer use of term, but under ambient "amb - lifted"
 inferUse :: Use Desugared -> Contextual (VType Desugared)
 inferUse u@(Op x _) =                                                           -- Var, PolyVar, Command rules
   do logBeginInferUse u
@@ -242,16 +235,16 @@ inferUse app@(App f xs _) =                                                     
         -- Check typing tm: ty in ambient [adj]
         checkArg :: Port Desugared -> Tm Desugared -> Contextual ()
         checkArg (Port adj ty _) tm = inAdjustedAmbient adj (checkTm tm ty)
-inferUse shift@(Shift itfs t _) =
-  do logBeginInferUse shift
+inferUse lift@(Lift itfs t _) =
+  do logBeginInferUse lift
      amb <- getAmbient >>= expandAb
      let (Ab v p@(ItfMap m _) a) = amb
      -- Check that all the interfaces are in the ambient
      if all (\x -> M.member x m) (S.toList itfs) then
        do res <- inAmbient (Ab v (removeItfs p itfs) a) (inferUse t)
-          logEndInferUse shift res
+          logEndInferUse lift res
           return res
-     else throwError $ errorShiftAdj shift amb
+     else throwError $ errorLiftAdj lift amb
 
 -- 2nd major TC function: Check that term (construction) has given type
 checkTm :: Tm Desugared -> VType Desugared -> Contextual ()
@@ -287,7 +280,6 @@ checkTm (DCon (DataCon k xs _) a) ty =
 --      - Unify the obtained type for cls_i with overall type ty
 checkSComp :: SComp Desugared -> VType Desugared -> Contextual ()               -- Comp rule
 checkSComp (SComp xs _) (SCTy (CType ps q _) _) = do
-  mapM_ checkPort ps
   mapM_ (\cls -> checkCls cls ps q) xs
 checkSComp (SComp xs a) ty = mapM_ (checkCls' ty) xs
   where checkCls' :: VType Desugared -> Clause Desugared -> Contextual ()
@@ -340,7 +332,7 @@ checkCls cls@(Cls pats tm _) ports (Peg ab ty _)
 -- Check that given pattern matches given port
 checkPat :: Pattern Desugared -> Port Desugared -> Contextual [TermBinding]
 checkPat (VPat vp _) (Port _ ty _) = checkVPat vp ty
-checkPat (CmdPat cmd xs g a) (Port adj ty b) =                                  -- P-Request rule
+checkPat (CmdPat cmd n xs g a) (Port adj ty b) =                                  -- P-Request rule
 -- interface itf q_1 ... q_m =
 --   cmd r_1 ... r_l: t_1 -> ... -> t_n -> y | ...
 

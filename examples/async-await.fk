@@ -86,7 +86,7 @@ asyncCoRef p <await (promise r) -> k> =
 
 runAsync : {<Async [CoRef]>X -> [RefState]X}
 runAsync <m> = let r = new (waiting []) in
-               bfFifo (asyncCoRef (promise r) (shift <Co> m!));
+               bfFifo (asyncCoRef (promise r) (lift <Co> m!));
 
                -- For the promise to be fullfilled now depends on all
                -- handlers in sight using their continuations
@@ -99,7 +99,7 @@ runAsync <m> = let r = new (waiting []) in
                case (read r) {(done x) -> x}
 
 bfFifo : {<Co>Unit -> Unit}
-bfFifo <m> = fifo (scheduleBF (shift <Queue> m!))
+bfFifo <m> = fifo (scheduleBF (lift <Queue> m!))
 
 ------------------------------------------------------------------------------
 -- Scheduling as in coop.fk
@@ -118,7 +118,7 @@ runNext! = case dequeue! { (just (proc x)) -> x!
 scheduleBF : {<Co>Unit -> [Queue Proc]Unit}
 scheduleBF <yield -> k>  = enqProc {scheduleBF (k unit)};
                            runNext!
-scheduleBF <fork p -> k> = enqProc {scheduleBF (shift <Queue> p!)};
+scheduleBF <fork p -> k> = enqProc {scheduleBF (lift <Queue> p!)};
                            scheduleBF (k unit)
 scheduleBF unit          = runNext!
 
@@ -144,7 +144,7 @@ dummy! = case unit {_ -> unit | _ -> unit}
 --------------------------------------------------------------------------------
 
 -- Dont delete these lines, they make this program into a unit test.
--- #desc   examples/asyncAwait.fk
+-- #desc   examples/async-await.fk
 -- #return 8
 
 main: {[RefState]Int}

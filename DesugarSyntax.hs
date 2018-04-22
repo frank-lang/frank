@@ -221,8 +221,9 @@ desugarTm (DCon d a) = DCon <$> desugarDCon d <*> pure (refToDesug a)
 
 desugarPattern :: Pattern Refined -> Desugar (Pattern Desugared)
 desugarPattern (VPat v a) = VPat <$> desugarVPat v <*> pure (refToDesug a)
-desugarPattern (CmdPat c vs k a) = do vs' <- mapM desugarVPat vs
-                                      return $ CmdPat c vs' k (refToDesug a)
+desugarPattern (CmdPat c n vs k a) = do vs' <- mapM desugarVPat vs
+                                        return $ CmdPat c n vs' k
+                                                        (refToDesug a)
 desugarPattern (ThkPat x a) = return $ ThkPat x (refToDesug a)
 
 desugarVPat :: ValuePat Refined -> Desugar (ValuePat Desugared)
@@ -241,7 +242,7 @@ desugarUse :: Use Refined -> Desugar (Use Desugared)
 desugarUse (App use xs a) =
   App <$> desugarUse use <*> mapM desugarTm xs <*> pure (refToDesug a)
 desugarUse (Op op a) = Op <$> desugarOperator op <*> pure (refToDesug a)
-desugarUse (Shift p t a) = Shift p <$> desugarUse t <*> pure (refToDesug a)
+desugarUse (Lift p t a) = Lift p <$> desugarUse t <*> pure (refToDesug a)
 
 desugarOperator :: Operator Refined -> Desugar (Operator Desugared)
 desugarOperator (Mono x a) = return $ Mono x (refToDesug a)

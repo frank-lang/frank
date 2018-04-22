@@ -358,12 +358,12 @@ refineUse (RawComb x xs a) =
        Left use -> do xs' <- mapM refineTm xs
                       return $ Left $ App use xs' (rawToRef a)
        Right tm -> throwError $ errorRefExpectedUse tm
-refineUse (Shift itfs t a) =
+refineUse (Lift itfs t a) =
   -- First check the existence of the interfaces
   do mapM_ exists (S.toList itfs)
      t' <- refineUse t
      case t' of
-       Left u   -> return $ Left $ Shift itfs u (rawToRef a)
+       Left u   -> return $ Left $ Lift itfs u (rawToRef a)
        Right tm -> throwError $ errorRefExpectedUse tm
   where exists :: Id -> Refine ()
         exists x =
@@ -413,12 +413,12 @@ refineClause (Cls ps tm a) = do ps' <- mapM refinePattern ps
 --   match # of args
 refinePattern :: Pattern Raw -> Refine (Pattern Refined)
 refinePattern (VPat p a) = VPat <$> refineVPat p <*> (pure $ rawToRef a)
-refinePattern (CmdPat x ps k a) =
+refinePattern (CmdPat x n ps k a) =
   do cmds <- getRCmds
      case x `findPair` cmds of
-       Just n -> do checkArgs x n (length ps) a
-                    ps' <- mapM refineVPat ps
-                    return $ CmdPat x ps' k (rawToRef a)
+       Just n' -> do checkArgs x n' (length ps) a
+                     ps' <- mapM refineVPat ps
+                     return $ CmdPat x n ps' k (rawToRef a)
        Nothing -> throwError $ errorRefIdNotDeclared "command" x a
 refinePattern (ThkPat x a) = return $ ThkPat x (rawToRef a)
 

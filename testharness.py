@@ -9,7 +9,6 @@ import io
 import os
 from subprocess import Popen,PIPE,TimeoutExpired
 
-
 class TestHarnessLogger:
     """Defines the logger for the test harness.
 

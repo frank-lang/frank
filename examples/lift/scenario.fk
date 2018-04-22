@@ -41,7 +41,7 @@ intByBool <ichoose -> k> = let n = if bchoose! { if bchoose! {3} {2} }
 -- NEW
 --    before: intFix_composed: {<BChoice,IChoice>X -> X}
 intFix_composed: {<IChoice>X -> X}
-intFix_composed <m> = boolFix (intByBool (shift <BChoice> m!))
+intFix_composed <m> = boolFix (intByBool (lift <BChoice> m!))
 
 
 main: {Int}
