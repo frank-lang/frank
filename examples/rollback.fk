@@ -9,22 +9,19 @@ map : {{X -> Y} -> List X -> List Y}
 map f []        = []
 map f (x :: xs) = f x :: (map f xs)
 
-on : {X -> {X -> Y} -> Y}
-on x f = f x
+-- case : {X -> {X -> Y} -> Y}
+-- case x f = f x
 
-interface Abort = aborting : Zero
-
-abort : [Abort]X
-abort! = on aborting! {}
+interface Abort = abort X : X
 --- end of standard stuff ---
 
 interface LookAhead = peek : Char | accept : Unit
 
-data Log [] X = start {[]X}
-              | inched (Log [] X) {Char -> []X}
-	      | ouched (Log [] X)
+data Log X = start {X}
+           | inched (Log X) {Char -> X}
+           | ouched (Log X)
 
-input : {Log [LookAhead, Abort, Console] X ->
+input : {Log X [LookAhead, Abort, Console] ->
          Maybe Char ->
          <LookAhead, Abort>X ->
          [Console]X}
@@ -32,19 +29,19 @@ input _ _        x             = x
 input l (just c) <peek -> k>   = input l (just c) (k c)
 input l (just c) <accept -> k> = ouch c; input (ouched l) nothing (k unit)
 input l nothing  <accept -> k> = input l nothing (k unit)
-input l nothing  <peek -> k>   = on inch! { '\b' -> rollback l
-                                          | c    -> input (inched l k) (just c) (k c) }
-input l _        <aborting -> k> = rollback l
+input l nothing  <peek -> k>   = case inch! { '\b' -> rollback l
+                                            | c    -> input (inched l k) (just c) (k c) }
+input l _        <abort -> k>  = rollback l
 
 -- Disabling the Console ability in the parser would require negative
 -- adjustments
 --
---   input : Log [LookAhead, Abort] X ->
+--   input : Log X [LookAhead, Abort] ->
 --           Buffer ->
 --           <LookAhead, Abort, -Console>X ->
 --           [Console]X
 
-rollback : {Log [LookAhead, Abort, Console] X -> [Console]X}
+rollback : {Log X [LookAhead, Abort, Console] -> [Console]X}
 rollback (start p)    = parse p
 rollback (ouched l)   = map ouch "\b \b"; rollback l
 rollback (inched l k) = input l nothing (k peek!)
@@ -54,21 +51,21 @@ parse p = input (start p) nothing p!
 
 -- a basic parser that counts a sequence of zeros
 zeros : Int -> [LookAhead, Abort]Int
-zeros n = on peek! { '0' -> accept!; zeros (n+1)
-                   | ' ' -> accept!; n
-                   | c   -> abort!}
+zeros n = case peek! { '0' -> accept!; zeros (n+1)
+                     | ' ' -> accept!; n
+                     | c   -> abort!}
 
 t1 : {[Console]Int}
 t1! = parse {zeros 0}
 
 -- another parser that tracks bracket nesting
 nest : String -> Int -> [LookAhead, Abort]String
-nest s 0 = on peek! { '('  -> accept!; nest s 1
-                    | '\n' -> accept!; s
-                    | c    -> abort! }
-nest s n = on peek! { '('  -> accept!; nest s (n+1)
-                    | ')'  -> accept!; nest s (n-1)
-                    | c    -> accept!; nest (cons c s) n }
+nest s 0 = case peek! { '('  -> accept!; nest s 1
+                      | '\n' -> accept!; s
+                      | c    -> abort! }
+nest s n = case peek! { '('  -> accept!; nest s (n+1)
+                      | ')'  -> accept!; nest s (n-1)
+                      | c    -> accept!; nest (cons c s) n }
 
 t2 : {[Console]String}
 t2! = parse {nest "" 0}
@@ -78,5 +75,5 @@ t2! = parse {nest "" 0}
 -- #return unit
 
 -- just a stub: use --entry-point tX to do something interesting
-main : {[]Unit}
+main : {Unit}
 main! = unit

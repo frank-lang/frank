@@ -6,7 +6,7 @@ print : {String -> [Console]Unit}
 print s = map ouch s; unit
 
 {-- Andrej Bauer's recursive cow --}
-interface Cow = moo : {[Cow,Console]Unit}
+interface Cow = moo : {[Cow, Console]Unit}
 
 cow : {[Cow,Console]Unit}
 cow! = (moo!)!

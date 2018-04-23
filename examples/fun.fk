@@ -74,10 +74,10 @@ snd x y = y
 
 -- m; n == snd m n
 
-t4 : {[0|Console]Char}
+t4 : {[0 | Console]Char}
 t4! = fst (inch!) (ouch 'f')
 
-t5 : {[0|Console]Char}
+t5 : {[0 | Console]Char}
 t5! = print "Please type a character\n"; inch!
 
 -- eager conditional
@@ -85,7 +85,7 @@ iffy : Bool -> X -> X -> X
 iffy true  t f = t
 iffy false t f = f
 
-t6 : {[0|Console]Unit}
+t6 : {[0 | Console]Unit}
 t6! = iffy true (print "T\n") (print "F\n")
 
 -- lazy conditional
@@ -93,7 +93,7 @@ if : Bool -> {X} -> {X} -> X
 if true  t f = t!
 if false t f = f!
 
-t7 : {[0|Console]Unit}
+t7 : {[0 | Console]Unit}
 t7! = if true {print "T\n"} {print "F\n"}
 
 -- sequencing
@@ -105,11 +105,11 @@ t8! = case inch! { 'a' -> 65
                  | 'b' -> 66
                  | x   -> -1 }
 
--- Alternative implementation of `if' using `on'
+-- Alternative implementation of `if' using `case'
 --
 -- if : Bool -> {X} -> {X} -> X
--- if b t e = on b { true  -> t!
---                 | false -> e! }
+-- if b t e = case b { true  -> t!
+--                   | false -> e! }
 
 
 --- some user-defined interfaces
@@ -155,7 +155,7 @@ t10! = catch (head []) { -1 }
 t11 : {[0]Int}
 t11! = catch (head [42]) { -1 }
 
-t12 : {[0|Console]Int}
+t12 : {[0 | Console]Int}
 t12! = catch (print "hello\n"; head []) { -1 }
 
 -- Dont delete these lines, they make this program into a unit test.

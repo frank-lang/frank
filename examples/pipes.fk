@@ -28,14 +28,11 @@ interface Send X = send : X -> Unit
 
 interface Receive X = receive : X
 
-interface Abort = aborting : Zero
-
-abort : {[Abort]X}
-abort! = on aborting! {}
+interface Abort = abort X : X
 
 catch : {<Abort>X -> {X} -> X}
-catch x               h = x
-catch <aborting -> k> h = h!
+catch x            h = x
+catch <abort -> k> h = h!
 --- end of standard stuff ---
 
 
