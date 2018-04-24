@@ -1,7 +1,4 @@
 -- Example to test Shonky pattern matching of constructors
-
-data Bool = tt | ff
-
 data Baz = BazOne Int Bool | BazTwo Bool Int
 
 -- Simple shallow case
@@ -9,5 +6,5 @@ foo : Baz -> Int
 foo (BazOne x y) = x
 foo (BazTwo x y) = y
 
-main : Int
-main! = foo (BazOne 1 tt) + foo (BazTwo ff 1) 
+main : {Int}
+main! = foo (BazOne 1 true) + foo (BazTwo false 1) 

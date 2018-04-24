@@ -22,7 +22,7 @@ However, I'm not in the business of representing computations as values, so I th
 
     e :+= a                       -- a variable
         | e( e , .. )             -- n-adic application
-        | ^[ a .. ]( e )          -- lift
+        | ^< a .. >( e )          -- lift
         | e; e                    -- sequencing, taking the value of the second expression
         | e/ e                    -- sequencing, taking the value of the first expression
 

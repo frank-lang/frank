@@ -2,8 +2,6 @@
 if : Bool -> {X} -> {X} -> X
 if b t e = case b { true  -> t!
                   | false -> e! }
-
-data Bool = true | false
 --- end of standard stuff ---
 
 

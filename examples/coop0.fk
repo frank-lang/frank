@@ -1,6 +1,5 @@
 --- start of standard stuff ---
 data Maybe X = just X | nothing
-data Bool = true | false
 
 map : {{X -> Y} -> List X -> List Y}
 map f []        = []

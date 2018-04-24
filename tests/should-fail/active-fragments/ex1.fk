@@ -1,7 +1,6 @@
 -- #desc   [Choice, Choice, Choice] and [Choice, Choice] need not be unified anymore since it suffices that their active fragments are unifiable
--- #return cannot unify abilities [£ | Choice , Choice] (line 15 , column 33) and [£ | Choice , Choice , Choice] (line 15 , column 33)
+-- #return cannot unify abilities [£ | Choice , Choice] (line 14 , column 33) and [£ | Choice , Choice , Choice] (line 14 , column 33)
 
-data Bool = true | false
 interface Choice = choice : Bool
 
 not : {Bool -> Bool}

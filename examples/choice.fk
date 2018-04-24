@@ -18,8 +18,6 @@ concat (xs :: xss) = append xs (concat xss)
 
 interface Abort = abort X : X
 
-data Bool = true | false
-
 interface Choice = choice : Bool
 --- end of standard stuff ---
 

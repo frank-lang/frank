@@ -22,16 +22,16 @@ refine :: Prog Raw -> Either String (Prog Refined)
 refine prog = evalState (runExceptT (refine' prog)) initRefine
 
 -- Explicit refinements:
--- + check if main function exists
 -- + concretise epsilons in top level definitions
 -- + built-in data types, interfaces, operators are added
 refine' :: Prog Raw -> Refine (Prog Refined)
 refine' (MkProg xs) = do
   -- Make sure datatypes have unique ids
-  checkUniqueIds  [d | d@(DataTm _ _) <- xs]   (errorRefDuplTopTm "datatype")
+  checkUniqueIds ([d | (DataTm d _) <- xs]) (errorRefDuplTopTm "datatype")
   -- Make sure interfaces and interface aliases have unique ids
   checkUniqueIds ([i | i@(ItfTm _ _) <- xs] ++
-                  [i | i@(ItfAliasTm _ _) <- xs])  (errorRefDuplTopTm "interface/interface alias")
+                  [i | i@(ItfAliasTm _ _) <- xs])
+    (errorRefDuplTopTm "interface/interface alias")
   -- Concretise epsilon vars
   let (dts, itfs, itfAls) = concretiseEps [d | DataTm d _ <- xs]
                                           [i | ItfTm i _ <- xs]
@@ -49,17 +49,13 @@ refine' (MkProg xs) = do
   itfAlTms <- mapM refineItfAl itfAls
   putTopLevelCtxt Handler
   hdrs <- mapM (refineMH hdrDefs) hdrSigs
-  if existsMain hdrs then
-    return $ MkProg (map (\dt -> DataTm dt a) builtinDataTs ++ dtTms ++
-                     map (\itf -> ItfTm itf a) builtinItfs ++ itfTms ++
-                     map (\hdr -> DefTm hdr a) builtinMHDefs ++ hdrs)
-  else throwError errorRefNoMainFunction
+  -- Check uniqueness of hdrs w.r.t builtin ones
+  -- checkUniqueIds ([h | (DefTm h _) <- hdrs] ++ builtinMHDefs)
+  --   (errorRefDuplTopTm "operator")
+  return $ MkProg (map (\dt -> DataTm dt a) builtinDataTs ++ dtTms ++
+                   map (\itf -> ItfTm itf a) builtinItfs ++ itfTms ++
+                   map (\hdr -> DefTm hdr a) builtinMHDefs ++ hdrs)
   where a = Refined BuiltIn
-
-existsMain :: [TopTm Refined] -> Bool
-existsMain (DefTm (Def id _ _ _) _ : xs) = id == "main" || existsMain xs
-existsMain [] = False
-existsMain (_ : xs) = error "invalid top term: expected multihandler"
 
 -- Explicit refinements:
 -- + data type has unique effect & type variables
@@ -487,6 +483,7 @@ builtinDataTs = [DT "List" [("X", VT)] [Ctr "cons" [TVar "X" b
                                                        ,DTTy "List" [VArg (TVar "X" b) b] b] b
                                          ,Ctr "nil" [] b] b
                 ,DT "Unit" [] [Ctr "unit" [] b] b
+                ,DT "Bool" [] [Ctr "true" [] b, Ctr "false" [] b] b
                 ,DT "Ref" [("X", VT)] [] b]
   where b = Refined BuiltIn
 
@@ -507,7 +504,22 @@ builtinItfAliases :: [ItfAlias Raw]
 builtinItfAliases = []
 
 builtinMHDefs :: [MHDef Refined]
-builtinMHDefs = map (makeIntBinOp (Refined BuiltIn)) "+-" ++ [caseDef]
+builtinMHDefs = map (makeIntBinOp (Refined BuiltIn)) "+-" ++
+                [caseDef, charEq, alphaNumPred]
+
+charEq :: MHDef Refined
+charEq = Def "eqc" (CType [Port (Adj (ItfMap M.empty a) a) (CharTy a) a
+                          ,Port (Adj (ItfMap M.empty a) a) (CharTy a) a]
+                          (Peg (Ab (AbVar "£" a) (ItfMap M.empty a) a)
+                               (DTTy "Bool" [] a) a) a) [] a
+  where a = Refined BuiltIn
+
+alphaNumPred :: MHDef Refined
+alphaNumPred = Def "isAlphaNum"
+               (CType [Port (Adj (ItfMap M.empty a) a) (CharTy a) a]
+                          (Peg (Ab (AbVar "£" a) (ItfMap M.empty a) a)
+                               (DTTy "Bool" [] a) a) a) [] a
+  where a = Refined BuiltIn
 
 caseDef :: MHDef Refined
 caseDef = Def
@@ -584,7 +596,10 @@ addItfAlias :: IFAliasesMap -> ItfAlias Raw -> Refine IFAliasesMap
 addItfAlias m (ItfAlias x ps itfMap a) = return $ M.insert x (ps, itfMap) m
 
 addDataT :: DTMap -> DataT Raw -> Refine DTMap
-addDataT m (DT x ps _ a) = return $ M.insert x ps m
+addDataT m (DT x ps _ a) =
+  if M.member x m then
+    throwError $ errorRefDuplTopTm "datatype" x (getSource a)
+  else return $ M.insert x ps m
 
 addCtr :: [IPair] -> Ctr a -> Refine [IPair]
 addCtr xs (Ctr x ts a) = addEntry xs x (length ts) "duplicate constructor: "
@@ -595,7 +610,7 @@ addCmd xs (Cmd x _ ts _ a) = addEntry xs x (length ts) "duplicate command: "
 -- takes map handler-id -> #-of-ports and adds another handler entry
 addMH :: [IPair] -> MHSig Raw -> Refine [IPair]
 addMH xs (Sig x (CType ps p _) _) =
-  addEntry xs x (length ps) "duplicate multihandler: "
+  addEntry xs x (length ps) "duplicate operator:"
 
 uniqueIds :: [Id] -> Bool
 uniqueIds xs = length xs == length (nub xs)

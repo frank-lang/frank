@@ -1,19 +1,5 @@
 {--- Modular rollback: computations as data ---}
-
---- start of standard stuff ---
-data Zero =     -- empty type
-
-data Maybe X = nothing | just X
-
-map : {{X -> Y} -> List X -> List Y}
-map f []        = []
-map f (x :: xs) = f x :: (map f xs)
-
--- case : {X -> {X -> Y} -> Y}
--- case x f = f x
-
-interface Abort = abort X : X
---- end of standard stuff ---
+include prelude
 
 interface LookAhead = peek : Char | accept : Unit
 
@@ -38,7 +24,7 @@ input l _        <abort -> k>  = rollback l
 --
 --   input : Log X [LookAhead, Abort] ->
 --           Buffer ->
---           <LookAhead, Abort, -Console>X ->
+--           <Consle|LookAhead, Abort>X ->
 --           [Console]X
 
 rollback : {Log X [LookAhead, Abort, Console] -> [Console]X}
