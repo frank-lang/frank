@@ -425,7 +425,7 @@ type Peg a = AnnotTFix a PegF
 pattern Peg ab ty a = Fx (AnnF (MkPeg ab ty, a))
 
 data VTypeF :: ((* -> *) -> (* -> *)) -> * -> * where           -- value types
-  MkDTTy :: Id -> [TFix t TyArgF] -> VTypeF t r                 --   data types (instant. type constr.)  may be refined to MkTVar
+  MkDTTy :: Id -> [TFix t TyArgF] -> VTypeF t r               --   data types (instant. type constr.)  may be refined to MkTVar
   MkSCTy :: TFix t CTypeF -> VTypeF t  r                        --   suspended computation types
   MkTVar :: NotDesugared (t Identity ()) => Id -> VTypeF t  r   --                                       may be refined to MkDTTy
   MkRTVar :: Id -> VTypeF (AnnotT Desugared)  r                 --   rigid type variable (bound)

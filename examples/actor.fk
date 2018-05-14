@@ -71,6 +71,9 @@ data WithSender X Y = withSender (Mailbox X) Y
 -- Example actors
 --------------------------------------------------------------------------------
 
+-- rubbish examples
+-- TODO: come up with some non-rubbish examples
+
 doubleActor: {[Actor (WithSender Int Int)]Unit}
 doubleActor! = case recv! { (withSender sender n) -> send sender (n + n) }
 
@@ -116,12 +119,9 @@ writingActor! = let you = spawn nicePrintActor in
 --
 -- For liftBody we need exactly that all but the ambient effects be
 -- the same.
-liftBody : {{[Actor X]Unit} -> [E|]{[Actor X, Co [RefState], RefState]Unit}}
+liftBody : {{[Actor X]Unit} -> [E |]{[Actor X, Co [RefState], RefState]Unit}}
 liftBody m = {lift <RefState, Co> m!}
 
--- stupid pretty-printer hack :)
-dummy : {Unit}
-dummy! = case unit {_ -> unit | _ -> unit}
 
 act : {Mailbox X -> <Actor X>Unit -> [Co [RefState], RefState]Unit}
 act mine     <self -> k> = act mine (k mine)

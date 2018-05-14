@@ -1,5 +1,3 @@
-data Bool = true | false
-
 append : {List X -> List X -> List X}
 append []        ys = ys
 append (x :: xs) ys = x :: (append xs ys)

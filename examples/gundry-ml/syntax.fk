@@ -1,0 +1,14 @@
+{-- Syntax for an algebraic effects and handler implementation of Gundry
+    et. al's Hindley-Milner type inference algorithm. --}
+
+include prelude
+
+data Ty = base Nat | arr Ty Ty
+
+data Sch = mono Ty | poly Sch
+
+data Tm = var Nat | lam Tm | app Tm Tm | bnd Tm Tm
+
+data Ctx = emp | buv Ctx Nat | bdv Ctx Nat Ty | btv Ctx Nat Sch | mrk Ctx
+
+data Suffix = nuffin | hole Suffix Nat | defn Suffix Nat Ty

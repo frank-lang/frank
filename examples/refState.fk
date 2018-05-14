@@ -1,9 +1,5 @@
 -- Summing up using RefState and a while loop
 
---- start of standard stuff ---
-data Bool = true | false
---- end of standard stuff ---
-
 while: {{Bool} -> {Unit} -> Unit}
 while cond body = case cond! { false -> unit
                              | true  -> body!; while cond body }

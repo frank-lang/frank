@@ -43,6 +43,8 @@ Some example `frank` programs can be found in `examples`. They should
 each be invoked with `--entry-point tXX` for an appropriate number
 `XX`. See the source code for details.
 
+To specify a search path for source files use `-I` or `--include=INC`.
+
 Optionally a [shonky](https://github.com/pigworker/shonky) file can be
 output with the `--output-shonky` option.
 

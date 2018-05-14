@@ -1,7 +1,6 @@
 data Either X Y = left X | right Y
 data Pair X Y = pair X Y
 data Maybe X = nothing | just X
-data Bool = true | false
 
 not : {Bool -> Bool}
 not false = true

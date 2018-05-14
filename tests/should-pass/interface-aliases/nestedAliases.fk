@@ -21,8 +21,6 @@ concat : List (List X) -> List X
 concat []          = []
 concat (xs :: xss) = append xs (concat xss)
 
-data Bool = true | false
-
 --- end of standard stuff ---
 
 interface Choice = choice : Bool

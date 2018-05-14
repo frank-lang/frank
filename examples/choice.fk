@@ -4,12 +4,9 @@
 data Maybe X = nothing | just X
 data Zero =     -- empty type
 
-on : X -> {X -> Y} -> Y
-on x f = f x
-
 if : Bool -> {X} -> {X} -> X
-if b t e = on b { true  -> t!
-                | false -> e! }
+if b t e = case b { true  -> t!
+                  | false -> e! }
 
 append : List X -> List X -> List X
 append []        ys = ys
@@ -19,17 +16,13 @@ concat : List (List X) -> List X
 concat []          = []
 concat (xs :: xss) = append xs (concat xss)
 
-interface Abort = aborting : Zero
-
-abort : {[Abort]X}
-abort! = case aborting! {}
-
-data Bool = true | false
+interface Abort = abort X : X
 
 interface Choice = choice : Bool
 --- end of standard stuff ---
 
-
+choose : {{[Choice]X} -> {[Choice]X} -> [Choice]X}
+choose p q = if choice! p q
 
 --- the drunken tosser
 
@@ -39,7 +32,7 @@ toss : {[Choice]Toss}
 toss! = if choice! {Heads} {Tails}
 
 drunkToss : {[Choice, Abort]Toss}
-drunkToss! = if choice! {toss!} {abort!}
+drunkToss! = choose {toss!} {abort!}
 
 drunkTosses : {Int -> [Choice, Abort]List Toss}
 drunkTosses 0 = []
@@ -61,16 +54,16 @@ allChoices <choice -> k> = append (allChoices (k true)) (allChoices (k false))
 
 maybeAbort : <Abort>X -> Maybe X
 maybeAbort x               = just x
-maybeAbort <aborting -> k> = nothing
+maybeAbort <abort -> k> = nothing
 
 listAbort : <Abort>X -> List X
-listAbort x               = [x]
-listAbort <aborting -> k> = []
+listAbort x            = [x]
+listAbort <abort -> k> = []
 
 allResults : <Choice, Abort>X -> List X
-allResults x               = [x]
-allResults <choice -> k>   = append (allResults (k true)) (allResults (k false))
-allResults <aborting -> k> = []
+allResults x             = [x]
+allResults <choice -> k> = append (allResults (k true)) (allResults (k false))
+allResults <abort -> k>  = []
 
 
 --- tests

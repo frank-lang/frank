@@ -1,5 +1,3 @@
-data Bool = false | true
-
 interface BChoice = choose: Bool
 
 fixTrue: {<BChoice>X -> X}

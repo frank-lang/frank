@@ -1,24 +1,41 @@
--- Begin Prelude ---------------------------------------------------------------
+-- Begin Prelude -------------------------------------------------------------
 -- Data types
-data Bool = false | true
+data Zero =     -- empty type
+data Nat = zero | suc Nat
 data Maybe X = nothing | just X
 data Pair X Y = pair X Y
+data Either X Y = left X | right Y
 
-not: {Bool -> Bool}
+-- Interfaces
+interface Abort = abort X : X
+interface State X = get : X
+	          | put : X -> Unit
+interface Choice = choose X : {[Choice]X} -> {[Choice]X} -> X
+
+not : {Bool -> Bool}
 not false = true
 not true  = false
 
--- Control structures
-if : Bool -> {X} -> {X} -> X
+{-- Control structures --}
+
+-- lazy conditional
+if : {Bool -> {X} -> {X} -> X}
 if true  t f = t!
 if false t f = f!
 
 -- Pair operations
-fst: Pair X Y -> X
+fst : {Pair X Y -> X}
 fst (pair x _) = x
 
-snd: Pair X Y -> Y
+snd : {Pair X Y -> Y}
 snd (pair _ y) = y
+
+{-- Natural number operations --}
+
+-- Equality on natural numbers
+eqN : {Nat -> Nat -> Bool}
+eqN zero zero = true
+eqN (suc n) (suc m) = eqN n m
 
 -- List operations
 rev' : {List X -> List X -> List X}
@@ -28,9 +45,9 @@ rev' (x :: xs) ys = rev' xs (x :: ys)
 rev : {List X -> List X}
 rev xs = rev' xs []
 
-app : {List X -> List X -> List X}
-app []        ys = ys
-app (x :: xs) ys = x :: (app xs ys)
+append : {List X -> List X -> List X}
+append []        ys = ys
+append (x :: xs) ys = x :: (append xs ys)
 
 map : {{X -> Y} -> List X -> List Y}
 map f []        = []
@@ -40,18 +57,55 @@ elem : {{X -> X -> Bool} -> List X -> X -> Bool}
 elem _ [] _ = false
 elem eq (x::xr) y = if (eq x y) {true} {elem eq xr y}
 
-find: {{X -> Bool} -> List X -> Maybe X}
-find _ [] = nothing
-find p (x::xr) = if (p x) {just x} {find p xr}
+head : {List X -> [Abort]X}
+head []        = abort!
+head (x :: xs) = x
+
+find : {{X -> Bool} -> List X -> Maybe X}
+find _ []      = nothing
+find p (x::xs) = if (p x) {just x} {find p xs}
 
 lookup: {{X -> X -> Bool} -> X -> List (Pair X Y) -> Maybe Y}
 lookup _ _ [] = nothing
-lookup eq x' ((pair x y)::xr) = if (eq x x') {just y} {lookup eq x' xr}
+lookup eq x' ((pair x y)::xs) = if (eq x x') {just y} {lookup eq x' xs}
+
+{-- Handlers for basic interfaces --}
+
+-- Exception handler
+
+catch : {<Abort>X -> {X} -> X}
+catch x            _ = x
+catch <abort -> _> h = h!
+
+-- Evaluation for State: return the value result of the stateful computation
+evalState : {X -> <State X>Y -> Y}
+evalState x <put x' -> k>  = evalState x' (k unit)
+evalState x <get    -> k>  = evalState x (k x)
+evalState x y              = y
+
+-- Run for State: return the value result and the final state as a pair.
+runState : {X -> <State X>Y -> Pair X Y}
+runState x <put x' -> k>  = runState x' (k unit)
+runState x <get    -> k>  = runState x (k x)
+runState x y              = pair x y
+
+-- Execution for State: return the final state of the stateful computation
+execState : {X -> <State X>Y -> X}
+execState x <put x' -> k>  = execState x' (k unit)
+execState x <get    -> k>  = execState x (k x)
+execState x y              = x
+
+{-- Character-based predicates --}
+
+isSpace : {Char -> Bool}
+isSpace ' '  = true
+isSpace '\t' = true
+isSpace '\n' = true
+isSpace '\r' = true
+isSpace '\f' = true
+isSpace  _   = false
 
 -- I/O
 print : {String -> [Console]Unit}
 print s = map ouch s; unit
--- End Prelude -----------------------------------------------------------------
-
-main: {Unit}
-main! = unit
+-- End Prelude -------------------------------------------------------------

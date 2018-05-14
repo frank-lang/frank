@@ -55,8 +55,8 @@ data PromiseStatus X = done X
 
 data Promise X = promise (Ref (PromiseStatus X))
 
-interface Async = async X: {[Async]X} -> Promise X
-                | await X: Promise X -> X
+interface Async = async X : {[Async]X} -> Promise X
+                | await X : Promise X -> X
 
 --------------------------------------------------------------------------------
 -- Transform an async process into fork/yield process
@@ -69,7 +69,8 @@ interface CoRef = [Co [RefState], RefState]
 fulfill : {Promise X [CoRef] -> X -> [CoRef]Unit}
 fulfill (promise r) x = case (read r)
                           { (done _)     -> unit
-                          | (waiting fs) -> map { f -> f x } fs; write r (done x) }
+                          | (waiting fs) -> map { f -> f x } (reverse fs);
+                                            write r (done x) }
 
 asyncCoRef : {Promise X [CoRef] -> <Async [CoRef]>X -> [CoRef]Unit}
 asyncCoRef p v = fulfill p v
@@ -128,16 +129,16 @@ scheduleBF unit          = runNext!
 
 -- IMPORTANT: the effect parameter of Async must be independent of the
 -- ambient
-calcProg : {Int -> Int -> Int -> [Async [E|]]Int}
-calcProg a b c = let p1 = async {a + b} in
-                 let p2 = async {b + c} in
-                 let v1 = await p1 in
+calcProg : {Int -> Int -> Int -> [E | Async [Console], Console]Int}
+calcProg a b c = print "M1\n";
+                 let p1 = async {print "p1\n"; a + b} in
+                 let p2 = async {print "p2\n"; b + c} in
+                 print "M2\n";
                  let v2 = await p2 in
+                 print "M3\n";
+                 let v1 = await p1 in
+                 print "M4\n";
                  v1 + v2
-
--- stupid pretty-printer hack :)
-dummy : {Unit}
-dummy! = case unit {_ -> unit | _ -> unit}
 
 --------------------------------------------------------------------------------
 -- Main
@@ -147,5 +148,5 @@ dummy! = case unit {_ -> unit | _ -> unit}
 -- #desc   examples/async-await.fk
 -- #return 8
 
-main: {[RefState]Int}
+main: {[RefState, Console]Int}
 main! = runAsync (calcProg 1 2 3)

@@ -124,7 +124,8 @@ isHdrCtxt (Just Handler) = True
 isHdrCtxt _              = False
 
 -- Check if ids are unique, if not throw error using the function "f"
-checkUniqueIds :: (HasId a, HasSource a) => [a] -> (Id -> Source -> String) -> Refine ()
+checkUniqueIds :: (HasId a, HasSource a) => [a] -> (Id -> Source -> String) ->
+                  Refine ()
 checkUniqueIds xs f =
   let (_, mErr) = foldl (\(ys, mErr) x -> if isNothing mErr
                                           then if getId x `elem` ys
