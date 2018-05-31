@@ -14,6 +14,20 @@ import BwdFwd
 {-- Elementary definitions --}
 type Id = String
 
+data Renaming = I | S | Cons Integer Renaming | Comp Renaming Renaming
+  deriving (Show, Eq)
+
+renNeg :: Integer -> Renaming
+renNeg n = renNeg' 0
+  where renNeg' n' = if n == n' then (renNeg'' n)
+                                else Cons n' (renNeg' (n'+1))
+        renNeg'' 0  = S
+        renNeg'' n' = Comp S (renNeg'' (n'-1))
+
+renSwap :: Integer -> Integer -> Renaming
+renSwap m n = I -- LC: TODO
+
+
 -- Top level definitions instantiate this class
 class HasId a where
   getId :: a -> Id
@@ -235,13 +249,16 @@ data UseF :: ((* -> *) -> (* -> *)) -> * -> * where
   MkOp :: NotRaw (t Identity ()) => TFix t OperatorF -> UseF t r
   MkApp :: NotRaw (t Identity ()) => r -> [TFix t TmF] -> UseF t r
   MkLift :: [Id] -> r -> UseF t r
+  MkAdapted :: [TFix t AdaptorF] -> r -> UseF t r
 deriving instance (Show (TFix t OperatorF),
                    Show (TFix t TmF),
                    Show (TFix t ItfMapF),
+                   Show (TFix t AdaptorF),
                    Show r, Show (TFix t UseF)) => Show (UseF t r)
 deriving instance (Eq (TFix t OperatorF),
                    Eq (TFix t TmF),
                    Eq (TFix t ItfMapF),
+                   Eq (TFix t AdaptorF),
                    Eq r, Eq (TFix t UseF)) => Eq (UseF t r)
 type Use a = AnnotTFix a UseF
 pattern RawId x a = Fx (AnnF (MkRawId x, a))
@@ -249,6 +266,7 @@ pattern RawComb f xs a = Fx (AnnF (MkRawComb f xs, a))
 pattern Op op a = Fx (AnnF (MkOp op, a))
 pattern App f xs a = Fx (AnnF (MkApp f xs, a))
 pattern Lift itfs tm a = Fx (AnnF (MkLift itfs tm, a))
+pattern Adapted rs tm a = Fx (AnnF (MkAdapted rs tm, a))
 
 -- Tm here = 'construction' in the paper
 
@@ -425,7 +443,7 @@ type Peg a = AnnotTFix a PegF
 pattern Peg ab ty a = Fx (AnnF (MkPeg ab ty, a))
 
 data VTypeF :: ((* -> *) -> (* -> *)) -> * -> * where           -- value types
-  MkDTTy :: Id -> [TFix t TyArgF] -> VTypeF t r               --   data types (instant. type constr.)  may be refined to MkTVar
+  MkDTTy :: Id -> [TFix t TyArgF] -> VTypeF t r                 --   data types (instant. type constr.)  may be refined to MkTVar
   MkSCTy :: TFix t CTypeF -> VTypeF t  r                        --   suspended computation types
   MkTVar :: NotDesugared (t Identity ()) => Id -> VTypeF t  r   --                                       may be refined to MkDTTy
   MkRTVar :: Id -> VTypeF (AnnotT Desugared)  r                 --   rigid type variable (bound)
@@ -507,6 +525,17 @@ deriving instance (Eq (TFix t VTypeF),
 type TyArg a = AnnotTFix a TyArgF
 pattern VArg ty a = Fx (AnnF (MkVArg ty, a))
 pattern EArg ab a = Fx (AnnF (MkEArg ab, a))
+
+data AdaptorF :: ((* -> *) -> (* -> *)) -> * -> * where
+  MkNeg :: Id -> Integer -> AdaptorF t r
+  MkSwap :: Id -> Integer -> Integer -> AdaptorF t r
+  MkAdaptor :: Id -> Renaming -> Integer -> AdaptorF t r
+deriving instance (Show r, Show (TFix t AdaptorF)) => Show (AdaptorF t r)
+deriving instance (Eq r, Eq (TFix t AdaptorF)) => Eq (AdaptorF t r)
+type Adaptor a = AnnotTFix a AdaptorF
+pattern Neg x n a = Fx (AnnF (MkNeg x n, a))
+pattern Swap x m n a = Fx (AnnF (MkSwap x m n, a))
+pattern Adaptor x r n a = Fx (AnnF (MkAdaptor x r n, a))
 
 idAdjRaw :: Adj Raw
 idAdjRaw = Adj (ItfMap M.empty (Raw Implicit)) (Raw Implicit)

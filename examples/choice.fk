@@ -31,7 +31,7 @@ data Toss = Heads | Tails
 toss : {[Choice]Toss}
 toss! = if choice! {Heads} {Tails}
 
-drunkToss : {[Choice, Abort]Toss}
+drunkToss : {[Choice, Abort, Console]Toss}
 drunkToss! = choose {toss!} {abort!}
 
 drunkTosses : {Int -> [Choice, Abort]List Toss}

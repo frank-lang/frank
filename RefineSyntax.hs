@@ -371,6 +371,27 @@ refineUse (Lift itfs t a) =
              if M.member x itfCx
              then return ()
              else throwError $ errorRefIdNotDeclared "interface" x a
+refineUse (Adapted rs t a) =
+  -- First check the existence of the interfaces
+  do rs' <- mapM refineAdaptor rs
+     t' <- refineUse t
+     case t' of
+       Left u   -> return $ Left $ Adapted rs' u (rawToRef a)
+       Right tm -> throwError $ errorRefExpectedUse tm
+
+-- LC: TODO condense this function
+refineAdaptor :: Adaptor Raw -> Refine (Adaptor Refined)
+refineAdaptor (Neg x n a) =
+  do itfCx <- getRItfs
+     if x `M.member` itfCx then return $ Neg x n (rawToRef a)
+                           else throwError $
+                                errorRefIdNotDeclared "interface" x a
+refineAdaptor (Swap x m n a) =
+  do itfCx <- getRItfs
+     if x `M.member` itfCx then return $ Swap x m n (rawToRef a)
+                           else throwError $
+                                errorRefIdNotDeclared "interface" x a
+
 
 refineTm :: Tm Raw -> Refine (Tm Refined)
 refineTm (Let x t1 t2 a) =

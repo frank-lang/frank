@@ -130,6 +130,12 @@ errorLiftAdj lift@(Lift p _ _) ab =
   "> is not a valid adjustment for lift in ambient " ++ (show $ ppAb ab) ++
   " (" ++  (show $ ppSourceOf lift) ++ ")"
 
+errorAdaptor :: Use Desugared -> Ab Desugared -> String
+errorAdaptor red@(Adapted rs t _) ab =
+  "<" ++ (show $ ppAdaptors rs) ++
+  "> is not a valid Adaptor in ambient " ++ (show $ ppAb ab) ++
+  " (" ++  (show $ ppSourceOf red) ++ ")"
+
 errorUnifSolveOccurCheck :: String
 errorUnifSolveOccurCheck = "solve: occurs check failure"
 
@@ -162,6 +168,11 @@ logBeginInferUse u@(Lift p t _) = ifDebugTypeCheckOnThen $ do
   debugTypeCheckM $ "begin infer use of lift: Under curr. amb. " ++
     show (ppAb amb) ++ " lifted by <" ++ (show $ ppItfs p) ++
     ">\n   infer type of " ++ show (ppUse u) ++ "\n\n"
+logBeginInferUse u@(Adapted rs t _) = ifDebugTypeCheckOnThen $ do
+  amb <- getAmbient
+  debugTypeCheckM $ "begin infer use of redirected: Under curr. amb. " ++
+    show (ppAb amb) ++ " redirected by <" ++ (show $ rs) ++
+    ">\n   infer type of " ++ show (ppUse u) ++ "\n\n"
 
 
 logEndInferUse :: Use Desugared -> VType Desugared -> Contextual ()
@@ -177,6 +188,12 @@ logEndInferUse u@(Lift p t _) ty = ifDebugTypeCheckOnThen $ do
   amb <- getAmbient
   debugTypeCheckM $ "ended infer use of lift: Under curr. amb. " ++
     show (ppAb amb) ++ " lifted by <" ++ (show $ ppItfs p) ++
+    ">\n   infer type of " ++ show (ppUse u) ++
+    "\n   gives " ++ show (ppVType ty) ++ "\n\n"
+logEndInferUse u@(Adapted rs t _) ty = ifDebugTypeCheckOnThen $ do
+  amb <- getAmbient
+  debugTypeCheckM $ "ended infer use of redirected: Under curr. amb. " ++
+    show (ppAb amb) ++ " redirected by <" ++ (show rs) ++
     ">\n   infer type of " ++ show (ppUse u) ++
     "\n   gives " ++ show (ppVType ty) ++ "\n\n"
 
@@ -405,6 +422,8 @@ ppUse (Op op _) = ppOperator op
 ppUse (App u args _) = PP.lparen <> ppUse u <+> ppArgs args <> PP.rparen
 ppUse (Lift p t _) =
   PP.parens $ text "lift <" <+> ppItfs p <+> text "> " <+> ppUse t
+ppUse (Adapted rs t _) =
+  PP.parens $ text "<" <> ppAdaptors rs <> text ">"
 
 -- TODO: LC: fix parenthesis output...
 ppArgs :: (Show a, HasSource a) => [Tm a] -> Doc
@@ -418,6 +437,14 @@ ppOperator (CmdId x _) = text x
 
 ppDataCon :: (Show a, HasSource a) => DataCon a -> Doc
 ppDataCon (DataCon x tms _) = text x <+> sep (map ppTm tms)
+
+ppAdaptors :: (Show a, HasSource a) => [Adaptor a] -> Doc
+ppAdaptors rs = PP.hsep $ intersperse PP.comma $ map ppAdaptor rs
+
+ppAdaptor :: (Show a, HasSource a) => Adaptor a -> Doc
+ppAdaptor (Neg x n _) = text "-" <> text x <> text "." <> int (fromIntegral n)
+ppAdaptor (Swap x m n _) = int (fromIntegral m) <> text "." <> text x <>
+                               text "." <> int (fromIntegral n)
 
 {- TypeCheckCommon pretty printers -}
 

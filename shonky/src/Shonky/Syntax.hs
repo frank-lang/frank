@@ -26,7 +26,7 @@ data Exp
   | EX [Either Char Exp]          -- string concatenation expression
     -- (used only for characters in source Frank (Left c), but used by
     -- strcat)
-  | ER  Redir Exp                 -- redirection
+  | ER  Redir Exp                 -- Adaptor
   deriving (Show, Eq)
 infixr 6 :&
 infixl 5 :$
@@ -59,13 +59,13 @@ data VPat
   deriving (Show, Eq)
 
 -- Each command is mapped to a function that tells the new direction of
--- a command. For instance, \n. n+1 is the redirection that eliminates
+-- a command. For instance, \n. n+1 is the Adaptor that eliminates
 -- the 0-layer of an effect.
 -- LC: Fix the whole definition such that we do not have arbitrary functions
--- but only "regular" redirections (consisting of id, (+1), composition and
+-- but only "regular" Adaptors (consisting of id, (+1), composition and
 -- cons)
 newtype Redir = Redir {redir :: String -> (Integer -> Integer)}
-instance Show Redir where show r = "redirection"
+instance Show Redir where show r = "Adaptor"
 instance Eq Redir where
   r1 == r2 = True -- LC: Fix this when functions are restricted to regular
                   -- ones that actually can be checked for equality since
@@ -92,7 +92,7 @@ pP :: String -> P ()
 pP s = () <$ traverse (pLike pChar . (==)) s
 
 pExp :: P Exp
-pExp = ((((ER . lift) <$ pGap <* pP "lift" <* pGap <* pP "<" <* pGap <*>
+pExp = ((((ER . neg 0) <$ pGap <* pP "neg" <* pGap <* pP "<" <* pGap <*>
           pCSep (pId <* pGap) ">" <*
           pGap <* pP "(" <* pGap <*>
           pExp <*
@@ -124,9 +124,15 @@ adjRedir c f (Redir r) = Redir (\s -> if s == c then f . (r c)
 compRedir :: Redir -> Redir -> Redir
 compRedir r1 r2 = Redir (\s -> (redir r1) s . (redir r2) s)
 
-lift :: [String] -> Redir
-lift []     = Redir (\s -> id)
-lift (c:cr) = adjRedir c (+1) (lift cr)
+neg :: Integer -> [String] -> Redir
+neg n []     = Redir (\s -> id)
+neg n (c:cr) = adjRedir c (\m -> if m >= n then m+1 else m) (neg n cr)
+
+swap :: Integer -> Integer -> [String] -> Redir
+swap m n []     = Redir (\s -> id)
+swap m n (c:cr) = adjRedir c (\k -> if k == m then n else
+                                    if k == n then m else k)
+                             (swap m n cr)
 
 esc :: Char -> Char
 esc 'n' = '\n'
@@ -265,7 +271,7 @@ ppExp (EF xs ys) =
   let clauses = map (ppClause (<+>)) ys in
   braces $ hcat (punctuate comma clauses)
 ppExp (EX xs) = text "[|" <> ppText ppExp xs
-ppExp (ER r e) = text "redirect" <+> parens (ppExp e)  -- LC: TODO when redirections are re-defined
+ppExp (ER r e) = text "redirect" <+> parens (ppExp e)  -- LC: TODO when Adaptors are re-defined
 
 ppExp' :: Exp -> Doc
 ppExp' (e :& EA "") = ppExp e <> rbracket

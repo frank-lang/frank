@@ -59,7 +59,7 @@ data Frame
   | Qed Val
   | Def Env [Def Val] String [Def Exp] Exp
   | Txt Env [Char] [Either Char Exp]                                        -- current char of string can be processed. env, already computed reversed beginning, rest are recorded
-  | Red Redir                                                               -- redirections for commands that go below this frame (when looking at the frame stack)
+  | Red Redir                                                               -- Adaptors for commands that go below this frame (when looking at the frame stack)
   deriving Show
 
 type Agenda = [Frame]

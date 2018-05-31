@@ -172,7 +172,18 @@ compileUse (Op op _) = compileOp op
 compileUse (App use xs _) = (S.:$) <$> compileUse use <*> mapM compileTm xs
 compileUse (Lift p t _) = do e <- compileUse t
                              cmds <- msum <$> mapM getCCmds p
-                             return $ S.ER (S.lift cmds) e
+                             return $ S.ER (S.neg 0 cmds) e
+compileUse (Adapted [] t _) = compileUse t
+compileUse (Adapted (r:rr) t a) =
+  do r' <- compileAdaptor r
+     rest <- compileUse (Adapted rr t a)
+     return $ S.ER r' rest
+
+compileAdaptor :: (NotRaw a, Show a, HasSource a) => Adaptor a -> Compile S.Redir
+compileAdaptor (Neg x n _) = do cmds <- getCCmds x
+                                return $ S.neg n cmds
+compileAdaptor (Swap x m n _) = do cmds <- getCCmds x
+                                   return $ S.swap m n cmds
 
 compileDataCon :: (NotRaw a, Show a, HasSource a) => DataCon a -> Compile S.Exp
 compileDataCon (DataCon id xs _) = do xs' <- mapM compileTm xs

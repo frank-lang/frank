@@ -243,6 +243,13 @@ desugarUse (App use xs a) =
   App <$> desugarUse use <*> mapM desugarTm xs <*> pure (refToDesug a)
 desugarUse (Op op a) = Op <$> desugarOperator op <*> pure (refToDesug a)
 desugarUse (Lift p t a) = Lift p <$> desugarUse t <*> pure (refToDesug a)
+desugarUse (Adapted rs t a) = Adapted <$> (mapM desugarAdaptor rs)
+                                 <*> desugarUse t <*> pure (refToDesug a)
+
+desugarAdaptor :: Adaptor Refined -> Desugar (Adaptor Desugared)
+desugarAdaptor (Neg x n a) = return $ Adaptor x (renNeg n) n (refToDesug a)
+desugarAdaptor (Swap x m n a) = return $ Adaptor x (renSwap m n) (max m n) (refToDesug a)
+desugarAdaptor (Adaptor x r n a) = return $ Adaptor x r n (refToDesug a)
 
 desugarOperator :: Operator Refined -> Desugar (Operator Desugared)
 desugarOperator (Mono x a) = return $ Mono x (refToDesug a)

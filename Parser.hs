@@ -345,6 +345,7 @@ unOperation = provideLoc $ \a -> do
 -- use
 use :: MonadicParsing m => m (Tm Raw) -> m (Use Raw)
 use p = lift (ncuse p) <|>                            -- lift [...] ncuse
+        redirected (ncuse p) <|>                      -- <RED,...RED> ncuse
         cuse p                                        -- cuse
 
 -- comb use
@@ -376,6 +377,18 @@ lift p = attachLoc $ do -- lift <I_1,I_2,...,I_n> stm
             xs <- angles (sepBy identifier (symbol ","))
             t <- p
             return $ Lift xs t
+
+redirected :: MonadicParsing m => m (Use Raw) -> m (Use Raw)
+redirected p = attachLoc $ do -- <RED1,RED2,...,REDn> stm
+            xs <- angles (sepBy adaptor (symbol ","))
+            t <- p
+            return $ Adapted xs t
+
+adaptor :: MonadicParsing m => m (Adaptor Raw)
+adaptor = (attachLoc $ Neg <$ symbol "-" <*> identifier <* symbol "."
+                               <*> integer) <|>
+              (attachLoc $ (flip Swap) <$> integer <* symbol "."
+                               <*> identifier <* symbol "." <*> integer)
 
 idUse :: MonadicParsing m => m (Use Raw)
 idUse = attachLoc $ do x <- identifier

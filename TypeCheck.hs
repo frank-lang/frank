@@ -246,6 +246,30 @@ inferUse lift@(Lift itfs t _) =
           logEndInferUse lift res
           return res
      else throwError $ errorLiftAdj lift amb
+inferUse red@(Adapted rs t _) =
+  do logBeginInferUse red
+     amb <- getAmbient >>= expandAb
+     let (Ab v p@(ItfMap m _) a) = amb
+     -- Check that the Adaptors can be performed and modify the ambient
+     -- accordingly
+     let mamb = foldr ((=<<) . applyAdaptor) (Just amb) rs
+     case mamb of Nothing -> throwError $ errorAdaptor red amb
+                  (Just amb') -> do res <- inAmbient amb' (inferUse t)
+                                    logEndInferUse red res
+                                    return res
+
+
+applyAdaptor :: Adaptor Desugared -> Ab Desugared -> Maybe (Ab Desugared)
+applyAdaptor neg@(Neg x n _) (Ab v p@(ItfMap m a') a) =
+  if (toInteger . length . bwd2fwd) (M.findWithDefault BEmp x m) > n then
+     Just (Ab v (ItfMap (M.adjust (fwd2bwd . (removeAt (fromIntegral n)) . bwd2fwd) x m) a') a)
+  else Nothing
+applyAdaptor swap@(Swap x n1 n2 _) (Ab v p@(ItfMap m a') a) =
+  let len = (toInteger . length . bwd2fwd) (M.findWithDefault BEmp x m) in
+  if len > n1 && len > n2 then
+     Just (Ab v (ItfMap (M.adjust (fwd2bwd . (swapTwo (fromIntegral n1) (fromIntegral n2)) . bwd2fwd) x m) a') a)
+  else Nothing
+
 
 -- 2nd major TC function: Check that term (construction) has given type
 checkTm :: Tm Desugared -> VType Desugared -> Contextual ()
@@ -458,3 +482,17 @@ getCtr :: Id -> Contextual (Id,[TyArg Desugared],[VType Desugared])
 getCtr k = get >>= \s -> case M.lookup k (ctrMap s) of
   Nothing -> throwError $ errorTCNotACtr k
   Just (dt, ts, xs) -> return (dt, ts, xs)
+
+removeAt :: Int -> [a] -> [a]
+removeAt n xs = let (ys, zs) = splitAt n xs in
+                case zs of []     -> ys
+                           (z:zr) -> ys ++ zr
+
+-- LC: TODO: quickly-copied from the web: https://stackoverflow.com/a/30557189
+-- Refactor!
+swapTwo :: Int -> Int -> [a] -> [a]
+swapTwo f s xs = map snd . foldr (\x a ->
+        if fst x == f then ys !! s : a
+        else if fst x == s then ys !! f : a
+        else x : a) [] $ ys
+    where ys = zip [0..] xs
