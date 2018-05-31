@@ -239,8 +239,9 @@ inferUse lift@(Lift itfs t _) =
   do logBeginInferUse lift
      amb <- getAmbient >>= expandAb
      let (Ab v p@(ItfMap m _) a) = amb
-     -- Check that all the interfaces are in the ambient
-     if all (\x -> M.member x m) (S.toList itfs) then
+     -- Check that all the lifted interfaces are in the ambient
+     if all (\(x, n) -> True) (M.assocs (histogram itfs)) then
+       -- n <= M.findWithDefault 0 x m
        do res <- inAmbient (Ab v (removeItfs p itfs) a) (inferUse t)
           logEndInferUse lift res
           return res

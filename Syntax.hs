@@ -234,7 +234,7 @@ data UseF :: ((* -> *) -> (* -> *)) -> * -> * where
   MkRawComb :: r -> [TFix (AnnotT Raw) TmF] -> UseF (AnnotT Raw) r
   MkOp :: NotRaw (t Identity ()) => TFix t OperatorF -> UseF t r
   MkApp :: NotRaw (t Identity ()) => r -> [TFix t TmF] -> UseF t r
-  MkLift :: S.Set Id -> r -> UseF t r
+  MkLift :: [Id] -> r -> UseF t r
 deriving instance (Show (TFix t OperatorF),
                    Show (TFix t TmF),
                    Show (TFix t ItfMapF),
@@ -648,12 +648,17 @@ emptyItfMap = ItfMap M.empty
 isItfMapEmpty :: ItfMap t -> Bool
 isItfMapEmpty (ItfMap m _) = M.null m
 
--- Remove from the map the first instance of every interface in the set.
-removeItfs :: ItfMap t -> S.Set Id -> ItfMap t
-removeItfs (ItfMap m a) p =
-  let upd sx = case sx of
-        BEmp -> error "lift invariant broken"
-        BEmp :< _ -> Nothing
-        sy :< _ -> Just sy
-  in
-   ItfMap (S.foldr (\k q -> M.update upd k q) m p) a
+-- Remove from the map the instances of every interface in the list.
+removeItfs :: ItfMap t -> [Id] -> ItfMap t
+removeItfs (ItfMap m a) []     = (ItfMap m a)
+removeItfs (ItfMap m a) (x:xr) = case M.findWithDefault BEmp x m of
+  BEmp    -> error "lift invariant broken"
+  ir :< _ -> (ItfMap (M.insert x ir m) a)
+
+
+-- Take a list with duplicates and return a map that counts all occurrences
+histogram :: Ord a => [a] -> M.Map a Int
+histogram []     = M.empty
+histogram (x:xr) = if x `M.member` m then M.adjust (+1) x m
+                                     else M.insert x 1 m
+  where m = histogram xr

@@ -438,8 +438,8 @@ ppSuffix :: Suffix -> Doc
 ppSuffix = ppFwd . (map (\(x, d) -> "(" ++ show x ++ "," ++
                                     show (ppDecl d) ++ ")"))
 
-ppItfs :: S.Set Id -> Doc
-ppItfs p = PP.hsep $ intersperse PP.comma $ map text (S.toList p)
+ppItfs :: [Id] -> Doc
+ppItfs p = PP.hsep $ intersperse PP.comma $ map text p
 
 {- BWDFWD pretty printers -}
 

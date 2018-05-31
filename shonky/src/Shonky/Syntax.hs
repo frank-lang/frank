@@ -26,8 +26,7 @@ data Exp
   | EX [Either Char Exp]          -- string concatenation expression
     -- (used only for characters in source Frank (Left c), but used by
     -- strcat)
-  | ES [String] Exp               -- lift
-    --  [String]: set of commands-to-be-lifted
+  | ER  Redir Exp                 -- redirection
   deriving (Show, Eq)
 infixr 6 :&
 infixl 5 :$
@@ -59,6 +58,20 @@ data VPat
   | VPQ String              -- LC: ?
   deriving (Show, Eq)
 
+-- Each command is mapped to a function that tells the new direction of
+-- a command. For instance, \n. n+1 is the redirection that eliminates
+-- the 0-layer of an effect.
+-- LC: Fix the whole definition such that we do not have arbitrary functions
+-- but only "regular" redirections (consisting of id, (+1), composition and
+-- cons)
+newtype Redir = Redir {redir :: String -> (Integer -> Integer)}
+instance Show Redir where show r = "redirection"
+instance Eq Redir where
+  r1 == r2 = True -- LC: Fix this when functions are restricted to regular
+                  -- ones that actually can be checked for equality since
+                  -- they have a normal form
+
+
 pProg :: P [Def Exp]
 pProg = pGap *> many (pDef <* pGap)
 
@@ -79,7 +92,7 @@ pP :: String -> P ()
 pP s = () <$ traverse (pLike pChar . (==)) s
 
 pExp :: P Exp
-pExp = (((ES <$ pGap <* pP "shift" <* pGap <* pP "<" <* pGap <*>
+pExp = ((((ER . lift) <$ pGap <* pP "lift" <* pGap <* pP "<" <* pGap <*>
           pCSep (pId <* pGap) ">" <*
           pGap <* pP "(" <* pGap <*>
           pExp <*
@@ -94,8 +107,6 @@ pExp = (((ES <$ pGap <* pP "shift" <* pGap <* pP "<" <* pGap <*>
           (id <$ pP "(" <*> pCSep (many (pId <* pGap)) ")"
               <* pGap <* pP ":" <* pGap
            <|> pure []) <*> pCSep pClause "" <* pGap <* pP "}"
-       <|> ES <$ pP "^" <* pP "[" <*> pCSep pId "]" <* pP "("
-           <*> pExp <* pP ")"
        ) >>= pApp)
        <|> (:-) <$ pP "{|" <*> pProg <* pP "|}" <* pGap <*> pExp
      where thunk e = EF [] [([], e)]
@@ -105,6 +116,17 @@ pText p = (:) <$ pP "\\" <*> (Left <$> (esc <$> pChar)) <*> pText p
     <|> (:) <$ pP "`" <*> (Right <$> p) <* pP "`" <*> pText p
     <|> [] <$ pP "|]"
     <|> (:) <$> (Left <$> pChar) <*> pText p
+
+adjRedir :: String -> (Integer -> Integer) -> Redir -> Redir
+adjRedir c f (Redir r) = Redir (\s -> if s == c then f . (r c)
+                                                else r c)
+
+compRedir :: Redir -> Redir -> Redir
+compRedir r1 r2 = Redir (\s -> (redir r1) s . (redir r2) s)
+
+lift :: [String] -> Redir
+lift []     = Redir (\s -> id)
+lift (c:cr) = adjRedir c (+1) (lift cr)
 
 esc :: Char -> Char
 esc 'n' = '\n'
@@ -243,8 +265,7 @@ ppExp (EF xs ys) =
   let clauses = map (ppClause (<+>)) ys in
   braces $ hcat (punctuate comma clauses)
 ppExp (EX xs) = text "[|" <> ppText ppExp xs
-ppExp (ES cs e) = let args = hsep $ punctuate comma (map text cs) in
-  text "^" <+> angles args <+> parens (ppExp e)
+ppExp (ER r e) = text "redirect" <+> parens (ppExp e)  -- LC: TODO when redirections are re-defined
 
 ppExp' :: Exp -> Doc
 ppExp' (e :& EA "") = ppExp e <> rbracket

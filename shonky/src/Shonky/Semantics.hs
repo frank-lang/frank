@@ -59,7 +59,7 @@ data Frame
   | Qed Val
   | Def Env [Def Val] String [Def Exp] Exp
   | Txt Env [Char] [Either Char Exp]                                        -- current char of string can be processed. env, already computed reversed beginning, rest are recorded
-  | Lif [String]                                                            -- commands to skip below this frame (when looking at the frame stack)
+  | Red Redir                                                               -- redirections for commands that go below this frame (when looking at the frame stack)
   deriving Show
 
 type Agenda = [Frame]
@@ -135,7 +135,7 @@ ppFrame (Arg hs f cs g hss es) = text "Arg" <+> align (vcat [text "hs =" <+> (te
 ppFrame (Seq g e)              = text "Seq" <+> ppEnv g <+> ppExp e
 ppFrame (Qes g e)              = text "Qes" <+> ppEnv g <+> ppExp e
 ppFrame (Qed v)                = text "Qed" <+> ppVal v
-ppFrame (Lif sc)               = text "Lif" <+> (text . show) sc
+ppFrame (Red r)                = text "Red" <+> (text . show) r
 
 ppEnv :: Env -> Doc
 ppEnv g = bracketed empty (map ((bracketed line) . (map ppDefVal)) (envToList g))
@@ -225,7 +225,7 @@ compute g (e :// f)    ls = compute g e (Qes g f : ls)                      -- 2
 compute g (EF hss pes) ls = consume (VF g hss pes) ls                       -- 1) feed in function
 compute g (ds :- e)    ls = define g [] ds e ls                             -- (not used by Frank)
 compute g (EX ces)     ls = combine g [] ces ls                             -- 2) compute string
-compute g (ES sc e)    ls = compute g e (Lif sc : ls)                       -- 2) add commands to be skipped in `ls`
+compute g (ER r e)     ls = compute g e (Red r : ls)                       -- 2) add commands to be skipped in `ls`
 
 -- Take val `v` and top-frame from stack, apply it to `v` in
 consume :: Val -> Agenda -> Comp
@@ -243,8 +243,8 @@ consume v (Qes g e           : ls) = compute g e (Qed v : ls)               -- C
 consume _ (Qed v             : ls) = consume v (ls)                         -- LC: Bug here? Why discard argument? (but not used by Frank so far anyway)
 consume v (Def g dvs x des e : ls) = define g ((x := v) : dvs) des e (ls)   -- (not used by Frank)
 consume v (Txt g cs ces      : ls) = combine g (revapp (txt v) cs) ces (ls) -- (not used by Frank)
-consume v (Lif sc            : ls) = consume v ls                           -- ignore lift when value is obtained
-consume v []                         = Ret v
+consume v (Red r             : ls) = consume v ls                           -- ignore redirect when value is obtained
+consume v []                       = Ret v
 
 -- inch and ouch commands in the IO monad
 -- only if the level is 0 --TODO LC: rethink this?
@@ -349,8 +349,7 @@ command c vs ks n (k@(Arg hs f cs g hss es) : ls)                           -- i
                                                                             --    then fix command-call as argument and continue with `args`
   | n >= count = command c vs (k : ks) (n-count) ls                         -- if there is a handler that can handle `c` but is to be skipped,
   where count = toInteger$ length (filter (== c) hs)                        --    then skip that handler and recurse
-command c vs ks n (Lif sc : ls) = command c vs (Lif sc : ks) (n+count) ls   -- if there is a lift frame that lifts `c` for `count` times, then `n`
-  where count = toInteger $ length (filter (== c) sc)                       --    is augmented accordingly
+command c vs ks n (Red r : ls) = command c vs (Red r : ks) (redir r c n) ls -- if there is a lift frame that lifts `c` for `count` times, then `n` is redirected accordingly
 command c vs ks n (k : ls) = command c vs (k : ks) n ls                     -- skip current handler `k` and recurse
 
 -- given:  env, rules, evaluated args, frame stack

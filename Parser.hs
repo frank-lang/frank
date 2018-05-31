@@ -375,7 +375,7 @@ lift p = attachLoc $ do -- lift <I_1,I_2,...,I_n> stm
             reserved "lift"
             xs <- angles (sepBy identifier (symbol ","))
             t <- p
-            return $ Lift (S.fromList xs) t
+            return $ Lift xs t
 
 idUse :: MonadicParsing m => m (Use Raw)
 idUse = attachLoc $ do x <- identifier

@@ -171,8 +171,8 @@ compileUse :: (NotRaw a, Show a, HasSource a) => Use a -> Compile S.Exp
 compileUse (Op op _) = compileOp op
 compileUse (App use xs _) = (S.:$) <$> compileUse use <*> mapM compileTm xs
 compileUse (Lift p t _) = do e <- compileUse t
-                             cmds <- msum <$> mapM getCCmds (S.toList p)
-                             return $ S.ES cmds e
+                             cmds <- msum <$> mapM getCCmds p
+                             return $ S.ER (S.lift cmds) e
 
 compileDataCon :: (NotRaw a, Show a, HasSource a) => DataCon a -> Compile S.Exp
 compileDataCon (DataCon id xs _) = do xs' <- mapM compileTm xs
