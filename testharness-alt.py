@@ -1,23 +1,27 @@
 #!/usr/bin/python3
 
-## Test harness for Frank
-## Craig McLaughlin
-## See the musings document for details on the proposed specification for this
-## harness.
+## Alternative, smaller test harness for Frank
+## Craig McLaughlin, modified by Lukas Convent
+## See the musings document for details on the proposed specification
+## for this harness.
 
 import io
 import os
 from subprocess import Popen,PIPE,TimeoutExpired
 
-dirs = ["tests/should-pass/", "examples/", "tests/should-fail/", "tests/still-todo/"]
+# LC: TODO: Configuration should be parseable
+dirs = ["tests/should-pass/", "tests/should-fail/",
+        "tests/still-todo/", "examples/"]
 showSuccesses = False
 showSuccessesDetail = False
 showFailures  = True
 showFailuresDetail = True
 
+# marking => number-of-occurrences
 stats = dict()
 
 def main():
+    # Run tests
     for d in dirs:
         run_tests_in_dir(d)
 
@@ -25,11 +29,8 @@ def main():
     for marking, count in sorted(stats.items()):
         print(marking + ": " + str(count))
 
-## logger: Logger
-## fn:     (Logger, result) -> Unit
-## d:      dir-path
 def run_tests_in_dir(d):
-    """Execute tests in directory d checking results with function fn."""
+    """Execute tests in directory d"""
     for x in sorted(os.listdir(d)):
         x = d+x
         ## Recursively go through subdirectories
@@ -124,7 +125,6 @@ def process_directive(x,ds,k,v,args):
             res += "PASS"
             if showSuccessesDetail:
                 res += "\nOutput:   " + out
-
         if (not isSuccess) and showFailures:
             res += "FAIL"
             if showFailuresDetail:
@@ -139,7 +139,6 @@ def process_directive(x,ds,k,v,args):
 
 def registerStat(marking, isSuccess):
     marking = ("successful " if isSuccess else "failing    ") + marking
-
     if (marking) in stats:
         stats[marking] += 1
     else:
@@ -152,6 +151,7 @@ if __name__ == "__main__":
     more = "PATH may be a filename or sub-directory \
     in which case verbose output is produced for PATH only."
     parser = argparse.ArgumentParser(description=desc)
+    # LC: TODO: parse configuration
     parser.add_argument("--verbose", nargs='?', const=True, default=False,
                         metavar="PATH",
                         help="Produce verbose output. {0}".format(more))

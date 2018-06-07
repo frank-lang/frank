@@ -260,9 +260,6 @@ applyAdaptor adp@(Adaptor x r n _) (Ab v p@(ItfMap m a') a) =
   let instances = bwd2fwd (M.findWithDefault BEmp x m) in
   if length instances > n then
     let renaming = takeWhile (< length instances) $ map (renToFun r) [0 ..] in
-    -- let concreteRenaming = snd $ until (\(k, _) -> k >= length instances-1)
-    --                            (\(k, a) -> (k+1, renToFun r k : a))
-    --                            (0, []) in
     let instances' = map (instances !!) renaming in
     if null instances' then
       Just (Ab v (ItfMap (M.delete x m) a') a)
@@ -483,17 +480,3 @@ getCtr :: Id -> Contextual (Id,[TyArg Desugared],[VType Desugared])
 getCtr k = get >>= \s -> case M.lookup k (ctrMap s) of
   Nothing -> throwError $ errorTCNotACtr k
   Just (dt, ts, xs) -> return (dt, ts, xs)
-
-removeAt :: Int -> [a] -> [a]
-removeAt n xs = let (ys, zs) = splitAt n xs in
-                case zs of []     -> ys
-                           (z:zr) -> ys ++ zr
-
--- LC: TODO: quickly-copied from the web: https://stackoverflow.com/a/30557189
--- Refactor!
-swapTwo :: Int -> Int -> [a] -> [a]
-swapTwo f s xs = map snd . foldr (\x a ->
-        if fst x == f then ys !! s : a
-        else if fst x == s then ys !! f : a
-        else x : a) [] $ ys
-    where ys = zip [0..] xs

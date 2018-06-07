@@ -14,7 +14,7 @@ import Shonky.Renaming
 
 data Exp
   = EV String                     -- variable
-  | EI Int                    -- int
+  | EI Int                        -- int
   | EA String                     -- atom
   | Exp :& Exp                    -- cons
   | Exp :$ [Exp]                  -- n-ary application

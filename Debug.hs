@@ -527,7 +527,9 @@ ppExp (EF xs ys) =
   let clauses = map (ppClauseShonky (<+>)) ys in
   PP.braces $ hcat (punctuate comma clauses)
 ppExp (EX xs) = text "[|" <> ppText ppExp xs
-ppExp (ER cs r e) = text "<adapt" <+> (hcat $ punctuate comma (map text cs)) <> ppRenaming r <> text ">" <+> PP.parens (ppExp e)  -- LC: TODO when Adaptors are re-defined
+ppExp (ER cs r e) = text "<(" <+> (hcat $ punctuate comma (map text cs))
+                    <> text ")" <+> ppRenaming r <> text ">"
+                    <+> PP.parens (ppExp e)
 
 ppExp' :: Exp -> PP.Doc
 ppExp' (e :& EA "") = ppExp e <> rbrack
