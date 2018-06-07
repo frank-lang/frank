@@ -1,9 +1,9 @@
 
 -- #desc The interfaces supplied to lift must occur in the ambient
--- #return <Console> is not a valid adjustment for lift in ambient [£] (line 9 , column 9)
+-- #return Adaptor Console --0--> (+1) . id is not a valid adaptor in ambient [£] (line 9 , column 10)
 
 num : {Int}
 num! = 2
 
 main : {Int}
-main! = lift <Console> num!
+main! = <-Console> num!

@@ -3,16 +3,18 @@ module Shonky.Syntax where
 import Control.Monad
 import Control.Applicative
 import Data.Char
-import Text.PrettyPrint.Leijen hiding ((<$>), empty)
+import Text.PrettyPrint hiding ((<$>), empty)
 
 import Data.List
 import qualified Data.Map as M
+
+import Shonky.Renaming
 
 -- A program is of type [Def Exp]
 
 data Exp
   = EV String                     -- variable
-  | EI Integer                    -- integer
+  | EI Int                    -- int
   | EA String                     -- atom
   | Exp :& Exp                    -- cons
   | Exp :$ [Exp]                  -- n-ary application
@@ -26,7 +28,7 @@ data Exp
   | EX [Either Char Exp]          -- string concatenation expression
     -- (used only for characters in source Frank (Left c), but used by
     -- strcat)
-  | ER  Redir Exp                 -- Adaptor
+  | ER  [String] Renaming Exp     -- Adaptor
   deriving (Show, Eq)
 infixr 6 :&
 infixl 5 :$
@@ -46,31 +48,17 @@ data Def v
 data Pat
   = PV VPat
   | PT String
-  | PC String Integer [VPat] String
+  | PC String Int [VPat] String
   deriving (Show, Eq)
 
 data VPat
   = VPV String              -- LC: ?
-  | VPI Integer             -- int value
+  | VPI Int             -- int value
   | VPA String              -- atom value
   | VPat :&: VPat           -- cons value
   | VPX [Either Char VPat]  -- LC: ?
   | VPQ String              -- LC: ?
   deriving (Show, Eq)
-
--- Each command is mapped to a function that tells the new direction of
--- a command. For instance, \n. n+1 is the Adaptor that eliminates
--- the 0-layer of an effect.
--- LC: Fix the whole definition such that we do not have arbitrary functions
--- but only "regular" Adaptors (consisting of id, (+1), composition and
--- cons)
-newtype Redir = Redir {redir :: String -> (Integer -> Integer)}
-instance Show Redir where show r = "Adaptor"
-instance Eq Redir where
-  r1 == r2 = True -- LC: Fix this when functions are restricted to regular
-                  -- ones that actually can be checked for equality since
-                  -- they have a normal form
-
 
 pProg :: P [Def Exp]
 pProg = pGap *> many (pDef <* pGap)
@@ -83,22 +71,22 @@ pId = do c <- pLike pChar (\c -> isAlpha c || c == '_' || c == '%')
          cs <- many (pLike pChar (\c -> isAlphaNum c || c == '\''))
          return (c : cs)
 
-pInteger :: P Integer
-pInteger = do cs <- some (pLike pChar isDigit)
-              let x = concatMap (show . toInteger . digitToInt) cs
-              return $ (read x :: Integer)
+pInt :: P Int
+pInt = do cs <- some (pLike pChar isDigit)
+          let x = concatMap (show . digitToInt) cs
+          return $ (read x :: Int)
 
 pP :: String -> P ()
 pP s = () <$ traverse (pLike pChar . (==)) s
 
 pExp :: P Exp
-pExp = ((((ER . neg 0) <$ pGap <* pP "neg" <* pGap <* pP "<" <* pGap <*>
+pExp = (((((flip ER) (renRem 0)) <$ pGap <* pP "neg" <* pGap <* pP "<" <* pGap <*>
           pCSep (pId <* pGap) ">" <*
           pGap <* pP "(" <* pGap <*>
           pExp <*
           pGap <* pP ")" <* pGap)
        <|> EV <$> pId
-       <|> EI <$> pInteger
+       <|> EI <$> pInt
        <|> EA <$ pP "'" <*> pId
        <|> EX <$ pP "[|" <*> pText pExp
        <|> id <$ pP "[" <*> pLisp pExp (EA "") (:&)
@@ -116,23 +104,6 @@ pText p = (:) <$ pP "\\" <*> (Left <$> (esc <$> pChar)) <*> pText p
     <|> (:) <$ pP "`" <*> (Right <$> p) <* pP "`" <*> pText p
     <|> [] <$ pP "|]"
     <|> (:) <$> (Left <$> pChar) <*> pText p
-
-adjRedir :: String -> (Integer -> Integer) -> Redir -> Redir
-adjRedir c f (Redir r) = Redir (\s -> if s == c then f . (r c)
-                                                else r c)
-
-compRedir :: Redir -> Redir -> Redir
-compRedir r1 r2 = Redir (\s -> (redir r1) s . (redir r2) s)
-
-neg :: Integer -> [String] -> Redir
-neg n []     = Redir (\s -> id)
-neg n (c:cr) = adjRedir c (\m -> if m >= n then m+1 else m) (neg n cr)
-
-swap :: Integer -> Integer -> [String] -> Redir
-swap m n []     = Redir (\s -> id)
-swap m n (c:cr) = adjRedir c (\k -> if k == m then n else
-                                    if k == n then m else k)
-                             (swap m n cr)
 
 esc :: Char -> Char
 esc 'n' = '\n'
@@ -176,13 +147,13 @@ pRules f = DF f <$>
 
 pPat :: P Pat
 pPat = PT <$ pP "{" <* pGap <*> pId <* pGap <* pP "}"
-   <|> PC <$ pP "{" <* pGap <* pP "'" <*> pId <* pP "." <*> pInteger <* pP "(" <*> pCSep pVPat ")"
+   <|> PC <$ pP "{" <* pGap <* pP "'" <*> pId <* pP "." <*> pInt <* pP "(" <*> pCSep pVPat ")"
           <* pGap <* pP "->" <* pGap <*> pId <* pGap <* pP "}"
    <|> PV <$> pVPat
 
 pVPat :: P VPat
 pVPat = VPV <$> pId
-  <|> VPI <$> pInteger
+  <|> VPI <$> pInt
   <|> VPA <$ pP "'" <*> pId
   <|> VPX <$ pP "[|" <*> pText pVPat
   <|> VPQ <$ pP "=" <* pGap <*> pId
@@ -223,99 +194,3 @@ instance Alternative P where
   p <|> q = P $ \ s -> case parse p s of
     Nothing -> parse q s
     y -> y
-
--- Pretty printing routines
-
-ppProg :: [Def Exp] -> Doc
-ppProg xs = vcat (punctuate line (map ppDef xs))
-
-ppDef :: Def Exp -> Doc
-ppDef (id := e) = text id <+> text "->" <+> ppExp e
-ppDef (DF id [] []) = error "ppDef invariant broken: empty Def Exp detected."
-ppDef p@(DF id hss es) = header <$$> vcat cs
-  where header = text id <> parens (hsep args) <> colon
-        args = punctuate comma $ (map (hsep . map text) hss)
-        cs = punctuate comma $
-               map (\x -> text id <> (nest 3 (ppClause (<$$>) x))) es
-
-ppText :: (a -> Doc) -> [Either Char a] -> Doc
-ppText f ((Left c) : xs) = (text $ escChar c) <> (ppText f xs)
-ppText f ((Right x) : xs) = text "`" <> f x <> text "`" <> (ppText f xs)
-ppText f [] = text "|]"
-
-isEscChar :: Char -> Bool
-isEscChar c = any (c ==) ['\n','\t','\b']
-
-escChar :: Char -> String
-escChar c = f [('\n', "\\n"),('\t', "\\t"),('\b', "\\b")]
-  where f ((c',s):xs) = if c == c' then s else f xs
-        f [] = [c]
-
-ppClause :: (Doc -> Doc -> Doc) -> ([Pat], Exp) -> Doc
-ppClause comb (ps, e) =
-  let rhs = parens (hsep $ punctuate comma (map ppPat ps))
-      lhs = ppExp e in
-  rhs <+> text "->" `comb` lhs
-
-ppExp :: Exp -> Doc
-ppExp (EV x) = text x
-ppExp (EI n) = integer n
-ppExp (EA x) = text $ "'" ++ x
-ppExp (e :& e') | isListExp e = text "[" <> ppListExp e'
-ppExp p@(_ :& _) = text "[" <> ppExp' p
-ppExp (f :$ xs) = let args = hcat $ punctuate comma (map ppExp xs) in
-  ppExp f <> text "(" <> args <> text ")"
-ppExp (e :! e') = ppExp e <> semi <> ppExp e'
-ppExp (e :// e') = ppExp e <> text "/" <> ppExp e'
-ppExp (EF xs ys) =
-  let clauses = map (ppClause (<+>)) ys in
-  braces $ hcat (punctuate comma clauses)
-ppExp (EX xs) = text "[|" <> ppText ppExp xs
-ppExp (ER r e) = text "redirect" <+> parens (ppExp e)  -- LC: TODO when Adaptors are re-defined
-
-ppExp' :: Exp -> Doc
-ppExp' (e :& EA "") = ppExp e <> rbracket
-ppExp' (e :& es) = ppExp e <> comma <> ppExp' es
-ppExp' e = ppExp e
-
-isListExp :: Exp -> Bool
-isListExp (e :& _) = isListExp e
-isListExp _ = False
-
--- Special case for lists
-ppListExp :: Exp -> Doc
-ppListExp (e :& EA "") = ppExp e <> text "]"
-ppListExp (e :& es) = ppExp e <> text "|" <> ppListExp es
-ppListExp (EA "") = text "]"
-ppListExp _ = text "ppListExp: invariant broken"
-
-ppPat :: Pat -> Doc
-ppPat (PV x) = ppVPat x
-ppPat (PT x) = braces $ text x
-ppPat (PC cmd n ps k) = let args = hcat $ punctuate comma (map ppVPat ps) in
-  let cmdtxt = text (cmd ++ ".") <> integer n in
-  braces $ text "'" <> cmdtxt <> parens args <+> text "->" <+> text k
-
-ppVPat :: VPat -> Doc
-ppVPat (VPV x) = text x
-ppVPat (VPI n) = integer n
-ppVPat (VPA x) = text $ "'" ++ x
-ppVPat (VPX xs) = text "[|" <> ppText ppVPat xs
-ppVPat (v1 :&: v2 :&: v3) = ppVPat (v1 :&: (v2 :&: v3))
-ppVPat (v :&: v') | isListPat v = lbracket <> ppVPatList v'
-ppVPat p@(_ :&: _) = lbracket <> ppVPat' p
-
-ppVPatList :: VPat -> Doc
-ppVPatList (v :&: VPA "") = ppVPat v <> rbracket
-ppVPatList (v :&: vs) = ppVPat v <> text "|" <> ppVPatList vs
-ppVPatList (VPA "") = lbracket
-ppVPatList _ = error "ppVPatList: broken invariant"
-
-ppVPat' :: VPat -> Doc
-ppVPat' (v :&: VPA "") = ppVPat v <> text "]"
-ppVPat' (v :&: vs) = ppVPat v <> comma <> ppVPat' vs
-ppVPat' v = ppVPat v
-
-isListPat :: VPat -> Bool
-isListPat (v :&: _) = isListPat v
-isListPat _ = False

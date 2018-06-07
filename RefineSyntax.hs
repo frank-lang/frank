@@ -358,19 +358,6 @@ refineUse (RawComb x xs a) =
        Left use -> do xs' <- mapM refineTm xs
                       return $ Left $ App use xs' (rawToRef a)
        Right tm -> throwError $ errorRefExpectedUse tm
-refineUse (Lift itfs t a) =
-  -- First check the existence of the interfaces
-  do mapM_ exists itfs
-     t' <- refineUse t
-     case t' of
-       Left u   -> return $ Left $ Lift itfs u (rawToRef a)
-       Right tm -> throwError $ errorRefExpectedUse tm
-  where exists :: Id -> Refine ()
-        exists x =
-          do itfCx <- getRItfs
-             if M.member x itfCx
-             then return ()
-             else throwError $ errorRefIdNotDeclared "interface" x a
 refineUse (Adapted rs t a) =
   -- First check the existence of the interfaces
   do rs' <- mapM refineAdaptor rs
@@ -379,19 +366,17 @@ refineUse (Adapted rs t a) =
        Left u   -> return $ Left $ Adapted rs' u (rawToRef a)
        Right tm -> throwError $ errorRefExpectedUse tm
 
--- LC: TODO condense this function
 refineAdaptor :: Adaptor Raw -> Refine (Adaptor Refined)
-refineAdaptor (Neg x n a) =
-  do itfCx <- getRItfs
-     if x `M.member` itfCx then return $ Neg x n (rawToRef a)
-                           else throwError $
-                                errorRefIdNotDeclared "interface" x a
-refineAdaptor (Swap x m n a) =
-  do itfCx <- getRItfs
-     if x `M.member` itfCx then return $ Swap x m n (rawToRef a)
-                           else throwError $
-                                errorRefIdNotDeclared "interface" x a
-
+refineAdaptor x = case x of
+  (Rem x n a)    -> returnOrThrow x a (Rem x n (rawToRef a))
+  (Copy x n a)   -> returnOrThrow x a (Copy x n (rawToRef a))
+  (Swap x m n a) -> returnOrThrow x a (Swap x m n (rawToRef a))
+  where
+    returnOrThrow :: Id -> Raw -> Adaptor Refined -> Refine (Adaptor Refined)
+    returnOrThrow x a adp = do itfCx <- getRItfs
+                               if x `M.member` itfCx then return adp
+                               else throwError $
+                                    errorRefIdNotDeclared "interface" x a
 
 refineTm :: Tm Raw -> Refine (Tm Refined)
 refineTm (Let x t1 t2 a) =

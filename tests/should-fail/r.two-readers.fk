@@ -1,20 +1,24 @@
+-- This used to be a valid program, but there was a type error that was
+-- not detected by the compiler.
+
+-- #desc Regression for type-checking bug
+-- #return failed to unify X (line 15 , column 21) with Y (line 15 , column 31)
+
+-- BEGIN ORIGINAL file (tests/should-pass/shift/r.two-readers.fk)
 -- Regression for a bug concerning lift and expandAb, discovered by Sam.
 -- Problem description in commit 86e0ecd2d
-
--- #desc Regression for bug concerning lift and expandAb, discovered by Sam.
--- #return 3
 
 interface Reader S = ask : S
 
 data Pair X Y = pair X Y
 
-readPair : {[Reader X, Reader X](Pair X X)}
+readPair : {[Reader X, Reader Y](Pair X Y)}
 readPair! = pair (<-Reader> ask!) (ask!)
 
-readPair' : {[Reader X, Reader X](Pair X X)}
+readPair' : {[Reader X, Reader Y](Pair Y X)}
 readPair'! = pair (ask!) (<-Reader> ask!)
 
-readPair'' : {[Reader X, Reader X](Pair X X)}
+readPair'' : {[Reader X, Reader Y](Pair X Y)}
 readPair''! = let x = <-Reader> ask! in
               let y = ask! in
               pair x y
@@ -22,7 +26,7 @@ readPair''! = let x = <-Reader> ask! in
 -- begin BUG: this should type-check and behave as readPair and readPair''
 -- but it fails to type-check!
 -- (not anymore)
-readPair''' : {[Reader X, Reader X](Pair X X)}
+readPair''' : {[Reader X, Reader Y](Pair X Y)}
 readPair'''! = let y = ask! in
                let x = <-Reader> ask! in
                pair x y

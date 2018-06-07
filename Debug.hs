@@ -18,6 +18,9 @@ import Debug.Trace
 import Data.IORef
 import System.IO.Unsafe
 
+import Shonky.Syntax
+import Shonky.Renaming
+
 import qualified Text.PrettyPrint as PP
 
 -- Is set by the main entry point if relevant flag detected.
@@ -124,17 +127,11 @@ errorUnifItfMaps :: ItfMap Desugared -> ItfMap Desugared -> String
 errorUnifItfMaps m1 m2 =
   "cannot unify interface maps " ++ (show $ ppItfMap m1) ++ " (" ++ (show $ ppSourceOf m1) ++ ")" ++ " and " ++ (show $ ppItfMap m2) ++ " (" ++ (show $ ppSourceOf m2) ++ ")"
 
-errorLiftAdj :: Use Desugared -> Ab Desugared -> String
-errorLiftAdj lift@(Lift p _ _) ab =
-  "<" ++ (show $ ppItfs p) ++
-  "> is not a valid adjustment for lift in ambient " ++ (show $ ppAb ab) ++
-  " (" ++  (show $ ppSourceOf lift) ++ ")"
-
-errorAdaptor :: Use Desugared -> Ab Desugared -> String
-errorAdaptor red@(Adapted rs t _) ab =
-  "<" ++ (show $ ppAdaptors rs) ++
-  "> is not a valid Adaptor in ambient " ++ (show $ ppAb ab) ++
-  " (" ++  (show $ ppSourceOf red) ++ ")"
+errorAdaptor :: Adaptor Desugared -> Ab Desugared -> String
+errorAdaptor adpd@(Adaptor x r n _) ab =
+  "Adaptor " ++ (show $ ppAdaptor adpd) ++
+  " is not a valid adaptor in ambient " ++ (show $ ppAb ab) ++
+  " (" ++  (show $ ppSourceOf adpd) ++ ")"
 
 errorUnifSolveOccurCheck :: String
 errorUnifSolveOccurCheck = "solve: occurs check failure"
@@ -163,11 +160,6 @@ logBeginInferUse u@(Op x _) = ifDebugTypeCheckOnThen $ do
 logBeginInferUse u@(App f xs _) = ifDebugTypeCheckOnThen $ do
   amb <- getAmbient
   debugTypeCheckM $ "begin infer use of app: Under curr. amb. " ++ show (ppAb amb) ++ "\n   infer type of " ++ show (ppUse u) ++ "\n\n"
-logBeginInferUse u@(Lift p t _) = ifDebugTypeCheckOnThen $ do
-  amb <- getAmbient
-  debugTypeCheckM $ "begin infer use of lift: Under curr. amb. " ++
-    show (ppAb amb) ++ " lifted by <" ++ (show $ ppItfs p) ++
-    ">\n   infer type of " ++ show (ppUse u) ++ "\n\n"
 logBeginInferUse u@(Adapted rs t _) = ifDebugTypeCheckOnThen $ do
   amb <- getAmbient
   debugTypeCheckM $ "begin infer use of redirected: Under curr. amb. " ++
@@ -184,12 +176,6 @@ logEndInferUse u@(Op x _) ty = ifDebugTypeCheckOnThen $ do
 logEndInferUse u@(App f xs _) ty = ifDebugTypeCheckOnThen $ do
   amb <- getAmbient
   debugTypeCheckM $ "ended infer use of app: Under curr. amb. " ++ show (ppAb amb) ++ "\n   infer type of " ++ show (ppUse u) ++ "\n   gives " ++ show (ppVType ty) ++ "\n\n"
-logEndInferUse u@(Lift p t _) ty = ifDebugTypeCheckOnThen $ do
-  amb <- getAmbient
-  debugTypeCheckM $ "ended infer use of lift: Under curr. amb. " ++
-    show (ppAb amb) ++ " lifted by <" ++ (show $ ppItfs p) ++
-    ">\n   infer type of " ++ show (ppUse u) ++
-    "\n   gives " ++ show (ppVType ty) ++ "\n\n"
 logEndInferUse u@(Adapted rs t _) ty = ifDebugTypeCheckOnThen $ do
   amb <- getAmbient
   debugTypeCheckM $ "ended infer use of redirected: Under curr. amb. " ++
@@ -272,51 +258,65 @@ debugTypeCheckM str = do
 (<+>) = (PP.<+>)
 (<>) = (PP.<>)
 ($$) = (PP.$$)
+($+$) = (PP.$+$)
 text = PP.text
 sep = PP.sep
 nest = PP.nest
 vcat = PP.vcat
 hcat = PP.hcat
+hsep = PP.hsep
+colon = PP.colon
+comma = PP.comma
 empty = PP.empty
 int = PP.int
+punctuate = PP.punctuate
+semi = PP.semi
+rbrack = PP.rbrack
+lbrack = PP.lbrack
+doubleQuotes = PP.doubleQuotes
+ppBrackets = PP.brackets
+ppParens = PP.parens
+ppChar = PP.char
+vsep :: [PP.Doc] -> PP.Doc
+vsep = foldr ($+$) empty
 
 type Doc = PP.Doc
 
-ppProg :: (Show a, HasSource a) => Prog a -> Doc
+ppProg :: (Show a, HasSource a) => Prog a -> PP.Doc
 ppProg (MkProg tts) = foldl (PP.$+$ ) PP.empty (map ppTopTm tts)
 
-ppTopTm :: (Show a, HasSource a) => TopTm a -> Doc
+ppTopTm :: (Show a, HasSource a) => TopTm a -> PP.Doc
 ppTopTm (DataTm dt _) = ppDataT dt
 ppTopTm (ItfTm itf _) = ppItf itf
 ppTopTm (SigTm sig _) = text $ show sig
 ppTopTm (ClsTm cls _) = text $ show cls
 ppTopTm (DefTm def _) = ppMHDef def
 
-ppDataT :: (Show a, HasSource a) => DataT a -> Doc
+ppDataT :: (Show a, HasSource a) => DataT a -> PP.Doc
 ppDataT (DT id tyVars ctrs a) = text "data" <+>
                               text id <+>
                               sep (map (text . show) tyVars) <+>
                               text "=" <+>
                               sep (map (text . show) ctrs)
 
-ppItf :: (Show a, HasSource a) => Itf a -> Doc
+ppItf :: (Show a, HasSource a) => Itf a -> PP.Doc
 ppItf (Itf id tyVars cmds a) = text "interface" <+>
                            text id <+>
                            sep (map (text . show) tyVars) <+>
                            text "=" <+>
                            sep (map (text . show) cmds)
 
-ppMHDef :: (Show a, HasSource a) => MHDef a -> Doc
+ppMHDef :: (Show a, HasSource a) => MHDef a -> PP.Doc
 ppMHDef (Def id cty cls _) = text id <+> text ":" <+>
                              ppCType cty $$
                              sep (map (ppClause id) cls)
 
-ppClause :: (Show a, HasSource a) => Id -> Clause a -> Doc
+ppClause :: (Show a, HasSource a) => Id -> Clause a -> PP.Doc
 ppClause id (Cls ps tm _) = text id <+>
                             (vcat . map ppPattern) ps <+> text "=" $$
                             (nest 3 . ppTm) tm
 
-ppPattern :: (Show a, HasSource a) => Pattern a -> Doc
+ppPattern :: (Show a, HasSource a) => Pattern a -> PP.Doc
 ppPattern (VPat vp _) = ppValuePat vp
 ppPattern (CmdPat x n vps k _) = text "<" <+>
                                  text x <>
@@ -328,7 +328,7 @@ ppPattern (CmdPat x n vps k _) = text "<" <+>
                                  text ">"
 ppPattern (ThkPat x _) = text x
 
-ppValuePat :: (Show a, HasSource a) => ValuePat a -> Doc
+ppValuePat :: (Show a, HasSource a) => ValuePat a -> PP.Doc
 ppValuePat (VarPat x _) = text x
 ppValuePat (DataPat x vps _) = text x <+> (hcat . map ppValuePat) vps
 ppValuePat (IntPat n _) = (text . show) n
@@ -337,7 +337,7 @@ ppValuePat (StrPat s _) = (text . show) s
 ppValuePat (ConsPat vp1 vp2 _) = ppValuePat vp1 <+> text "::" <+> ppValuePat vp2
 ppValuePat (ListPat vps _) = (hcat . map ppValuePat) vps
 
-ppCType :: (Show a, HasSource a) => CType a -> Doc
+ppCType :: (Show a, HasSource a) => CType a -> PP.Doc
 ppCType (CType ps q _) = text "{" <> ports <> peg <> text "}"
   where
     ports = case map ppPort ps of
@@ -345,7 +345,7 @@ ppCType (CType ps q _) = text "{" <> ports <> peg <> text "}"
       xs -> foldl (\acc x -> x <+> text "-> " <> acc) PP.empty (reverse xs)
     peg = ppPeg q
 
-ppVType :: (Show a, HasSource a) => VType a -> Doc
+ppVType :: (Show a, HasSource a) => VType a -> PP.Doc
 ppVType (DTTy x ts _) = text x <+> foldl (<+>) PP.empty (map ppTyArg ts)
 ppVType (SCTy cty _) = ppCType cty
 ppVType (TVar x _) = text x
@@ -355,43 +355,43 @@ ppVType (StringTy _) = text "String"
 ppVType (IntTy _) = text "Int"
 ppVType (CharTy _) = text "Char"
 
-ppTyArg :: (Show a, HasSource a) => TyArg a -> Doc
+ppTyArg :: (Show a, HasSource a) => TyArg a -> PP.Doc
 ppTyArg (VArg t _) = ppParenVType t
 ppTyArg (EArg ab _) = ppAb ab
 
-ppParenVType :: (Show a, HasSource a) => VType a -> Doc
+ppParenVType :: (Show a, HasSource a) => VType a -> PP.Doc
 ppParenVType v@(DTTy _ _ _) = text "(" <+> ppVType v <+> text ")"
 ppParenVType v = ppVType v
 
-ppPort :: (Show a, HasSource a) => Port a -> Doc
+ppPort :: (Show a, HasSource a) => Port a -> PP.Doc
 ppPort (Port adj ty _) = ppAdj adj <> ppVType ty
 
-ppPeg :: (Show a, HasSource a) => Peg a -> Doc
+ppPeg :: (Show a, HasSource a) => Peg a -> PP.Doc
 ppPeg (Peg ab ty _) = ppAb ab <> ppVType ty
 
-ppAdj :: (Show a, HasSource a) => Adj a -> Doc
+ppAdj :: (Show a, HasSource a) => Adj a -> PP.Doc
 ppAdj (Adj (ItfMap m _) _) | M.null m = PP.empty
 ppAdj (Adj m _) = text "<" <> ppItfMap m <> text ">"
 
-ppAb :: (Show a, HasSource a) => Ab a -> Doc
+ppAb :: (Show a, HasSource a) => Ab a -> PP.Doc
 ppAb (Ab v (ItfMap m _) _) | M.null m = text "[" <> ppAbMod v <> text "]"
 ppAb (Ab v m _) =
   text "[" <> ppAbMod v <+> text "|" <+> ppItfMap m <> text "]"
 
-ppAbMod :: (Show a, HasSource a) => AbMod a -> Doc
+ppAbMod :: (Show a, HasSource a) => AbMod a -> PP.Doc
 ppAbMod (EmpAb _) = text "0"
 ppAbMod (AbVar x _) = text x
 ppAbMod (AbRVar x _) = if isDebugVerboseOn () then text x else text $ trimVar x
 ppAbMod (AbFVar x _) = if isDebugVerboseOn () then text x else text $ trimVar x
 
-ppItfMap :: (Show a, HasSource a) => ItfMap a -> Doc
+ppItfMap :: (Show a, HasSource a) => ItfMap a -> PP.Doc
 ppItfMap (ItfMap m _) =
   PP.hsep $ intersperse PP.comma $ map ppItfMapPair $ M.toList m
- where ppItfMapPair :: (Show a, HasSource a) => (Id, Bwd [TyArg a]) -> Doc
+ where ppItfMapPair :: (Show a, HasSource a) => (Id, Bwd [TyArg a]) -> PP.Doc
        ppItfMapPair (x, instants) =
          PP.hsep $ intersperse PP.comma $ map (\args -> foldl (<+>) (text x) $ map ppTyArg args) (bwd2fwd instants)
 
-ppSource :: Source -> Doc
+ppSource :: Source -> PP.Doc
 ppSource (InCode (line, col)) = text "line" <+> text (show line) <+> text ", column" <+> text (show col)
 ppSource BuiltIn = text "built-in"
 ppSource Implicit = text "implicit"
@@ -399,10 +399,10 @@ ppSource (ImplicitNear (line, col)) = text "implicit near line" <+> text (show l
 ppSource Generated = text "generated"
 
 
-ppSourceOf :: (HasSource a) => a -> Doc
+ppSourceOf :: (HasSource a) => a -> PP.Doc
 ppSourceOf x = ppSource (getSource x)
 
-ppTm :: (Show a, HasSource a) => Tm a -> Doc
+ppTm :: (Show a, HasSource a) => Tm a -> PP.Doc
 ppTm (SC sc _) = ppSComp sc
 ppTm (StrTm str _) = text "{" <+> text str <+> text "}"
 ppTm (IntTm n _) = text (show n)
@@ -412,69 +412,166 @@ ppTm (TmSeq t1 t2 _) = PP.parens $ ppTm t1 <+> text "; " <+> ppTm t2
 ppTm (Use u _) = PP.parens $ ppUse u
 ppTm (DCon dc _) = PP.parens $ ppDataCon dc
 
-ppSComp :: (Show a, HasSource a) => SComp a -> Doc
+ppSComp :: (Show a, HasSource a) => SComp a -> PP.Doc
 ppSComp (SComp cls _) = text "{" <+> sep (map (ppClause "") cls) <+> text "}"
 
-ppUse :: (Show a, HasSource a) => Use a -> Doc
+ppUse :: (Show a, HasSource a) => Use a -> PP.Doc
 ppUse (RawId x _) = text x
 ppUse (RawComb u args _) = PP.lparen <> ppUse u <+> ppArgs args <> PP.rparen
 ppUse (Op op _) = ppOperator op
 ppUse (App u args _) = PP.lparen <> ppUse u <+> ppArgs args <> PP.rparen
-ppUse (Lift p t _) =
-  PP.parens $ text "lift <" <+> ppItfs p <+> text "> " <+> ppUse t
 ppUse (Adapted rs t _) =
   PP.parens $ text "<" <> ppAdaptors rs <> text ">"
 
 -- TODO: LC: fix parenthesis output...
-ppArgs :: (Show a, HasSource a) => [Tm a] -> Doc
+ppArgs :: (Show a, HasSource a) => [Tm a] -> PP.Doc
 ppArgs [] = text "!"
 ppArgs args = sep (map ppTm args)
 
-ppOperator :: (Show a, HasSource a) => Operator a -> Doc
+ppOperator :: (Show a, HasSource a) => Operator a -> PP.Doc
 ppOperator (Mono x _) = text x
 ppOperator (Poly x _) = text x
 ppOperator (CmdId x _) = text x
 
-ppDataCon :: (Show a, HasSource a) => DataCon a -> Doc
+ppDataCon :: (Show a, HasSource a) => DataCon a -> PP.Doc
 ppDataCon (DataCon x tms _) = text x <+> sep (map ppTm tms)
 
-ppAdaptors :: (Show a, HasSource a) => [Adaptor a] -> Doc
+ppAdaptors :: (Show a, HasSource a) => [Adaptor a] -> PP.Doc
 ppAdaptors rs = PP.hsep $ intersperse PP.comma $ map ppAdaptor rs
 
-ppAdaptor :: (Show a, HasSource a) => Adaptor a -> Doc
-ppAdaptor (Neg x n _) = text "-" <> text x <> text "." <> int (fromIntegral n)
-ppAdaptor (Swap x m n _) = int (fromIntegral m) <> text "." <> text x <>
-                               text "." <> int (fromIntegral n)
+ppAdaptor :: (Show a, HasSource a) => Adaptor a -> PP.Doc
+ppAdaptor (Rem x n _) = text "-" <> text x <> text "." <> int n
+ppAdaptor (Swap x m n _) = int m <> text "." <> text x <>
+                               text "." <> int n
+ppAdaptor (Adaptor x r n _) = text x <+> text "--" <> int n <> text "-->" <+> ppRenaming r
 
 {- TypeCheckCommon pretty printers -}
 
-ppContext :: Context -> Doc
+ppContext :: Context -> PP.Doc
 ppContext = ppFwd . (map ppEntry) . bwd2fwd
 
-ppEntry :: Entry -> Doc
+ppEntry :: Entry -> PP.Doc
 ppEntry (FlexMVar x decl) = text "FlexMVar " <+> text x <+> text "\t=\t\t" <+> (ppDecl decl)
 ppEntry (TermVar op ty)   = text "TermVar " <+> text (show op) <+> text "\t:=\t" <+> (ppVType ty)
 ppEntry Mark              = text "<Mark>"
 
-ppDecl :: Decl -> Doc
+ppDecl :: Decl -> PP.Doc
 ppDecl Hole        = text "?"
 ppDecl (TyDefn ty) = text "val.ty. " <+> ppVType ty
 ppDecl (AbDefn ab) = text "eff.ty. " <+> ppAb ab
 
-ppSuffix :: Suffix -> Doc
+ppSuffix :: Suffix -> PP.Doc
 ppSuffix = ppFwd . (map (\(x, d) -> "(" ++ show x ++ "," ++
                                     show (ppDecl d) ++ ")"))
 
-ppItfs :: [Id] -> Doc
+ppItfs :: [Id] -> PP.Doc
 ppItfs p = PP.hsep $ intersperse PP.comma $ map text p
 
 {- BWDFWD pretty printers -}
 
-ppFwd :: Show a => [a] -> Doc
+ppFwd :: Show a => [a] -> PP.Doc
 ppFwd [] = text "[]"
 ppFwd xs = text "[" $$
            sep (map ((nest 3) . text . show) xs) $$
            text "]"
 
-ppBwd :: Show a => Bwd a -> Doc
+ppBwd :: Show a => Bwd a -> PP.Doc
 ppBwd = ppFwd . bwd2fwd
+
+{- Shonky pretty printers -}
+
+-- Pretty printing routines
+
+ppProgShonky :: [Def Exp] -> PP.Doc
+ppProgShonky xs = vcat (map ppDef xs)
+
+ppDef :: Def Exp -> PP.Doc
+ppDef (id := e) = text id <+> text "->" <+> ppExp e
+ppDef (DF id [] []) = error "ppDef invariant broken: empty Def Exp detected."
+ppDef p@(DF id hss es) = header $+$ vcat cs
+  where header = text id <> PP.parens (hsep args) <> colon
+        args = punctuate comma $ (map (hsep . map text) hss)
+        cs = punctuate comma $
+               map (\x -> text id <> (nest 3 (ppClauseShonky ($$) x))) es
+
+ppText :: (a -> PP.Doc) -> [Either Char a] -> PP.Doc
+ppText f ((Left c) : xs) = (text $ escChar c) <> (ppText f xs)
+ppText f ((Right x) : xs) = text "`" <> f x <> text "`" <> (ppText f xs)
+ppText f [] = text "|]"
+
+isEscChar :: Char -> Bool
+isEscChar c = any (c ==) ['\n','\t','\b']
+
+escChar :: Char -> String
+escChar c = f [('\n', "\\n"),('\t', "\\t"),('\b', "\\b")]
+  where f ((c',s):xs) = if c == c' then s else f xs
+        f [] = [c]
+
+ppClauseShonky :: (PP.Doc -> PP.Doc -> PP.Doc) -> ([Pat], Exp) -> PP.Doc
+ppClauseShonky comb (ps, e) =
+  let rhs = PP.parens (hsep $ punctuate comma (map ppPat ps))
+      lhs = ppExp e in
+  rhs <+> text "->" `comb` lhs
+
+ppExp :: Exp -> PP.Doc
+ppExp (EV x) = text x
+ppExp (EI n) = int n
+ppExp (EA x) = text $ "'" ++ x
+ppExp (e :& e') | isListExp e = text "[" <> ppListExp e'
+ppExp p@(_ :& _) = text "[" <> ppExp' p
+ppExp (f :$ xs) = let args = hcat $ punctuate comma (map ppExp xs) in
+  ppExp f <> text "(" <> args <> text ")"
+ppExp (e :! e') = ppExp e <> semi <> ppExp e'
+ppExp (e :// e') = ppExp e <> text "/" <> ppExp e'
+ppExp (EF xs ys) =
+  let clauses = map (ppClauseShonky (<+>)) ys in
+  PP.braces $ hcat (punctuate comma clauses)
+ppExp (EX xs) = text "[|" <> ppText ppExp xs
+ppExp (ER cs r e) = text "<adapt" <+> (hcat $ punctuate comma (map text cs)) <> ppRenaming r <> text ">" <+> PP.parens (ppExp e)  -- LC: TODO when Adaptors are re-defined
+
+ppExp' :: Exp -> PP.Doc
+ppExp' (e :& EA "") = ppExp e <> rbrack
+ppExp' (e :& es) = ppExp e <> comma <> ppExp' es
+ppExp' e = ppExp e
+
+isListExp :: Exp -> Bool
+isListExp (e :& _) = isListExp e
+isListExp _ = False
+
+-- Special case for lists
+ppListExp :: Exp -> PP.Doc
+ppListExp (e :& EA "") = ppExp e <> text "]"
+ppListExp (e :& es) = ppExp e <> text "|" <> ppListExp es
+ppListExp (EA "") = text "]"
+ppListExp _ = text "ppListExp: invariant broken"
+
+ppPat :: Pat -> PP.Doc
+ppPat (PV x) = ppVPat x
+ppPat (PT x) = PP.braces $ text x
+ppPat (PC cmd n ps k) = let args = hcat $ punctuate comma (map ppVPat ps) in
+  let cmdtxt = text (cmd ++ ".") <> int n in
+  PP.braces $ text "'" <> cmdtxt <> PP.parens args <+> text "->" <+> text k
+
+ppVPat :: VPat -> PP.Doc
+ppVPat (VPV x) = text x
+ppVPat (VPI n) = int n
+ppVPat (VPA x) = text $ "'" ++ x
+ppVPat (VPX xs) = text "[|" <> ppText ppVPat xs
+ppVPat (v1 :&: v2 :&: v3) = ppVPat (v1 :&: (v2 :&: v3))
+ppVPat (v :&: v') | isListPat v = lbrack <> ppVPatList v'
+ppVPat p@(_ :&: _) = lbrack <> ppVPat' p
+
+ppVPatList :: VPat -> PP.Doc
+ppVPatList (v :&: VPA "") = ppVPat v <> rbrack
+ppVPatList (v :&: vs) = ppVPat v <> text "|" <> ppVPatList vs
+ppVPatList (VPA "") = lbrack
+ppVPatList _ = error "ppVPatList: broken invariant"
+
+ppVPat' :: VPat -> PP.Doc
+ppVPat' (v :&: VPA "") = ppVPat v <> text "]"
+ppVPat' (v :&: vs) = ppVPat v <> comma <> ppVPat' vs
+ppVPat' v = ppVPat v
+
+isListPat :: VPat -> Bool
+isListPat (v :&: _) = isListPat v
+isListPat _ = False

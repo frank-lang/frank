@@ -87,7 +87,7 @@ asyncCoRef p <await (promise r) -> k> =
 
 runAsync : {<Async [CoRef]>X -> [RefState]X}
 runAsync <m> = let r = new (waiting []) in
-               bfFifo (asyncCoRef (promise r) (lift <Co> m!));
+               bfFifo (asyncCoRef (promise r) (<-Co> m!));
 
                -- For the promise to be fullfilled now depends on all
                -- handlers in sight using their continuations
@@ -100,7 +100,7 @@ runAsync <m> = let r = new (waiting []) in
                case (read r) {(done x) -> x}
 
 bfFifo : {<Co>Unit -> Unit}
-bfFifo <m> = fifo (scheduleBF (lift <Queue> m!))
+bfFifo <m> = fifo (scheduleBF (<-Queue> m!))
 
 ------------------------------------------------------------------------------
 -- Scheduling as in coop.fk
@@ -119,7 +119,7 @@ runNext! = case dequeue! { (just (proc x)) -> x!
 scheduleBF : {<Co>Unit -> [Queue Proc]Unit}
 scheduleBF <yield -> k>  = enqProc {scheduleBF (k unit)};
                            runNext!
-scheduleBF <fork p -> k> = enqProc {scheduleBF (lift <Queue> p!)};
+scheduleBF <fork p -> k> = enqProc {scheduleBF (<-Queue> p!)};
                            scheduleBF (k unit)
 scheduleBF unit          = runNext!
 
@@ -130,14 +130,14 @@ scheduleBF unit          = runNext!
 -- IMPORTANT: the effect parameter of Async must be independent of the
 -- ambient
 calcProg : {Int -> Int -> Int -> [E | Async [Console], Console]Int}
-calcProg a b c = print "M1\n";
-                 let p1 = async {print "p1\n"; a + b} in
-                 let p2 = async {print "p2\n"; b + c} in
-                 print "M2\n";
+calcProg a b c = print "M1  ";
+                 let p1 = async {print "p1  "; a + b} in
+                 let p2 = async {print "p2  "; b + c} in
+                 print "M2  ";
                  let v2 = await p2 in
-                 print "M3\n";
+                 print "M3  ";
                  let v1 = await p1 in
-                 print "M4\n";
+                 print "M4  ";
                  v1 + v2
 
 --------------------------------------------------------------------------------
@@ -146,7 +146,7 @@ calcProg a b c = print "M1\n";
 
 -- Dont delete these lines, they make this program into a unit test.
 -- #desc   examples/async-await.fk
--- #return 8
+-- #return M1  M2  p1  p2  M3  M4  8
 
 main: {[RefState, Console]Int}
 main! = runAsync (calcProg 1 2 3)

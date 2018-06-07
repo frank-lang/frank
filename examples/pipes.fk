@@ -60,4 +60,7 @@ t6! = catchList (pipe (logSend sendDoBeDoBeDoNil!) catter!)
 
 -- Dont delete these lines, they make this program into a unit test.
 -- #desc   examples/pipes.fk
+-- #flags  ~include examples/
 -- #return unit
+main: {Unit}
+main! = unit

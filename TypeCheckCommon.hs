@@ -36,7 +36,7 @@ data TCState = MkTCState
   , amb :: Ab Desugared     -- current ambient
   , cmdMap :: IdCmdInfoMap  -- cmd-id -> (itf-id, itf-ty-vars, cmd-arg-tys, cmd-ret-ty)
   , ctrMap :: CtrInfoMap    -- ctr-id -> (dt-id, dt-ty-vars, cmd-arg-tys)
-  , ms :: [Integer]         -- each entry represents one type checking phase.
+  , ms :: [Int]         -- each entry represents one type checking phase.
                             --            counts the marks in that phase
   }
 
@@ -140,7 +140,7 @@ purgeMarks = do s <- get
                 let n = head (ms s)
                 put $ s { ctx = skim n (ctx s), ms = tail (ms s) }
   where -- delete everything up to (and including) the recent n Mark's
-        skim :: Integer -> Context -> Context
+        skim :: Int -> Context -> Context
         skim 0 es = es
         skim n (es :< Mark) = skim (n-1) es
         skim n (es :< _) = skim n es

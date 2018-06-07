@@ -6,7 +6,7 @@ constHandler <ask.0 -> k> = constHandler (k 3)
 constHandler <ask.1 -> k> = constHandler (k 7)
 
 myreader: {[Reader Int, Reader Int]Int}
-myreader! = ask! + (lift <Reader> ask!)
+myreader! = ask! + (<-Reader> ask!)
 
 -- Dont delete these lines, they make this program into a unit test.
 -- #desc   examples/multi-port.fk

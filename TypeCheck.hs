@@ -21,6 +21,8 @@ import TypeCheckCommon
 import Unification
 import Debug
 
+import Shonky.Renaming
+
 type EVMap a = M.Map Id (Ab a)
 
 -- Given an operator, reconstruct its corresponding type assigned via context
@@ -235,41 +237,40 @@ inferUse app@(App f xs _) =                                                     
         -- Check typing tm: ty in ambient [adj]
         checkArg :: Port Desugared -> Tm Desugared -> Contextual ()
         checkArg (Port adj ty _) tm = inAdjustedAmbient adj (checkTm tm ty)
-inferUse lift@(Lift itfs t _) =
-  do logBeginInferUse lift
+inferUse adpd@(Adapted adps t _) =
+  do logBeginInferUse adpd
      amb <- getAmbient >>= expandAb
      let (Ab v p@(ItfMap m _) a) = amb
-     -- Check that all the lifted interfaces are in the ambient
-     if all (\(x, n) -> True) (M.assocs (histogram itfs)) then
-       -- n <= M.findWithDefault 0 x m
-       do res <- inAmbient (Ab v (removeItfs p itfs) a) (inferUse t)
-          logEndInferUse lift res
-          return res
-     else throwError $ errorLiftAdj lift amb
-inferUse red@(Adapted rs t _) =
-  do logBeginInferUse red
-     amb <- getAmbient >>= expandAb
-     let (Ab v p@(ItfMap m _) a) = amb
-     -- Check that the Adaptors can be performed and modify the ambient
+     -- Check that the adaptors can be performed and modify the ambient
      -- accordingly
-     let mamb = foldr ((=<<) . applyAdaptor) (Just amb) rs
-     case mamb of Nothing -> throwError $ errorAdaptor red amb
-                  (Just amb') -> do res <- inAmbient amb' (inferUse t)
-                                    logEndInferUse red res
-                                    return res
-
+     amb' <- applyAll adps amb
+     res <- inAmbient amb' (inferUse t)
+     logEndInferUse adpd res
+     return res
+  where applyAll :: [Adaptor Desugared] -> Ab Desugared -> Contextual (Ab Desugared)
+        applyAll [] ab = return ab
+        applyAll (adp:adpr) ab =
+          do let mab' = applyAdaptor adp ab
+             case mab' of
+               Just ab' -> applyAll adpr ab'
+               Nothing -> throwError $ errorAdaptor adp ab
 
 applyAdaptor :: Adaptor Desugared -> Ab Desugared -> Maybe (Ab Desugared)
-applyAdaptor neg@(Neg x n _) (Ab v p@(ItfMap m a') a) =
-  if (toInteger . length . bwd2fwd) (M.findWithDefault BEmp x m) > n then
-     Just (Ab v (ItfMap (M.adjust (fwd2bwd . (removeAt (fromIntegral n)) . bwd2fwd) x m) a') a)
+applyAdaptor adp@(Adaptor x r n _) (Ab v p@(ItfMap m a') a) =
+  let instances = bwd2fwd (M.findWithDefault BEmp x m) in
+  if length instances > n then
+    let renaming = takeWhile (< length instances) $ map (renToFun r) [0 ..] in
+    -- let concreteRenaming = snd $ until (\(k, _) -> k >= length instances-1)
+    --                            (\(k, a) -> (k+1, renToFun r k : a))
+    --                            (0, []) in
+    let instances' = map (instances !!) renaming in
+    if null instances' then
+      Just (Ab v (ItfMap (M.delete x m) a') a)
+    else
+      Just (Ab v (ItfMap (
+        M.insert x (fwd2bwd instances') m
+      ) a') a)
   else Nothing
-applyAdaptor swap@(Swap x n1 n2 _) (Ab v p@(ItfMap m a') a) =
-  let len = (toInteger . length . bwd2fwd) (M.findWithDefault BEmp x m) in
-  if len > n1 && len > n2 then
-     Just (Ab v (ItfMap (M.adjust (fwd2bwd . (swapTwo (fromIntegral n1) (fromIntegral n2)) . bwd2fwd) x m) a') a)
-  else Nothing
-
 
 -- 2nd major TC function: Check that term (construction) has given type
 checkTm :: Tm Desugared -> VType Desugared -> Contextual ()

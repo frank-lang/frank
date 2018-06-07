@@ -312,7 +312,7 @@ usetm = (attachLoc $ Use <$> (try $ use nctm)) <|>    -- use
 atm :: MonadicParsing m => m (Tm Raw)
 atm = (attachLoc $ SC <$> suspComp) <|>               -- { p_1 -> t_1 | ... }
       (attachLoc $ StrTm <$> stringLiteral) <|>       -- "string"
-      (attachLoc $ IntTm <$> natural) <|>             -- 42
+      (attachLoc $ (IntTm . fromIntegral) <$> natural) <|>             -- 42
       (attachLoc $ CharTm <$> charLiteral) <|>        -- 'c'
       (attachLoc $ ListTm <$> listTm) <|>             -- [t_1, ..., t_n]
       parens tm                                       -- (ltm ; ... ; ltm)
@@ -344,8 +344,7 @@ unOperation = provideLoc $ \a -> do
 
 -- use
 use :: MonadicParsing m => m (Tm Raw) -> m (Use Raw)
-use p = lift (ncuse p) <|>                            -- lift [...] ncuse
-        redirected (ncuse p) <|>                      -- <RED,...RED> ncuse
+use p = redirected (ncuse p) <|>                      -- <RED,...RED> ncuse
         cuse p                                        -- cuse
 
 -- comb use
@@ -371,13 +370,6 @@ ause :: MonadicParsing m => m (Tm Raw) -> m (Use Raw)
 ause p = parens (use p) <|>                           -- (use)
          idUse                                        -- x
 
-lift :: MonadicParsing m => m (Use Raw) -> m (Use Raw)
-lift p = attachLoc $ do -- lift <I_1,I_2,...,I_n> stm
-            reserved "lift"
-            xs <- angles (sepBy identifier (symbol ","))
-            t <- p
-            return $ Lift xs t
-
 redirected :: MonadicParsing m => m (Use Raw) -> m (Use Raw)
 redirected p = attachLoc $ do -- <RED1,RED2,...,REDn> stm
             xs <- angles (sepBy adaptor (symbol ","))
@@ -385,10 +377,14 @@ redirected p = attachLoc $ do -- <RED1,RED2,...,REDn> stm
             return $ Adapted xs t
 
 adaptor :: MonadicParsing m => m (Adaptor Raw)
-adaptor = (attachLoc $ Neg <$ symbol "-" <*> identifier <* symbol "."
-                               <*> integer) <|>
-              (attachLoc $ (flip Swap) <$> integer <* symbol "."
-                               <*> identifier <* symbol "." <*> integer)
+adaptor = (attachLoc $ Rem <$ symbol "-" <*> identifier <*> optionalIndex) <|>
+          (attachLoc $ Copy <$ symbol "+" <*> identifier <*> optionalIndex) <|>
+          (attachLoc $ (flip Swap) <$> parseInt <* symbol "."
+                               <*> identifier <* symbol "." <*> parseInt)
+  where optionalIndex :: MonadicParsing m => m Int
+        optionalIndex = do mn <- optional (symbol "." *> parseInt)
+                           case mn of Just n  -> return n
+                                      Nothing -> return 0
 
 idUse :: MonadicParsing m => m (Use Raw)
 idUse = attachLoc $ do x <- identifier
@@ -429,7 +425,7 @@ cmdPat :: MonadicParsing m => m (Pattern Raw)
 cmdPat = attachLoc $ do cmd <- identifier
                         mn <- optional (
                           do symbol "."
-                             integer)
+                             parseInt)
                         n <- (case mn of
                           Nothing -> return 0
                           Just n | n >= 0 -> return n)
@@ -437,14 +433,13 @@ cmdPat = attachLoc $ do cmd <- identifier
                         ps <- many valPat
                         symbol "->"
                         g <- identifier
-                        return (CmdPat cmd (fromIntegral n) ps g)
-                        -- TODO LC: fix this: consistent Integer vs Int
+                        return (CmdPat cmd n ps g)
 
 valPat :: MonadicParsing m => m (ValuePat Raw)
 valPat = dataPat <|>
          (attachLoc $ do x <- identifier
                          return $ VarPat x) <|>
-         (attachLoc $ IntPat <$> try integer) <|> -- try block for unary minus
+         (attachLoc $ IntPat <$> try parseInt) <|> -- try block for unary minus
          (attachLoc $ CharPat <$> charLiteral) <|>
          (attachLoc $ StrPat <$> stringLiteral) <|>
          (attachLoc $ ListPat <$> brackets (sepBy valPat (symbol ",")))
@@ -521,3 +516,6 @@ eplist xs = g xs [] []
         g [] as bs = (reverse as, reverse bs)
         g (Left a : xs) as bs = g xs (a:as) bs
         g (Right b : xs) as bs = g xs as (b:bs)
+
+parseInt :: (MonadicParsing m) => m Int
+parseInt = integer >>= (return . fromIntegral)
