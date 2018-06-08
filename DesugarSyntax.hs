@@ -174,7 +174,7 @@ desugarCType (CType ports peg a) =
 
 -- nothing happens on this level
 desugarPort :: Port Refined -> Desugar (Port Desugared)
-desugarPort (Port adj ty a) = Port <$> desugarAdj adj <*> desugarVType ty <*> pure (refToDesug a)
+desugarPort (Port adjs ty a) = Port <$> (mapM desugarAdjustment adjs) <*> desugarVType ty <*> pure (refToDesug a)
 
 -- nothing happens on this level
 desugarPeg :: Peg Refined -> Desugar (Peg Desugared)
@@ -199,8 +199,8 @@ desugarAbMod (AbVar x a) =
        Just var -> return var
 
 -- nothing happens on this level
-desugarAdj :: Adj Refined -> Desugar (Adj Desugared)
-desugarAdj (Adj itfMap a) = Adj <$> desugarItfMap itfMap <*> pure (refToDesug a)
+desugarAdjustment :: Adjustment Refined -> Desugar (Adjustment Desugared)
+desugarAdjustment (ConsAdj x ts a) = ConsAdj x <$> (mapM desugarTyArg ts) <*> pure (refToDesug a)
 
 desugarItfMap :: ItfMap Refined -> Desugar (ItfMap Desugared)
 desugarItfMap (ItfMap m a) = do m' <- mapM (mapM (mapM desugarTyArg)) m
@@ -248,10 +248,10 @@ desugarUse (Adapted rs t a) = Adapted <$> (mapM desugarAdaptor rs)
                                  <*> desugarUse t <*> pure (refToDesug a)
 
 desugarAdaptor :: Adaptor Refined -> Desugar (Adaptor Desugared)
-desugarAdaptor (Rem x n a) = return $ Adaptor x (renRem n) n (refToDesug a)
-desugarAdaptor (Copy x n a) = return $ Adaptor x (renCopy n) n (refToDesug a)
-desugarAdaptor (Swap x m n a) = return $ Adaptor x (renSwap m n) (max m n)
-                                                   (refToDesug a)
+desugarAdaptor (Rem x n a) = return $ GeneralAdaptor x (renRem n) n (refToDesug a)
+desugarAdaptor (Copy x n a) = return $ GeneralAdaptor x (renCopy n) n (refToDesug a)
+desugarAdaptor (Swap x m n a) = return $ GeneralAdaptor x (renSwap m n) (max m n)
+                                                          (refToDesug a)
 
 desugarOperator :: Operator Refined -> Desugar (Operator Desugared)
 desugarOperator (Mono x a) = return $ Mono x (refToDesug a)

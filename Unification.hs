@@ -126,7 +126,7 @@ unifyPeg :: Peg Desugared -> Peg Desugared -> Contextual ()
 unifyPeg (Peg ab0 ty0 _) (Peg ab1 ty1 _) = unifyAb ab0 ab1 >> unify ty0 ty1
 
 unifyPort :: Port Desugared -> Port Desugared -> Contextual ()
-unifyPort (Port adj0 ty0 _) (Port adj1 ty1 _) = unifyAdj adj0 adj1 >>
+unifyPort (Port adjs0 ty0 _) (Port adjs1 ty1 _) = unifyAdjs adjs0 adjs1 >>
                                                                   unify ty0 ty1
 
 -- unify a meta variable "x" with a type "ty"

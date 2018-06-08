@@ -101,7 +101,7 @@ errorTCNotInScope op = "'" ++ getOpName op ++ "' not in scope (" ++ (show $ ppSo
 errorTCPatternPortMismatch :: Clause Desugared -> String
 errorTCPatternPortMismatch cls = "number of patterns not equal to number of ports (" ++ (show $ ppSourceOf cls) ++ ")"
 
-errorTCCmdNotFoundInAdj :: Id -> Adj Desugared -> String
+errorTCCmdNotFoundInAdj :: Id -> Adjustment Desugared -> String
 errorTCCmdNotFoundInAdj cmd adj = "command " ++ cmd ++ " not found in adjustment " ++ (show $ ppAdj adj) ++ " (" ++ (show $ ppSourceOf adj) ++ ")"
 
 errorTCNotACtr :: Id -> String
@@ -128,7 +128,7 @@ errorUnifItfMaps m1 m2 =
   "cannot unify interface maps " ++ (show $ ppItfMap m1) ++ " (" ++ (show $ ppSourceOf m1) ++ ")" ++ " and " ++ (show $ ppItfMap m2) ++ " (" ++ (show $ ppSourceOf m2) ++ ")"
 
 errorAdaptor :: Adaptor Desugared -> Ab Desugared -> String
-errorAdaptor adpd@(Adaptor x r n _) ab =
+errorAdaptor adpd@(GeneralAdaptor x r n _) ab =
   "Adaptor " ++ (show $ ppAdaptor adpd) ++
   " is not a valid adaptor in ambient " ++ (show $ ppAb ab) ++
   " (" ++  (show $ ppSourceOf adpd) ++ ")"
@@ -364,14 +364,14 @@ ppParenVType v@(DTTy _ _ _) = text "(" <+> ppVType v <+> text ")"
 ppParenVType v = ppVType v
 
 ppPort :: (Show a, HasSource a) => Port a -> PP.Doc
-ppPort (Port adj ty _) = ppAdj adj <> ppVType ty
+ppPort (Port []   ty _) = ppVType ty
+ppPort (Port adjs ty _) = text "<" <> (PP.hsep $ intersperse PP.comma $ map ppAdj adjs) <> ppVType ty
 
 ppPeg :: (Show a, HasSource a) => Peg a -> PP.Doc
 ppPeg (Peg ab ty _) = ppAb ab <> ppVType ty
 
-ppAdj :: (Show a, HasSource a) => Adj a -> PP.Doc
-ppAdj (Adj (ItfMap m _) _) | M.null m = PP.empty
-ppAdj (Adj m _) = text "<" <> ppItfMap m <> text ">"
+ppAdj :: (Show a, HasSource a) => Adjustment a -> PP.Doc
+ppAdj (ConsAdj x ts _) = ppItfInstance (x, ts)
 
 ppAb :: (Show a, HasSource a) => Ab a -> PP.Doc
 ppAb (Ab v (ItfMap m _) _) | M.null m = text "[" <> ppAbMod v <> text "]"
@@ -386,10 +386,14 @@ ppAbMod (AbFVar x _) = if isDebugVerboseOn () then text x else text $ trimVar x
 
 ppItfMap :: (Show a, HasSource a) => ItfMap a -> PP.Doc
 ppItfMap (ItfMap m _) =
-  PP.hsep $ intersperse PP.comma $ map ppItfMapPair $ M.toList m
- where ppItfMapPair :: (Show a, HasSource a) => (Id, Bwd [TyArg a]) -> PP.Doc
-       ppItfMapPair (x, instants) =
-         PP.hsep $ intersperse PP.comma $ map (\args -> foldl (<+>) (text x) $ map ppTyArg args) (bwd2fwd instants)
+  PP.hsep $ intersperse PP.comma $ map ppItfInstances $ M.toList m
+
+ppItfInstances :: (Show a, HasSource a) => (Id, Bwd [TyArg a]) -> PP.Doc
+ppItfInstances (x, instants) =
+        PP.hsep $ intersperse PP.comma $ map (\args -> foldl (<+>) (text x) $ map ppTyArg args) (bwd2fwd instants)
+
+ppItfInstance :: (Show a, HasSource a) => (Id, [TyArg a]) -> PP.Doc
+ppItfInstance (x, ts) = text x <+> (PP.hsep $ map ppTyArg ts)
 
 ppSource :: Source -> PP.Doc
 ppSource (InCode (line, col)) = text "line" <+> text (show line) <+> text ", column" <+> text (show col)
@@ -443,7 +447,7 @@ ppAdaptor :: (Show a, HasSource a) => Adaptor a -> PP.Doc
 ppAdaptor (Rem x n _) = text "-" <> text x <> text "." <> int n
 ppAdaptor (Swap x m n _) = int m <> text "." <> text x <>
                                text "." <> int n
-ppAdaptor (Adaptor x r n _) = text x <+> text "--" <> int n <> text "-->" <+> ppRenaming r
+ppAdaptor (GeneralAdaptor x r n _) = text x <+> text "--" <> int n <> text "-->" <+> ppRenaming r
 
 {- TypeCheckCommon pretty printers -}
 

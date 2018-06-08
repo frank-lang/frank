@@ -88,8 +88,8 @@ fmvAbMod (EmpAb _) = S.empty
 fmvAbMod (AbRVar _ _) = S.empty
 fmvAbMod (AbFVar x _) = S.singleton x
 
-fmvAdj :: Adj Desugared -> S.Set Id
-fmvAdj (Adj (ItfMap m _) _) = foldMap (foldMap (foldMap fmvTyArg)) (M.elems m)
+fmvAdj :: Adjustment Desugared -> S.Set Id
+fmvAdj (ConsAdj x ts _) = foldMap fmvTyArg ts
 
 fmvCType :: CType Desugared -> S.Set Id
 fmvCType (CType ps q _) = S.union (foldMap fmvPort ps) (fmvPeg q)
@@ -98,7 +98,7 @@ fmvPeg :: Peg Desugared -> S.Set Id
 fmvPeg (Peg ab ty _) = S.union (fmvAb ab) (fmv ty)
 
 fmvPort :: Port Desugared -> S.Set Id
-fmvPort (Port adj ty _) = S.union (fmvAdj adj) (fmv ty)
+fmvPort (Port adjs ty _) = S.union (foldMap fmvAdj adjs) (fmv ty)
 
 entrify :: Suffix -> [Entry]
 entrify = map $ uncurry FlexMVar

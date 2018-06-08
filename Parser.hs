@@ -108,7 +108,7 @@ sigType = (do a <- getLoc
                 case rest of
                   Nothing -> modifyAnn a ct
                   Just (CType ports peg a') ->
-                        CType (Port idAdjRaw (SCTy ct a') a' : ports) peg a) <|>
+                        CType (Port [] (SCTy ct a') a' : ports) peg a) <|>
           attachLoc (do ports <- some (try (port <* symbol "->"))
                         peg <- peg
                         return $ CType ports peg) <|>
@@ -165,9 +165,9 @@ ctype = attachLoc $ do ports <- many (try (port <* symbol "->"))
                        return $ CType ports peg
 
 port :: MonadicParsing m => m (Port Raw)
-port = attachLoc $ do adj <- adj
+port = attachLoc $ do adjs <- adjs
                       ty <- vtype
-                      return $ Port adj ty
+                      return $ Port adjs ty
 
 peg :: MonadicParsing m => m (Peg Raw)
 peg = attachLoc $ do ab <- ab
@@ -180,12 +180,16 @@ pegExplicit = attachLoc $ do ab <- abExplicit
                              ty <- vtype
                              return $ Peg ab ty
 
-adj :: MonadicParsing m => m (Adj Raw)
-adj = provideLoc $ \a -> do mItfMap <- optional $ angles itfInstances
-                            case mItfMap of
-                              Nothing -> return $ Adj (ItfMap M.empty a) a
-                              Just itfMap -> return $ Adj itfMap a
+adjs :: MonadicParsing m => m [Adjustment Raw]
+adjs = do mAdjs <- optional $ angles (sepBy adj (symbol ","))
+          case mAdjs of
+            Nothing   -> return []
+            Just adjs -> return adjs
 
+adj :: MonadicParsing m => m (Adjustment Raw)
+adj = attachLoc $ do x <- identifier
+                     ts <- many tyArg
+                     return $ ConsAdj x ts            
 
 -- TODO: LC: Name consistently `instances` or `instantiations`
 itfInstances :: MonadicParsing m => m (ItfMap Raw)

@@ -256,7 +256,7 @@ inferUse adpd@(Adapted adps t _) =
                Nothing -> throwError $ errorAdaptor adp ab
 
 applyAdaptor :: Adaptor Desugared -> Ab Desugared -> Maybe (Ab Desugared)
-applyAdaptor adp@(Adaptor x r n _) (Ab v p@(ItfMap m a') a) =
+applyAdaptor adp@(GeneralAdaptor x r n _) (Ab v p@(ItfMap m a') a) =
   let instances = bwd2fwd (M.findWithDefault BEmp x m) in
   if length instances > n then
     let renaming = takeWhile (< length instances) $ map (renToFun r) [0 ..] in

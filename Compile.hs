@@ -178,12 +178,8 @@ compileUse (Adapted (r:rr) t a) =
      return $ S.ER cs r' rest
 
 compileAdaptor :: Adaptor Desugared -> Compile ([String], Renaming)
-compileAdaptor (Rem x n _) = do cmds <- getCCmds x
-                                return $ (cmds, renRem n)
-compileAdaptor (Swap x m n _) = do cmds <- getCCmds x
-                                   return $ (cmds, renSwap m n)
-compileAdaptor (Adaptor x r n _) = do cmds <- getCCmds x
-                                      return (cmds, r)
+compileAdaptor (GeneralAdaptor x r n _) = do cmds <- getCCmds x
+                                             return (cmds, r)
 
 compileDataCon :: DataCon Desugared -> Compile S.Exp
 compileDataCon (DataCon id xs _) = do xs' <- mapM compileTm xs

@@ -423,15 +423,15 @@ type CType a = AnnotTFix a CTypeF
 pattern CType ports peg a = Fx (AnnF (MkCType ports peg, a))
 
 data PortF :: ((* -> *) -> (* -> *)) -> * -> * where
-  MkPort :: TFix t AdjF -> TFix t VTypeF -> PortF t r                       -- ports
-deriving instance (Show (TFix t AdjF),
+  MkPort :: [TFix t AdjustmentF] -> TFix t VTypeF -> PortF t r                       -- ports
+deriving instance (Show (TFix t AdjustmentF),
                    Show (TFix t VTypeF),
                    Show r, Show (TFix t PortF)) => Show (PortF t r)
-deriving instance (Eq (TFix t AdjF),
+deriving instance (Eq (TFix t AdjustmentF),
                    Eq (TFix t VTypeF),
                    Eq r, Eq (TFix t PortF)) => Eq (PortF t r)
 type Port a = AnnotTFix a PortF
-pattern Port adj ty a = Fx (AnnF (MkPort adj ty, a))
+pattern Port adjs ty a = Fx (AnnF (MkPort adjs ty, a))
 
 data PegF :: ((* -> *) -> (* -> *)) -> * -> * where
   MkPeg :: TFix t AbF -> TFix t VTypeF -> PegF t r                          -- pegs
@@ -489,6 +489,19 @@ deriving instance (Eq (TFix t ItfMapF),
 type Adj a = AnnotTFix a AdjF
 pattern Adj itfMap a = Fx (AnnF (MkAdj itfMap, a))
 
+data AdjustmentF :: ((* -> *) -> (* -> *)) -> * -> * where
+  MkConsAdj :: Id -> [TFix t TyArgF] -> AdjustmentF t r -- interface-id, list of ty arg's
+  MkAdaptorAdj :: TFix t AdaptorF -> AdjustmentF t r
+deriving instance (Show (TFix t TyArgF),
+                   Show (TFix t AdaptorF),
+                   Show r, Show (TFix t AdjustmentF)) => Show (AdjustmentF t r)
+deriving instance (Eq (TFix t TyArgF),
+                   Eq (TFix t AdaptorF),
+                   Eq r, Eq (TFix t AdjustmentF)) => Eq (AdjustmentF t r)
+type Adjustment a = AnnotTFix a AdjustmentF
+pattern ConsAdj x ts a = Fx (AnnF (MkConsAdj x ts, a))
+pattern AdaptorAdj adp a = Fx (AnnF (MkAdaptorAdj adp, a))
+
 -- Abilities
 data AbF :: ((* -> *) -> (* -> *)) -> * -> * where
   MkAb :: TFix t AbModF -> TFix t ItfMapF -> AbF t r                        -- interface-id  ->  list of ty arg's
@@ -532,17 +545,14 @@ data AdaptorF :: ((* -> *) -> (* -> *)) -> * -> * where
   MkRem :: NotDesugared (t Identity ()) => Id -> Int -> AdaptorF t r        -- remove effect at position `n`
   MkCopy :: NotDesugared (t Identity ()) => Id -> Int -> AdaptorF t r       -- copy effect at position `n`
   MkSwap :: NotDesugared (t Identity ()) => Id -> Int -> Int -> AdaptorF t r-- swap effects at positions `m`, `n`
-  MkAdaptor :: Id -> Renaming -> Int -> AdaptorF (AnnotT Desugared) r       -- general renaming for effect lists with positions up to at least `n`
+  MkGeneralAdaptor :: Id -> Renaming -> Int -> AdaptorF (AnnotT Desugared) r       -- general renaming for effect lists with positions up to at least `n`
 deriving instance (Show r, Show (TFix t AdaptorF)) => Show (AdaptorF t r)
 deriving instance (Eq r, Eq (TFix t AdaptorF)) => Eq (AdaptorF t r)
 type Adaptor a = AnnotTFix a AdaptorF
 pattern Rem x n a = Fx (AnnF (MkRem x n, a))
 pattern Copy x n a = Fx (AnnF (MkCopy x n, a))
 pattern Swap x m n a = Fx (AnnF (MkSwap x m n, a))
-pattern Adaptor x r n a = Fx (AnnF (MkAdaptor x r n, a))
-
-idAdjRaw :: Adj Raw
-idAdjRaw = Adj (ItfMap M.empty (Raw Implicit)) (Raw Implicit)
+pattern GeneralAdaptor x r n a = Fx (AnnF (MkGeneralAdaptor x r n, a))
 
 idAdjRef :: Adj Refined
 idAdjRef = Adj (ItfMap M.empty (Refined Implicit)) (Refined Implicit)
