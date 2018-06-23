@@ -152,9 +152,9 @@ refineCType (CType xs z a) = do ys <- mapM refinePort xs
                                 return $ CType ys peg (rawToRef a)
 
 refinePort :: Port Raw -> Refine (Port Refined)
-refinePort (Port adj ty a) = do adj' <- refineAdj adj
-                                ty' <- refineVType ty
-                                return $ Port adj' ty' (rawToRef a)
+refinePort (Port adjs ty a) = do adjs' <- mapM refineAdj adjs
+                                 ty' <- refineVType ty
+                                 return $ Port adjs' ty' (rawToRef a)
 
 refinePeg :: Peg Raw -> Refine (Peg Refined)
 refinePeg (Peg ab ty a) = do ab' <- refineAb ab
@@ -193,7 +193,7 @@ refineAbMod :: AbMod Raw -> AbMod Refined
 refineAbMod (EmpAb a) = EmpAb (rawToRef a)
 refineAbMod (AbVar x a) = AbVar x (rawToRef a)
 
-refineAdj :: Adj Raw -> Refine (Adj Refined)
+refineAdj :: Adjustment Raw -> Refine (Adjustment Refined)
 refineAdj (Adj m a) = do m' <- refineItfMap m
                          return $ Adj m' (rawToRef a)
 

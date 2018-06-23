@@ -101,8 +101,9 @@ errorTCNotInScope op = "'" ++ getOpName op ++ "' not in scope (" ++ (show $ ppSo
 errorTCPatternPortMismatch :: Clause Desugared -> String
 errorTCPatternPortMismatch cls = "number of patterns not equal to number of ports (" ++ (show $ ppSourceOf cls) ++ ")"
 
-errorTCCmdNotFoundInAdj :: Id -> Adjustment Desugared -> String
-errorTCCmdNotFoundInAdj cmd adj = "command " ++ cmd ++ " not found in adjustment " ++ (show $ ppAdj adj) ++ " (" ++ (show $ ppSourceOf adj) ++ ")"
+errorTCCmdNotFoundInAdj :: Id -> [Adjustment Desugared] -> String
+errorTCCmdNotFoundInAdj cmd adj = "command " ++ cmd ++ " not found in adjustments"
+-- TODO: LC: fix this
 
 errorTCNotACtr :: Id -> String
 errorTCNotACtr x = "'" ++ x ++ "' is not a constructor"
@@ -126,6 +127,10 @@ errorUnifAbs ab1 ab2 =
 errorUnifItfMaps :: ItfMap Desugared -> ItfMap Desugared -> String
 errorUnifItfMaps m1 m2 =
   "cannot unify interface maps " ++ (show $ ppItfMap m1) ++ " (" ++ (show $ ppSourceOf m1) ++ ")" ++ " and " ++ (show $ ppItfMap m2) ++ " (" ++ (show $ ppSourceOf m2) ++ ")"
+
+errorUnifAdaptor :: Adaptor Desugared -> Adaptor Desugared -> String
+errorUnifAdaptor adp1 adp2 =
+  "cannot unify adaptors " ++ (show $ ppAdaptor adp1) ++ " (" ++ (show $ ppSourceOf adp1) ++ ")" ++ " and " ++ (show $ ppAdaptor adp2) ++ " (" ++ (show $ ppSourceOf adp2) ++ ")"
 
 errorAdaptor :: Adaptor Desugared -> Ab Desugared -> String
 errorAdaptor adpd@(GeneralAdaptor x r n _) ab =
@@ -494,9 +499,10 @@ ppDef (id := e) = text id <+> text "->" <+> ppExp e
 ppDef (DF id [] []) = error "ppDef invariant broken: empty Def Exp detected."
 ppDef p@(DF id hss es) = header $+$ vcat cs
   where header = text id <> PP.parens (hsep args) <> colon
-        args = punctuate comma $ (map (hsep . map text) hss)
+        args = punctuate comma $ (map (hsep . map text . snd) hss)
         cs = punctuate comma $
                map (\x -> text id <> (nest 3 (ppClauseShonky ($$) x))) es
+-- TODO: LC: pretty-print ren argument (remove ". snd")
 
 ppText :: (a -> PP.Doc) -> [Either Char a] -> PP.Doc
 ppText f ((Left c) : xs) = (text $ escChar c) <> (ppText f xs)
@@ -531,7 +537,7 @@ ppExp (EF xs ys) =
   let clauses = map (ppClauseShonky (<+>)) ys in
   PP.braces $ hcat (punctuate comma clauses)
 ppExp (EX xs) = text "[|" <> ppText ppExp xs
-ppExp (ER cs r e) = text "<(" <+> (hcat $ punctuate comma (map text cs))
+ppExp (ER (cs, r) e) = text "<(" <+> (hcat $ punctuate comma (map text cs))
                     <> text ")" <+> ppRenaming r <> text ">"
                     <+> PP.parens (ppExp e)
 

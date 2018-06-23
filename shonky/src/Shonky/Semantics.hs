@@ -24,7 +24,7 @@ data Val
   | VI Int                                                              -- int
   | Val :&& Val                                                             -- cons
   | VX String                                                               -- string
-  | VF Env [[String]] [([Pat], Exp)]                                        -- function (anonymous)
+  | VF Env [([Adap], [String])] [([Pat], Exp)]                              -- function (anonymous)
   | VB String Env                                                           -- built-in function
   | VC Comp                                                                 -- comp
   | VR (IORef Val)                                                          -- reference cell
@@ -34,7 +34,7 @@ data Val
 -- comp: value or command call
 data Comp
   = Ret Val                                                                 -- value
-  | Call String Int [Val] Agenda                                        -- command call: cmd-id, cmd-level, values, suspended agenda
+  | Call String Int [Val] Agenda                                            -- command call: cmd-id, cmd-level, values, suspended agenda
   deriving Show
 
 -- stack of (collections of definitions)
@@ -47,7 +47,7 @@ data Frame
   = Car Env Exp                                                             -- head can be processed. env, uncomputed tail are recorded
   | Cdr Val                                                                 -- tail can be processed. computed head is recorded
   | Fun Env [Exp]                                                           -- operator can be processed. env, operands are recorded
-  | Arg [String] Val [Comp] Env [[String]] [Exp]                            -- current arg can be processed.
+  | Arg ([Adap], [String]) Val [Comp] Env [([Adap], [String])] [Exp]                            -- current arg can be processed.
                                                                             --     [String]   handleable commands of current arg
                                                                             --          Val   eval. handler
                                                                             --       [Comp]   eval. args (reversed)
@@ -59,7 +59,7 @@ data Frame
   | Qed Val
   | Def Env [Def Val] String [Def Exp] Exp
   | Txt Env [Char] [Either Char Exp]                                        -- current char of string can be processed. env, already computed reversed beginning, rest are recorded
-  | Adp [String] Renaming                                                   -- adaptor for commands that go below this frame (when looking at the frame stack)
+  | Adp Adap                                                                -- adaptor for commands that go below this frame (when looking at the frame stack)
   deriving Show
 
 type Agenda = [Frame]
@@ -135,7 +135,7 @@ ppFrame (Arg hs f cs g hss es) = text "Arg" <+> nest 3 (vcat [text "hs =" <+> (t
 ppFrame (Seq g e)              = text "Seq" <+> ppEnv g <+> ppExp e
 ppFrame (Qes g e)              = text "Qes" <+> ppEnv g <+> ppExp e
 ppFrame (Qed v)                = text "Qed" <+> ppVal v
-ppFrame (Adp cs r)             = text "Adp" <+> text "[" <+> (hcat $ punctuate comma (map text cs)) <+> text "]" <+> (text . show) r
+ppFrame (Adp (cs, r))          = text "Adp" <+> text "[" <+> (hcat $ punctuate comma (map text cs)) <+> text "]" <+> (text . show) r
 
 ppEnv :: Env -> Doc
 ppEnv g = bracketed empty (map ((bracketed (text "\n")) . (map ppDefVal)) (envToList g))
@@ -225,13 +225,13 @@ compute g (e :// f)    ls = compute g e (Qes g f : ls)                      -- 2
 compute g (EF hss pes) ls = consume (VF g hss pes) ls                       -- 1) feed in function
 compute g (ds :- e)    ls = define g [] ds e ls                             -- (not used by Frank)
 compute g (EX ces)     ls = combine g [] ces ls                             -- 2) compute string
-compute g (ER cs r e)     ls = compute g e (Adp cs r : ls)                       -- 2) add commands to be skipped in `ls`
+compute g (ER (cs, r) e) ls = compute g e (Adp (cs, r) : ls)                       -- 2) add commands to be skipped in `ls`
 
 -- Take val `v` and top-frame from stack, apply it to `v` in
 consume :: Val -> Agenda -> Comp
 consume v (Car g d    : ls) = compute g d (Cdr v : ls)                      -- Given: eval. head `v`,     non-eval. tail `d`.  Record `v` and compute tail `d`.
 consume v (Cdr u      : ls) = consume (simplStr u v) (ls)                   -- Given: eval. head `u`,     eval.     tail `v`.  Put together.
-consume v (Fun g as   : ls) = args v [] g (handles v) as (ls)               -- Given: eval. function `v`, non-eval. args `as`. Compute `as`, then feed them into `v`
+consume v (Fun g as   : ls) = args v [] g (adapsAndHandles v) as (ls)               -- Given: eval. function `v`, non-eval. args `as`. Compute `as`, then feed them into `v`
 consume v (Arg _ f cs g
                hss es : ls) = args f (Ret v : cs) g hss es (ls)             -- Given: Eval.:     handler `f`,
                                                                                       --                   first args `cs` (reversed),
@@ -243,7 +243,7 @@ consume v (Qes g e           : ls) = compute g e (Qed v : ls)               -- C
 consume _ (Qed v             : ls) = consume v (ls)                         -- LC: Bug here? Why discard argument? (but not used by Frank so far anyway)
 consume v (Def g dvs x des e : ls) = define g ((x := v) : dvs) des e (ls)   -- (not used by Frank)
 consume v (Txt g cs ces      : ls) = combine g (revapp (txt v) cs) ces (ls) -- (not used by Frank)
-consume v (Adp cs r          : ls) = consume v ls                           -- ignore addaptor when value is obtained
+consume v (Adp (cs, r)       : ls) = consume v ls                           -- ignore addaptor when value is obtained
 consume v []                       = Ret v
 
 -- inch and ouch commands in the IO monad
@@ -304,18 +304,19 @@ define g dvs ((x := d) : des) e ls =
     defo []                   = []
 
 -- Return handleable commands
-handles :: Val -> [[String]]
-handles (VF _ hss _) = hss
-handles _ = []
+adapsAndHandles :: Val -> [([Adap], [String])]
+adapsAndHandles (VF _ hss _) = hss
+adapsAndHandles _ = []
 
 -- given: eval. operator `f`, eval. reversed arguments `cs`, env `g`,
 --        handleable commands, non-eval. args `es`, frame stack
 -- Compute until all [Exp] are [Comp], then call `apply`.
-args :: Val -> [Comp] -> Env -> [[String]] -> [Exp] -> Agenda -> Comp
+args :: Val -> [Comp] -> Env -> [([Adap], [String])] -> [Exp] -> Agenda -> Comp
 args f cs g hss [] ls = apply f (reverse cs) ls                             -- apply when all args are evaluated
-args f cs g [] es ls = args f cs g [[]] es ls                               -- default to [] (no handleable commands) if not explicit
+args f cs g [] es ls = args f cs g [([], [])] es ls                               -- default to [] (no handleable commands) if not explicit
 args f cs g (hs : hss) (e : es) ls = compute g e
                                              (Arg hs f cs g hss es : ls)    -- compute argument, record rest. will return eventually here.
+-- TODO: LC: remove and fix the second case of args (it's a bit of a hack)
 
 -- `apply` is called by `args` when all arguments are evaluated
 -- given: eval. operator, eval. args, frame stack
@@ -344,14 +345,29 @@ apply f cs ls = error $ concat ["apply: ", show f, show cs, show ls]
 --   cts: commands-to-be-skipped
 command :: String -> [Val] -> SkippedAgenda -> Int -> Agenda -> Comp
 command c vs ks n [] = Call c n vs ks                                       -- if agenda is done (i.e. no handler there), return Call
-command c vs ks n (k@(Arg hs f cs g hss es) : ls)                           -- if there is a handler that can handle `c` and is not to be skipped
-  | n < count = args f (Call c n vs ks : cs) g hss es ls                    --    (handler can handle `count` levels, command is lifted by `n` levels),
-                                                                            --    then fix command-call as argument and continue with `args`
-  | n >= count = command c vs (k : ks) (n-count) ls                         -- if there is a handler that can handle `c` but is to be skipped,
-  where count = length (filter (== c) hs)                        --    then skip that handler and recurse
-command c vs ks n (Adp cs r : ls)
-  | c `elem` cs = command c vs (Adp cs r : ks) (renToFun r n) ls -- if there is a lift frame that lifts `c` for `count` times, then `n` is redirected accordingly
+command c vs ks n (k@(Arg (adps, hs) f cs g hss es) : ls) =                           -- if there is a handler that can handle `c` and is not to be skipped
+   let n' = applyAdaptorsToCommand adps c n in
+   let count = length (filter (== c) hs) in
+   if n' < count then args f (Call c n' vs ks : cs) g hss es ls                    --    (handler can handle `count` levels, command is lifted by `n` levels),
+                 else command c vs (k : ks) (n'-count) ls
+  where applyAdaptorsToCommand :: [Adap] -> String -> Int -> Int
+        applyAdaptorsToCommand [] c n = n
+        applyAdaptorsToCommand (a:ar) c n = applyAdaptorsToCommand ar c (applyAdaptorToCommand a c n)
+        applyAdaptorToCommand :: Adap -> String -> Int -> Int
+        applyAdaptorToCommand (cs, ren) c n = if c `elem` cs
+                                                then renToFun ren n
+                                                else n
+command c vs ks n (Adp (cs, r) : ls)
+  | c `elem` cs = command c vs (Adp (cs, r) : ks) (renToFun r n) ls -- if there is a lift frame that lifts `c` for `count` times, then `n` is redirected accordingly
 command c vs ks n (k : ls) = command c vs (k : ks) n ls                     -- skip current handler `k` and recurse
+
+
+-- command c vs ks n (k@(Arg (adps, hs) f cs g hss es) : ls)                           -- if there is a handler that can handle `c` and is not to be skipped
+--   | n < count = args f (Call c n vs ks : cs) g hss es ls                    --    (handler can handle `count` levels, command is lifted by `n` levels),
+--                                                                             --    then fix command-call as argument and continue with `args`
+--   | n >= count = command c vs (k : ks) (n-count) ls                         -- if there is a handler that can handle `c` but is to be skipped,
+--   where count = length (filter (== c) hs)                        --    then skip that handler and recurse
+
 
 -- given:  env, rules, evaluated args, frame stack
 -- selects first rule that matches and computes that expression

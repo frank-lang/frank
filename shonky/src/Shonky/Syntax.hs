@@ -20,7 +20,7 @@ data Exp
   | Exp :$ [Exp]                  -- n-ary application
   | Exp :! Exp                    -- composition (;)
   | Exp :// Exp                   -- composition (o)
-  | EF [[String]] [([Pat], Exp)]  -- handler
+  | EF [([Adap], [String])] [([Pat], Exp)]  -- handler
     --   [[String]]:     for each arg pos, which commands are handled
     --                   and how often (potentially multiple occurrences)?
     --   [([Pat], Exp)]: pattern matching rules
@@ -28,15 +28,21 @@ data Exp
   | EX [Either Char Exp]          -- string concatenation expression
     -- (used only for characters in source Frank (Left c), but used by
     -- strcat)
-  | ER  [String] Renaming Exp     -- Adaptor
+  | ER Adap Exp     -- Adaptor
   deriving (Show, Eq)
 infixr 6 :&
 infixl 5 :$
 infixr 4 :!
 
 data Def v
-  = String := v                          -- value def
-  | DF String [[String]] [([Pat], Exp)]  -- handler def
+  = String := v                                     -- value def
+  | DF String [([Adap], [String])] [([Pat], Exp)] -- handler def:
+                                                    -- - name
+                                                    -- - redirection, executed
+                                                    --     before assigning
+                                                    --     commands to arg pos
+                                                    -- - commands at args
+                                                    -- - patterns + bodies
   deriving (Show, Eq)
 
 {--
@@ -60,6 +66,8 @@ data VPat
   | VPQ String              -- LC: ?
   deriving (Show, Eq)
 
+type Adap = ([String], Renaming)
+
 pProg :: P [Def Exp]
 pProg = pGap *> many (pDef <* pGap)
 
@@ -80,7 +88,7 @@ pP :: String -> P ()
 pP s = () <$ traverse (pLike pChar . (==)) s
 
 pExp :: P Exp
-pExp = (((((flip ER) (renRem 0)) <$ pGap <* pP "neg" <* pGap <* pP "<" <* pGap <*>
+pExp = ((((\x -> ER (x, renRem 0)) <$ pGap <* pP "neg" <* pGap <* pP "<" <* pGap <*>
           pCSep (pId <* pGap) ">" <*
           pGap <* pP "(" <* pGap <*>
           pExp <*
@@ -92,9 +100,10 @@ pExp = (((((flip ER) (renRem 0)) <$ pGap <* pP "neg" <* pGap <* pP "<" <* pGap <
        <|> id <$ pP "[" <*> pLisp pExp (EA "") (:&)
        <|> thunk <$ pP "{" <* pGap <*> pExp <* pGap <* pP "}"
        <|> EF <$ pP "{" <* pGap <*>
-          (id <$ pP "(" <*> pCSep (many (pId <* pGap)) ")"
+          (id <$ pP "(" <*> (map (\x -> ([], x)) <$> pCSep (many (pId <* pGap)) ")")
               <* pGap <* pP ":" <* pGap
-           <|> pure []) <*> pCSep pClause "" <* pGap <* pP "}"
+           <|> pure [])
+          <*> pCSep pClause "" <* pGap <* pP "}"
        ) >>= pApp)
        <|> (:-) <$ pP "{|" <*> pProg <* pP "|}" <* pGap <*> pExp
      where thunk e = EF [] [([], e)]
@@ -139,11 +148,12 @@ pClause = (,) <$ pP "(" <*> pCSep pPat ")"
 
 pRules :: String -> P (Def Exp)
 pRules f = DF f <$>
-  (id <$ pP "(" <*> pCSep (many (pId <* pGap)) ")" <* pGap
+  (id <$ pP "(" <*> (map (\x -> ([], x)) <$> pCSep (many (pId <* pGap)) ")") <* pGap
      <* pP ":" <* pGap) <*>
   pCSep (pP f *> pClause) ""
   <|> DF f [] <$> ((:) <$> pClause <*>
        many (id <$ pGap <* pP "," <* pGap <* pP f <*> pClause))
+-- TODO: LC: Parse adjustments/renamings in ports
 
 pPat :: P Pat
 pPat = PT <$ pP "{" <* pGap <*> pId <* pGap <* pP "}"

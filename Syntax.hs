@@ -710,3 +710,28 @@ histogram []     = M.empty
 histogram (x:xr) = if x `M.member` m then M.adjust (+1) x m
                                      else M.insert x 1 m
   where m = histogram xr
+
+-- Normal form of lists of adjustments
+
+adjsNormalForm :: [Adjustment Desugared] ->
+                  (M.Map Id (Bwd [TyArg Desugared]), M.Map Id (Renaming, Int))
+adjsNormalForm = foldl (flip addAdj) (M.empty, M.empty)
+
+addAdj :: Adjustment Desugared ->
+          (M.Map Id (Bwd [TyArg Desugared]), M.Map Id (Renaming, Int)) ->
+          (M.Map Id (Bwd [TyArg Desugared]), M.Map Id (Renaming, Int))
+addAdj (ConsAdj x ts a) (insts, adps) =
+  (adjustWithDefault (:< ts) x BEmp insts,
+   adjustWithDefault (\(r, n) -> (RenCons 0 (RenComp r RenS), n)) x (RenId, 0) adps)
+addAdj (AdaptorAdj (GeneralAdaptor x r n _) a) (insts, adps) =
+  (insts,
+   adjustWithDefault (\(r', n') -> (RenComp r r', max n n')) x (RenId, 0) adps)
+
+-- helpers
+
+adjustWithDefault :: Ord k => (a -> a) -> k -> a -> M.Map k a -> M.Map k a
+adjustWithDefault f k def m =
+  let g = \x -> case x of Nothing -> Just def
+                          _ -> x
+  in
+  M.adjust f k (M.alter g k m)

@@ -113,11 +113,20 @@ compileMHDef (Def id ty xs _) = do xs' <- mapM compileClause xs
                                    tyRep <- compileCType ty
                                    return $ S.DF id tyRep xs'
 
-compileCType :: CType Desugared -> Compile [[String]]
+compileCType :: CType Desugared -> Compile [([S.Adap], [String])]
 compileCType (CType xs _ _) = mapM compilePort xs
 
-compilePort :: Port Desugared -> Compile [String]
-compilePort (Port adj _ _) = compileAdj adj
+compilePort :: Port Desugared -> Compile ([S.Adap], [String])
+compilePort (Port adjs _ _) =
+  do let (insts, adps) = adjsNormalForm adjs
+     -- convert insts into list of commands
+     let insts' = M.mapWithKey (\i insts ->
+                                replicate ((length . bwd2fwd) insts) i) insts
+     cmds <- liftM concat $ mapM getCCmds (concat (M.elems insts'))
+     -- convert renamings into list of Adap
+     let (ids, rens) = fmap (map fst) (unzip (M.assocs adps))   -- (id, ren)
+     rencmds <- mapM getCCmds ids
+     return (zip rencmds rens, cmds)
 
 compileAdj :: Adj Desugared -> Compile [String]
 compileAdj (Adj a@(ItfMap m _) _) =
@@ -175,7 +184,7 @@ compileUse (Adapted [] t _) = compileUse t
 compileUse (Adapted (r:rr) t a) =
   do (cs, r') <- compileAdaptor r
      rest <- compileUse (Adapted rr t a)
-     return $ S.ER cs r' rest
+     return $ S.ER (cs, r') rest
 
 compileAdaptor :: Adaptor Desugared -> Compile ([String], Renaming)
 compileAdaptor (GeneralAdaptor x r n _) = do cmds <- getCCmds x
@@ -186,7 +195,8 @@ compileDataCon (DataCon id xs _) = do xs' <- mapM compileTm xs
                                       return $ (S.EV id) S.:$ xs'
 
 compileSComp :: SComp Desugared -> Compile S.Exp
-compileSComp (SComp xs _) = S.EF <$> pure [[]] <*> mapM compileClause xs
+compileSComp (SComp xs _) = S.EF <$> pure [([], [])] <*> mapM compileClause xs
+-- TODO: LC: Fix this!
 
 compileOp :: Operator Desugared -> Compile S.Exp
 compileOp (Mono id _) = case M.lookup id builtins of

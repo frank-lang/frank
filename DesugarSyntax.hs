@@ -5,6 +5,7 @@ import Control.Monad.State
 import Control.Monad.Identity
 import qualified Data.Map.Strict as M
 
+import BwdFwd
 import Syntax
 import FreshNames
 
@@ -172,9 +173,10 @@ desugarCType :: CType Refined -> Desugar (CType Desugared)
 desugarCType (CType ports peg a) =
   CType <$> mapM desugarPort ports <*> desugarPeg peg <*> pure (refToDesug a)
 
--- nothing happens on this level
 desugarPort :: Port Refined -> Desugar (Port Desugared)
-desugarPort (Port adjs ty a) = Port <$> (mapM desugarAdjustment adjs) <*> desugarVType ty <*> pure (refToDesug a)
+desugarPort (Port adjs ty a) = Port <$> (mapM desugarAdjustment adjs)
+                                    <*> desugarVType ty
+                                    <*> pure (refToDesug a)
 
 -- nothing happens on this level
 desugarPeg :: Peg Refined -> Desugar (Peg Desugared)
