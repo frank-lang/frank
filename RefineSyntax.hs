@@ -194,8 +194,32 @@ refineAbMod (EmpAb a) = EmpAb (rawToRef a)
 refineAbMod (AbVar x a) = AbVar x (rawToRef a)
 
 refineAdj :: Adjustment Raw -> Refine (Adjustment Refined)
-refineAdj (Adj m a) = do m' <- refineItfMap m
-                         return $ Adj m' (rawToRef a)
+refineAdj (ConsAdj x ts a) = do
+  (x', ts') <- refineItfInstance (x, ts)
+  return $ ConsAdj x' ts' (rawToRef a)
+
+refineItfInstance :: (Id, [TyArg Raw]) -> Refine (Id, [TyArg Refined])
+refineItfInstance (x, ts) =
+--                  x t_11 ... t_1n, ..., x t_m1 t_mn
+  do itfs <- getRItfs
+     case M.lookup x itfs of
+       Just ps -> do
+--                1) interface x p_1 ... p_n     = ...
+--             or 2) interface x p_1 ... p_n [£] = ...
+--                   and [£] has been explicitly added before
+--                if 2), set t_{n+1} := [£]
+          evset <- getEVSet
+          ctx <- getTopLevelCtxt
+          ts' <- do let a = Raw Implicit
+                    let ts' = if "£" `S.member` evset ||
+                                 isHdrCtxt ctx
+                              then concretiseEpsArg ps ts a
+                              else ts
+                    checkArgs x (length ps) (length ts') a
+                    mapM refineTyArg ts'
+          return (x, ts')
+       Nothing -> throwError $ errorRefIdNotDeclared "interface" x (Raw Implicit)
+
 
 -- Explicit refinements:
 -- + interface aliases are substituted
@@ -205,30 +229,9 @@ refineItfMap (ItfMap m a) = do
   ms <- mapM (\(x, insts) -> mapM (\inst -> substitItfAls (x, inst)) (bwd2fwd insts)) (M.toList m)
   let (ItfMap m' a') = foldl plusItfMap (emptyItfMap a) (concat ms)
   -- refine instantiations of each interface
-  m'' <- M.fromList <$> (mapM refineEntry) (M.toList m')
+  m'' <- M.fromList <$> (mapM refineItfInstance) (M.toList m')
   return $ ItfMap m'' (rawToRef a)
-  where refineEntry :: (Id, Bwd [TyArg Raw]) -> Refine (Id, Bwd [TyArg Refined])
-        refineEntry (x, insts) =
---                  x t_11 ... t_1n, ..., x t_m1 t_mn
-          do itfs <- getRItfs
-             case M.lookup x itfs of
-               Just ps -> do
---                1) interface x p_1 ... p_n     = ...
---             or 2) interface x p_1 ... p_n [£] = ...
---                   and [£] has been explicitly added before
---                if 2), set t_{n+1} := [£]
-                  evset <- getEVSet
-                  ctx <- getTopLevelCtxt
-                  insts' <- mapM (\ts -> do let a' = Raw (implicitNear a)
-                                            let ts' = if "£" `S.member` evset ||
-                                                         isHdrCtxt ctx
-                                                      then concretiseEpsArg ps ts a'
-                                                      else ts
-                                            checkArgs x (length ps) (length ts') a
-                                            mapM refineTyArg ts')
-                                 insts
-                  return (x, insts')
-               Nothing -> throwError $ errorRefIdNotDeclared "interface" x a
+
 
 -- Explicit refinements:
 -- + implicit [£] ty args to data types are made explicit
