@@ -101,8 +101,8 @@ errorTCNotInScope op = "'" ++ getOpName op ++ "' not in scope (" ++ (show $ ppSo
 errorTCPatternPortMismatch :: Clause Desugared -> String
 errorTCPatternPortMismatch cls = "number of patterns not equal to number of ports (" ++ (show $ ppSourceOf cls) ++ ")"
 
-errorTCCmdNotFoundInAdj :: Id -> [Adjustment Desugared] -> String
-errorTCCmdNotFoundInAdj cmd adj = "command " ++ cmd ++ " not found in adjustments"
+errorTCCmdNotFoundInAdj :: Id -> Port Desugared -> String
+errorTCCmdNotFoundInAdj cmd port = "command " ++ cmd ++ " not found in adjustments of port " ++ (show $ ppPort port) ++ " (" ++ (show $ ppSourceOf port) ++ ")"
 -- TODO: LC: fix this
 
 errorTCNotACtr :: Id -> String
@@ -370,7 +370,7 @@ ppParenVType v = ppVType v
 
 ppPort :: (Show a, HasSource a) => Port a -> PP.Doc
 ppPort (Port []   ty _) = ppVType ty
-ppPort (Port adjs ty _) = text "<" <> (PP.hsep $ intersperse PP.comma $ map ppAdj adjs) <> ppVType ty
+ppPort (Port adjs ty _) = text "<" <> (PP.hsep $ intersperse PP.comma $ map ppAdj adjs) <> text ">" <> ppVType ty
 
 ppPeg :: (Show a, HasSource a) => Peg a -> PP.Doc
 ppPeg (Peg ab ty _) = ppAb ab <> ppVType ty

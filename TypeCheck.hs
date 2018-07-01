@@ -108,7 +108,7 @@ lkpItf :: Id -> Int -> Ab Desugared -> Contextual (Maybe [TyArg Desugared])
 lkpItf itf n (Ab v (ItfMap m _) _) =
   case M.lookup itf m of
     Just xs
-      | length (bwd2fwd xs) > n -> return $ Just (bwd2fwd xs !! (length (bwd2fwd xs) - n))
+      | length (bwd2fwd xs) > n -> return $ Just (bwd2fwd xs !! (length (bwd2fwd xs) - n - 1))
       | otherwise               -> lkpItfInAbMod itf (n - length (bwd2fwd xs)) v
     _ -> lkpItfInAbMod itf n v
 
@@ -335,7 +335,7 @@ checkCls cls@(Cls pats tm _) ports (Peg ab ty _)
 -- Check that given pattern matches given port
 checkPat :: Pattern Desugared -> Port Desugared -> Contextual [TermBinding]
 checkPat (VPat vp _) (Port _ ty _) = checkVPat vp ty
-checkPat (CmdPat cmd n xs g a) (Port adjs ty b) =                                  -- P-Request rule
+checkPat (CmdPat cmd n xs g a) port@(Port adjs ty b) =                                  -- P-Request rule
 -- interface itf q_1 ... q_m =
 --   cmd r_1 ... r_l: t_1 -> ... -> t_n -> y | ...
 
@@ -366,7 +366,7 @@ checkPat (CmdPat cmd n xs g a) (Port adjs ty b) =                               
           -- bindings: continuation + patterns
           return ((Mono g a, kty) : bs)
      else
-       throwError $ errorTCCmdNotFoundInAdj cmd adjs
+       throwError $ errorTCCmdNotFoundInAdj cmd port
 checkPat (ThkPat x a) (Port adjs ty b) =                                         -- P-CatchAll rule
 -- pattern:  x
   do amb <- getAmbient

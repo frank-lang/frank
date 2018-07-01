@@ -1,5 +1,5 @@
 -- #desc Command not contained in interfaces within port adjustment
--- #return command writeOut not found in adjustment <Send X> (line 7 , column 5)
+-- #return command writeOut not found in adjustments of port <Send X>Int (line 7 , column 5)
 interface Send X = send : X -> Int
 
 interface Write X = writeOut : Unit -> X
