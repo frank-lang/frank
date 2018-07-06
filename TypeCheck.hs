@@ -39,8 +39,9 @@ find (CmdId x a) =
   do amb <- getAmbient
      (itf, qs, rs, ts, y) <- getCmd x
      -- interface itf q_1 ... q_m = x r1 ... r_l: t_1 -> ... -> t_n -> y
-     mps <- lkpItf itf 0 amb
-     addMark -- Localise qs
+     mps <- lkpItf itf 0 amb -- Retrieve how itf is instantiated in amb
+     addMark                 -- Localise qs
+     -- Make mps flexible if it is not yet and store as res
      res <- case mps of
        Nothing ->
          do b <- isMVarDefined x
@@ -442,6 +443,7 @@ makeFlexibleTyArg skip (EArg ab a) = EArg <$> makeFlexibleAb skip ab <*> pure a
 makeFlexibleAdj :: [Id] -> Adjustment Desugared -> Contextual (Adjustment Desugared)
 makeFlexibleAdj skip (ConsAdj x ts a) = do ts' <- mapM (makeFlexibleTyArg skip) ts
                                            return $ ConsAdj x ts' a
+makeFlexibleAdj skip (AdaptorAdj adp a) = return $ AdaptorAdj adp a
 
 makeFlexibleCType :: [Id] -> CType Desugared -> Contextual (CType Desugared)
 makeFlexibleCType skip (CType ps q a) = CType <$>
