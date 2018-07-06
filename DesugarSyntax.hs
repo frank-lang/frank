@@ -203,6 +203,7 @@ desugarAbMod (AbVar x a) =
 -- nothing happens on this level
 desugarAdjustment :: Adjustment Refined -> Desugar (Adjustment Desugared)
 desugarAdjustment (ConsAdj x ts a) = ConsAdj x <$> (mapM desugarTyArg ts) <*> pure (refToDesug a)
+desugarAdjustment (AdaptorAdj adp a) = AdaptorAdj <$> (desugarAdaptor adp) <*> pure (refToDesug a)
 
 desugarItfMap :: ItfMap Refined -> Desugar (ItfMap Desugared)
 desugarItfMap (ItfMap m a) = do m' <- mapM (mapM (mapM desugarTyArg)) m

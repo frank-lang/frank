@@ -185,10 +185,14 @@ pegExplicit = attachLoc $ do ab <- abExplicit
                              return $ Peg ab ty
 
 adjs :: MonadicParsing m => m [Adjustment Raw]
-adjs = do mAdjs <- optional $ angles (sepBy consAdj (symbol ","))
+adjs = do mAdjs <- optional $ angles (sepBy adj (symbol ","))
           case mAdjs of
             Nothing   -> return []
             Just adjs -> return adjs
+
+adj :: MonadicParsing m => m (Adjustment Raw)
+adj = try consAdj <|>
+      (attachLoc $ AdaptorAdj <$> adaptor)
 
 consAdj :: MonadicParsing m => m (Adjustment Raw)
 consAdj = attachLoc $ do x <- identifier
