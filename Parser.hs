@@ -45,10 +45,10 @@ defOrInc = choice [Left <$> def,
 
 def :: MonadicParsing m => m (TopTm Raw)
 def = attachLoc (DataTm <$> dataDef <|>
-                 SigTm <$> try handlerTopSig <|>
-                 ClsTm <$> try handlerTopCls <|>
-                 ItfTm <$> try itfDef <|>
-                 ItfAliasTm <$> itfAliasDef)
+                 SigTm <$> handlerTopSig <|>
+                 ClsTm <$> handlerTopCls <|>
+                 ItfAliasTm <$> itfAliasDef <|>
+                 ItfTm <$> itfDef)
 
 dataDef :: MonadicParsing m => m (DataT Raw)
 dataDef = attachLoc $ do reserved "data"
@@ -77,8 +77,9 @@ ctr = attachLoc $ do name <- identifier
                      return $ Ctr name args
 
 handlerTopSig :: MonadicParsing m => m (MHSig Raw)
-handlerTopSig = attachLoc $ do name <- identifier
-                               symbol ":"
+handlerTopSig = attachLoc $ do name <- try $ do name <- identifier
+                                                symbol ":"
+                                                return name
                                ty <- sigType
                                return (Sig name ty)
 
@@ -117,11 +118,12 @@ sigType = (do a <- getLoc
 
 handlerTopCls :: MonadicParsing m => m (MHCls Raw)
 handlerTopCls = provideLoc $ \a -> do
-                  name <- identifier
-                  ps <- choice [some pattern, symbol "!" >> return []]
-                  symbol "="
-                  seq <- localIndentation Gt tm
-                  return $ MHCls name (Cls ps seq a) a
+  (name, ps) <- try $ do name <- identifier
+                         ps <- choice [some pattern, symbol "!" >> return []]
+                         symbol "="
+                         return (name, ps)
+  seq <- localIndentation Gt tm
+  return $ MHCls name (Cls ps seq a) a
 
 itfDef :: MonadicParsing m => m (Itf Raw)
 itfDef = attachLoc $ do
@@ -146,14 +148,16 @@ cmdDefType = do vs <- sepBy1 vtype (symbol "->")
                 else return (init vs, last vs)
 
 itfAliasDef :: MonadicParsing m => m (ItfAlias Raw)
-itfAliasDef = attachLoc $ do reserved "interface"
-                             name <- identifier
-                             ps <- many tyVar
-                             symbol "="
-                             symbol "["
-                             m <- itfInstances
-                             symbol "]"
-                             return $ ItfAlias name ps m
+itfAliasDef = attachLoc $ do
+  (name, ps) <- try $ do reserved "interface"
+                         name <- identifier
+                         ps <- many tyVar
+                         symbol "="
+                         symbol "["
+                         return (name, ps)
+  m <- itfInstances
+  symbol "]"
+  return $ ItfAlias name ps m
 
 -----------
 -- Types --
@@ -181,15 +185,15 @@ pegExplicit = attachLoc $ do ab <- abExplicit
                              return $ Peg ab ty
 
 adjs :: MonadicParsing m => m [Adjustment Raw]
-adjs = do mAdjs <- optional $ angles (sepBy adj (symbol ","))
+adjs = do mAdjs <- optional $ angles (sepBy consAdj (symbol ","))
           case mAdjs of
             Nothing   -> return []
             Just adjs -> return adjs
 
-adj :: MonadicParsing m => m (Adjustment Raw)
-adj = attachLoc $ do x <- identifier
-                     ts <- many tyArg
-                     return $ ConsAdj x ts            
+consAdj :: MonadicParsing m => m (Adjustment Raw)
+consAdj = attachLoc $ do x <- identifier
+                         ts <- many tyArg
+                         return $ ConsAdj x ts
 
 -- TODO: LC: Name consistently `instances` or `instantiations`
 itfInstances :: MonadicParsing m => m (ItfMap Raw)
