@@ -1,6 +1,6 @@
 
 -- #desc The interfaces supplied to lift must occur in the ambient
--- #return Adaptor Console --0--> (+1) . id is not a valid adaptor in ambient [£] (line 9 , column 10)
+-- #return Adaptor Console --0--> ([],1) is not a valid adaptor in ambient [£] (line 9 , column 10)
 
 num : {Int}
 num! = 2

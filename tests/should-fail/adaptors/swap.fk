@@ -1,5 +1,5 @@
 -- #desc Swap an instance that is not there
--- #return Adaptor BChoice --4--> 4 :: 1 :: 2 :: 3 :: 0 :: (+1) . (+1) . (+1) . (+1) . (+1) . id is not a valid adaptor in ambient [£ | BChoice , BChoice , BChoice , BChoice] (line 20 , column 46)
+-- #return Adaptor BChoice --4--> ([4,1,2,3,0],5) is not a valid adaptor in ambient [£ | BChoice , BChoice , BChoice , BChoice] (line 20 , column 46)
 
 data Pair X Y = pair X Y
 

@@ -355,10 +355,10 @@ command c vs ks n (k@(Arg (adps, hs) f cs g hss es) : ls) =                     
         applyAdaptorsToCommand (a:ar) c n = applyAdaptorsToCommand ar c (applyAdaptorToCommand a c n)
         applyAdaptorToCommand :: Adap -> String -> Int -> Int
         applyAdaptorToCommand (cs, ren) c n = if c `elem` cs
-                                                then renToFun ren n
+                                                then rrenToFun ren n
                                                 else n
 command c vs ks n (Adp (cs, r) : ls)
-  | c `elem` cs = command c vs (Adp (cs, r) : ks) (renToFun r n) ls -- if there is a lift frame that lifts `c` for `count` times, then `n` is redirected accordingly
+  | c `elem` cs = command c vs (Adp (cs, r) : ks) (rrenToFun r n) ls -- if there is a lift frame that lifts `c` for `count` times, then `n` is redirected accordingly
 command c vs ks n (k : ls) = command c vs (k : ks) n ls                     -- skip current handler `k` and recurse
 
 

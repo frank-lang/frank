@@ -479,16 +479,7 @@ deriving instance (Eq (TFix t TyArgF),
 type ItfMap a = AnnotTFix a ItfMapF
 pattern ItfMap m a = Fx (AnnF (MkItfMap m, a))
 
--- Adjustments (set of instantiated interfaces)
-data AdjF :: ((* -> *) -> (* -> *)) -> * -> * where
-  MkAdj :: TFix t ItfMapF -> AdjF t r -- interface-id -> list of ty arg's
-deriving instance (Show (TFix t ItfMapF),
-                   Show r, Show (TFix t AdjF)) => Show (AdjF t r)
-deriving instance (Eq (TFix t ItfMapF),
-                   Eq r, Eq (TFix t AdjF)) => Eq (AdjF t r)
-type Adj a = AnnotTFix a AdjF
-pattern Adj itfMap a = Fx (AnnF (MkAdj itfMap, a))
-
+-- Adjustments
 data AdjustmentF :: ((* -> *) -> (* -> *)) -> * -> * where
   MkConsAdj :: Id -> [TFix t TyArgF] -> AdjustmentF t r -- interface-id, list of ty arg's
   MkAdaptorAdj :: TFix t AdaptorF -> AdjustmentF t r
@@ -545,7 +536,7 @@ data AdaptorF :: ((* -> *) -> (* -> *)) -> * -> * where
   MkRem :: NotDesugared (t Identity ()) => Id -> Int -> AdaptorF t r        -- remove effect at position `n`
   MkCopy :: NotDesugared (t Identity ()) => Id -> Int -> AdaptorF t r       -- copy effect at position `n`
   MkSwap :: NotDesugared (t Identity ()) => Id -> Int -> Int -> AdaptorF t r-- swap effects at positions `m`, `n`
-  MkGeneralAdaptor :: Id -> Renaming -> Int -> AdaptorF (AnnotT Desugared) r       -- general renaming for effect lists with positions up to at least `n`
+  MkGeneralAdaptor :: Id -> RRenaming -> Int -> AdaptorF (AnnotT Desugared) r       -- general renaming for effect lists with positions up to at least `n`
 deriving instance (Show r, Show (TFix t AdaptorF)) => Show (AdaptorF t r)
 deriving instance (Eq r, Eq (TFix t AdaptorF)) => Eq (AdaptorF t r)
 type Adaptor a = AnnotTFix a AdaptorF
@@ -553,12 +544,6 @@ pattern Rem x n a = Fx (AnnF (MkRem x n, a))
 pattern Copy x n a = Fx (AnnF (MkCopy x n, a))
 pattern Swap x m n a = Fx (AnnF (MkSwap x m n, a))
 pattern GeneralAdaptor x r n a = Fx (AnnF (MkGeneralAdaptor x r n, a))
-
-idAdjRef :: Adj Refined
-idAdjRef = Adj (ItfMap M.empty (Refined Implicit)) (Refined Implicit)
-
-idAdjDesug :: Adj Desugared
-idAdjDesug = Adj (ItfMap M.empty (Desugared Implicit)) (Desugared Implicit)
 
 desugaredStrTy :: Desugared -> VType Desugared
 desugaredStrTy a = DTTy "List" [VArg (CharTy a) a] a
@@ -614,10 +599,6 @@ substOpenAbPort :: Ab a -> Port a -> Port a
 substOpenAbPort ab (MkPort adj ty) =
   MkPort (substOpenAbAdj ab adj) (substOpenAb ab ty)
 -}
-
--- ability (1st arg) might be overridden by adjustment (2nd arg)
-plus :: Ab t -> Adj t -> Ab t
-plus (Ab v m a) (Adj m' _) = Ab v (m `plusItfMap` m') a
 
 getOpName :: Operator t -> Id
 getOpName (Mono x _) = x
@@ -714,18 +695,19 @@ histogram (x:xr) = if x `M.member` m then M.adjust (+1) x m
 -- Normal form of lists of adjustments
 
 adjsNormalForm :: [Adjustment Desugared] ->
-                  (M.Map Id (Bwd [TyArg Desugared]), M.Map Id (Renaming, Int))
+                  (M.Map Id (Bwd [TyArg Desugared]), M.Map Id (RRenaming, Int))
 adjsNormalForm = foldl (flip addAdj) (M.empty, M.empty)
 
 addAdj :: Adjustment Desugared ->
-          (M.Map Id (Bwd [TyArg Desugared]), M.Map Id (Renaming, Int)) ->
-          (M.Map Id (Bwd [TyArg Desugared]), M.Map Id (Renaming, Int))
+          (M.Map Id (Bwd [TyArg Desugared]), M.Map Id (RRenaming, Int)) ->
+          (M.Map Id (Bwd [TyArg Desugared]), M.Map Id (RRenaming, Int))
 addAdj (ConsAdj x ts a) (insts, adps) =
   (adjustWithDefault (:< ts) x BEmp insts,
-   adjustWithDefault (\(r, n) -> (RenCons 0 (RenComp r RenS), n)) x (RenId, 0) adps)
-addAdj (AdaptorAdj (GeneralAdaptor x r n _) a) (insts, adps) =
+   adjustWithDefault (\((rs, r), n) -> ((0:(map (+1) rs), r+1), n+1)) x (rrenId, 0) adps)
+addAdj (AdaptorAdj (GeneralAdaptor x r1 n1 _) a) (insts, adps) =
   (insts,
-   adjustWithDefault (\(r', n') -> (RenComp r r', max n n')) x (RenId, 0) adps)
+   adjustWithDefault (\(r2, n2) -> (rrenCompose r1 r2, max n1 n2)) x (rrenId, 0) adps)
+-- TODO: LC: double-check that the last line is correct
 
 -- helpers
 

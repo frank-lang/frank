@@ -66,7 +66,7 @@ data VPat
   | VPQ String              -- LC: ?
   deriving (Show, Eq)
 
-type Adap = ([String], Renaming)
+type Adap = ([String], RRenaming)
 
 pProg :: P [Def Exp]
 pProg = pGap *> many (pDef <* pGap)
@@ -88,7 +88,7 @@ pP :: String -> P ()
 pP s = () <$ traverse (pLike pChar . (==)) s
 
 pExp :: P Exp
-pExp = ((((\x -> ER (x, renRem 0)) <$ pGap <* pP "neg" <* pGap <* pP "<" <* pGap <*>
+pExp = ((((\x -> ER (x, rrenRem 0)) <$ pGap <* pP "neg" <* pGap <* pP "<" <* pGap <*>
           pCSep (pId <* pGap) ">" <*
           pGap <* pP "(" <* pGap <*>
           pExp <*
