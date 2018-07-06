@@ -479,7 +479,7 @@ applyAdaptor :: Adaptor Desugared -> Ab Desugared -> Maybe (Ab Desugared)
 applyAdaptor adp@(GeneralAdaptor x r n _) (Ab v p@(ItfMap m a') a) =
   let instances = bwd2fwd (M.findWithDefault BEmp x m) in
   if length instances > n then
-    let renaming = takeWhile (< length instances) $ map (renToFun r) [0 ..] in
+    let renaming = takeWhile (< length instances) $ map (rrenToFun r) [0 ..] in
     let instances' = map (instances !!) renaming in
     if null instances' then
       Just (Ab v (ItfMap (M.delete x m) a') a)

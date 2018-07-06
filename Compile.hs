@@ -128,13 +128,6 @@ compilePort (Port adjs _ _) =
      rencmds <- mapM getCCmds ids
      return (zip rencmds rens, cmds)
 
-compileAdj :: Adj Desugared -> Compile [String]
-compileAdj (Adj a@(ItfMap m _) _) =
-  do let m' = M.mapWithKey (\i insts ->
-                             replicate ((length . bwd2fwd) insts) i) m
-     cmds <- liftM concat $ mapM getCCmds (concat (M.elems m'))
-     return cmds
-
 compileClause :: Clause Desugared -> Compile ([S.Pat], S.Exp)
 compileClause (Cls ps tm _) = do ps' <- mapM compilePattern ps
                                  e <- compileTm tm
@@ -186,7 +179,7 @@ compileUse (Adapted (r:rr) t a) =
      rest <- compileUse (Adapted rr t a)
      return $ S.ER (cs, r') rest
 
-compileAdaptor :: Adaptor Desugared -> Compile ([String], Renaming)
+compileAdaptor :: Adaptor Desugared -> Compile ([String], RRenaming)
 compileAdaptor (GeneralAdaptor x r n _) = do cmds <- getCCmds x
                                              return (cmds, r)
 

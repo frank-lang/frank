@@ -452,7 +452,7 @@ ppAdaptor :: (Show a, HasSource a) => Adaptor a -> PP.Doc
 ppAdaptor (Rem x n _) = text "-" <> text x <> text "." <> int n
 ppAdaptor (Swap x m n _) = int m <> text "." <> text x <>
                                text "." <> int n
-ppAdaptor (GeneralAdaptor x r n _) = text x <+> text "--" <> int n <> text "-->" <+> ppRenaming r
+ppAdaptor (GeneralAdaptor x r n _) = text x <+> text "--" <> int n <> text "-->" <+> ppRRenaming r
 
 {- TypeCheckCommon pretty printers -}
 
@@ -538,7 +538,7 @@ ppExp (EF xs ys) =
   PP.braces $ hcat (punctuate comma clauses)
 ppExp (EX xs) = text "[|" <> ppText ppExp xs
 ppExp (ER (cs, r) e) = text "<(" <+> (hcat $ punctuate comma (map text cs))
-                    <> text ")" <+> ppRenaming r <> text ">"
+                    <> text ")" <+> ppRRenaming r <> text ">"
                     <+> PP.parens (ppExp e)
 
 ppExp' :: Exp -> PP.Doc

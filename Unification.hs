@@ -115,9 +115,6 @@ unifyItfMap m0@(ItfMap m0' a) m1@(ItfMap m1' b) = do
           Just insts' -> if length insts /= length insts' then throwError $ errorUnifItfMaps m0 m1
                          else zipWithM_ (zipWithM_ unifyTyArg) (bwd2fwd insts) (bwd2fwd insts')
 
-unifyAdj :: Adj Desugared -> Adj Desugared -> Contextual ()
-unifyAdj (Adj m0 _) (Adj m1 _) = unifyItfMap m0 m1
-
 unifyCType :: CType Desugared -> CType Desugared -> Contextual ()
 unifyCType (CType xs p0 _) (CType ys p1 _) =
   zipWithM_ unifyPort xs ys >> unifyPeg p0 p1
