@@ -1,0 +1,35 @@
+-- #desc Apply general adaptor to some instances
+-- #return [pair false false, pair false false, pair false true, pair true false, pair true true]
+
+data Pair X Y = pair X Y
+
+interface BChoice = choose: Bool
+
+fixTrue: {<BChoice>X -> X}
+fixTrue x = x
+fixTrue <choose -> k> = fixTrue (k true)
+
+fixFalse: {<BChoice>X -> X}
+fixFalse x = x
+fixFalse <choose -> k> = fixFalse (k false)
+
+prog: {[BChoice, BChoice]Pair Bool Bool}
+prog! = pair (choose!) (<BChoice(1)> choose!)
+
+ff: {Pair Bool Bool}
+ff! = fixTrue (fixFalse (fixTrue (fixFalse (<BChoice(0,2,1,3)> prog!))))
+
+ff': {Pair Bool Bool}
+ff'! = fixTrue (fixFalse (fixTrue (fixFalse (<BChoice(0,2, 1,   3)> prog!))))
+
+ft: {Pair Bool Bool}
+ft! = fixTrue (fixFalse (fixTrue (fixFalse prog!)))
+
+tf: {Pair Bool Bool}
+tf! = fixTrue (fixFalse (fixTrue (fixFalse (<BChoice(1,0,2)> prog!))))
+
+tt: {Pair Bool Bool}
+tt! = fixTrue (fixFalse (fixTrue (fixFalse (<BChoice(3,1,2,0,4)> prog!))))
+
+main: {List (Pair Bool Bool)}
+main! = [ff!, ff'!, ft!, tf!, tt!]

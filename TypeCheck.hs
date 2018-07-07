@@ -367,7 +367,7 @@ checkPat (CmdPat cmd n xs g a) port@(Port adjs ty b) =                          
           -- bindings: continuation + patterns
           return ((Mono g a, kty) : bs)
      else
-       throwError $ errorTCCmdNotFoundInAdj cmd port
+       throwError $ errorTCCmdNotFoundInPort cmd port
 checkPat (ThkPat x a) (Port adjs ty b) =                                         -- P-CatchAll rule
 -- pattern:  x
   do amb <- getAmbient

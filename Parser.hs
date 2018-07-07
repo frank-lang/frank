@@ -191,8 +191,10 @@ adjs = do mAdjs <- optional $ angles (sepBy adj (symbol ","))
             Just adjs -> return adjs
 
 adj :: MonadicParsing m => m (Adjustment Raw)
-adj = try consAdj <|>
+adj = consAdj <|>
       (attachLoc $ AdaptorAdj <$> adaptor)
+
+
 
 consAdj :: MonadicParsing m => m (Adjustment Raw)
 consAdj = attachLoc $ do x <- identifier
@@ -392,11 +394,23 @@ adaptor :: MonadicParsing m => m (Adaptor Raw)
 adaptor = (attachLoc $ Rem <$ symbol "-" <*> identifier <*> optionalIndex) <|>
           (attachLoc $ Copy <$ symbol "+" <*> identifier <*> optionalIndex) <|>
           (attachLoc $ (flip Swap) <$> parseInt <* symbol "."
-                               <*> identifier <* symbol "." <*> parseInt)
+                               <*> identifier <* symbol "." <*> parseInt) <|>
+          (provideLoc $ \a -> do x <- try $ do x <- identifier
+                                               symbol "("
+                                               return x
+                                 ns <- sepBy1 natural (symbol ",")
+                                 symbol ")"
+                                 let ns' = map fromIntegral ns
+                                 let r = listToRen ns'
+                                 let maxim = maximum (0:(init ns'))
+                                 return $ GeneralAdaptor x r maxim a)
   where optionalIndex :: MonadicParsing m => m Int
         optionalIndex = do mn <- optional (symbol "." *> parseInt)
                            case mn of Just n  -> return n
                                       Nothing -> return 0
+        listToRen :: [Int] -> ([Int], Int)
+        listToRen [] = error "invariant broken"
+        listToRen xs = (init xs, last xs)
 
 idUse :: MonadicParsing m => m (Use Raw)
 idUse = attachLoc $ do x <- identifier

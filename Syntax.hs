@@ -536,7 +536,7 @@ data AdaptorF :: ((* -> *) -> (* -> *)) -> * -> * where
   MkRem :: NotDesugared (t Identity ()) => Id -> Int -> AdaptorF t r        -- remove effect at position `n`
   MkCopy :: NotDesugared (t Identity ()) => Id -> Int -> AdaptorF t r       -- copy effect at position `n`
   MkSwap :: NotDesugared (t Identity ()) => Id -> Int -> Int -> AdaptorF t r-- swap effects at positions `m`, `n`
-  MkGeneralAdaptor :: Id -> Renaming -> Int -> AdaptorF (AnnotT Desugared) r       -- general renaming for effect lists with positions up to at least `n`
+  MkGeneralAdaptor ::  Id -> Renaming -> Int -> AdaptorF t r                -- general renaming for effect lists with positions up to at least `n`
 deriving instance (Show r, Show (TFix t AdaptorF)) => Show (AdaptorF t r)
 deriving instance (Eq r, Eq (TFix t AdaptorF)) => Eq (AdaptorF t r)
 type Adaptor a = AnnotTFix a AdaptorF

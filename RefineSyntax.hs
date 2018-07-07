@@ -413,6 +413,8 @@ refineAdaptor x = case x of
   (Rem x n a)    -> returnOrThrow x a (Rem x n (rawToRef a))
   (Copy x n a)   -> returnOrThrow x a (Copy x n (rawToRef a))
   (Swap x m n a) -> returnOrThrow x a (Swap x m n (rawToRef a))
+  (GeneralAdaptor x r n a) -> returnOrThrow x a
+                                (GeneralAdaptor x r n (rawToRef a))
   where
     returnOrThrow :: Id -> Raw -> Adaptor Refined -> Refine (Adaptor Refined)
     returnOrThrow x a adp = do itfCx <- getRItfs
