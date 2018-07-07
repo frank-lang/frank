@@ -3,7 +3,7 @@ module Shonky.Renaming where
 import Text.PrettyPrint
 
 -- A renaming is a function from Nat to Nat. Given ms of length k and n,
--- we have
+-- it can be understood as the infinite list
 --   [m_0, ..., m_k, n, n+1, ...]
 type Renaming = ([Int], Int)
 
@@ -32,6 +32,12 @@ renCompose r1@(ms1, n1) r2@(ms2, n2) =
   (map (renToFun r1) [n2 .. length ms1 - 1]),
    n1 - length ms1 + n2)
 -- TODO: LC: double-check that this is right
+
+renToNormalForm :: Renaming -> Renaming
+renToNormalForm (ms, n) = helper (reverse ms, n)
+  where helper :: ([Int], Int) -> ([Int], Int)
+        helper (m:rm, n) | m == n-1 = helper (rm, n-1)
+        helper (rs, n) = (reverse rs, n)
 
 ppRenaming :: Renaming -> Doc
 ppRenaming = text . show

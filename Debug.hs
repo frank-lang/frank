@@ -101,9 +101,8 @@ errorTCNotInScope op = "'" ++ getOpName op ++ "' not in scope (" ++ (show $ ppSo
 errorTCPatternPortMismatch :: Clause Desugared -> String
 errorTCPatternPortMismatch cls = "number of patterns not equal to number of ports (" ++ (show $ ppSourceOf cls) ++ ")"
 
-errorTCCmdNotFoundInAdj :: Id -> Port Desugared -> String
-errorTCCmdNotFoundInAdj cmd port = "command " ++ cmd ++ " not found in adjustments of port " ++ (show $ ppPort port) ++ " (" ++ (show $ ppSourceOf port) ++ ")"
--- TODO: LC: fix this
+errorTCCmdNotFoundInPort :: Id -> Port Desugared -> String
+errorTCCmdNotFoundInPort cmd port = "command " ++ cmd ++ " not found in adjustments of port " ++ (show $ ppPort port) ++ " (" ++ (show $ ppSourceOf port) ++ ")"
 
 errorTCNotACtr :: Id -> String
 errorTCNotACtr x = "'" ++ x ++ "' is not a constructor"
@@ -127,10 +126,6 @@ errorUnifAbs ab1 ab2 =
 errorUnifItfMaps :: ItfMap Desugared -> ItfMap Desugared -> String
 errorUnifItfMaps m1 m2 =
   "cannot unify interface maps " ++ (show $ ppItfMap m1) ++ " (" ++ (show $ ppSourceOf m1) ++ ")" ++ " and " ++ (show $ ppItfMap m2) ++ " (" ++ (show $ ppSourceOf m2) ++ ")"
-
-errorUnifAdaptor :: Adaptor Desugared -> Adaptor Desugared -> String
-errorUnifAdaptor adp1 adp2 =
-  "cannot unify adaptors " ++ (show $ ppAdaptor adp1) ++ " (" ++ (show $ ppSourceOf adp1) ++ ")" ++ " and " ++ (show $ ppAdaptor adp2) ++ " (" ++ (show $ ppSourceOf adp2) ++ ")"
 
 errorAdaptor :: Adaptor Desugared -> Ab Desugared -> String
 errorAdaptor adpd@(GeneralAdaptor x r n _) ab =
@@ -167,8 +162,8 @@ logBeginInferUse u@(App f xs _) = ifDebugTypeCheckOnThen $ do
   debugTypeCheckM $ "begin infer use of app: Under curr. amb. " ++ show (ppAb amb) ++ "\n   infer type of " ++ show (ppUse u) ++ "\n\n"
 logBeginInferUse u@(Adapted rs t _) = ifDebugTypeCheckOnThen $ do
   amb <- getAmbient
-  debugTypeCheckM $ "begin infer use of redirected: Under curr. amb. " ++
-    show (ppAb amb) ++ " redirected by <" ++ (show $ rs) ++
+  debugTypeCheckM $ "begin infer use of adapted: Under curr. amb. " ++
+    show (ppAb amb) ++ " adapted by <" ++ (show $ rs) ++
     ">\n   infer type of " ++ show (ppUse u) ++ "\n\n"
 
 
@@ -377,6 +372,7 @@ ppPeg (Peg ab ty _) = ppAb ab <> ppVType ty
 
 ppAdj :: (Show a, HasSource a) => Adjustment a -> PP.Doc
 ppAdj (ConsAdj x ts _) = ppItfInstance (x, ts)
+ppAdj (AdaptorAdj adp _) = ppAdaptor adp
 
 ppAb :: (Show a, HasSource a) => Ab a -> PP.Doc
 ppAb (Ab v (ItfMap m _) _) | M.null m = text "[" <> ppAbMod v <> text "]"
