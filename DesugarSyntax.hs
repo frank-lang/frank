@@ -251,9 +251,9 @@ desugarUse (Adapted rs t a) = Adapted <$> (mapM desugarAdaptor rs)
                                  <*> desugarUse t <*> pure (refToDesug a)
 
 desugarAdaptor :: Adaptor Refined -> Desugar (Adaptor Desugared)
-desugarAdaptor (Rem x n a) = return $ GeneralAdaptor x (rrenRem n) n (refToDesug a)
-desugarAdaptor (Copy x n a) = return $ GeneralAdaptor x (rrenCopy n) n (refToDesug a)
-desugarAdaptor (Swap x m n a) = return $ GeneralAdaptor x (rrenSwap m n) (max m n)
+desugarAdaptor (Rem x n a) = return $ GeneralAdaptor x (renRem n) n (refToDesug a)
+desugarAdaptor (Copy x n a) = return $ GeneralAdaptor x (renCopy n) n (refToDesug a)
+desugarAdaptor (Swap x m n a) = return $ GeneralAdaptor x (renSwap m n) (max m n)
                                                           (refToDesug a)
 
 desugarOperator :: Operator Refined -> Desugar (Operator Desugared)
