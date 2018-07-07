@@ -179,7 +179,7 @@ compileUse (Adapted (r:rr) t a) =
      rest <- compileUse (Adapted rr t a)
      return $ S.ER (cs, r') rest
 
-compileAdaptor :: Adaptor Desugared -> Compile ([String], RRenaming)
+compileAdaptor :: Adaptor Desugared -> Compile ([String], Renaming)
 compileAdaptor (GeneralAdaptor x r n _) = do cmds <- getCCmds x
                                              return (cmds, r)
 
