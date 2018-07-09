@@ -342,8 +342,6 @@ checkPat (CmdPat cmd n xs g a) port@(Port adjs ty b) =                          
 
 -- port:     <itf p_1 ... p_m> ty
 -- pattern:  <cmd x_1 ... x_n -> g>
--- TODO: LC: There is a mistake here: We need to check against the `n`th
---           instance, not the right-most one.
   do (itf, qs, rs, ts, y) <- getCmd cmd
      -- how is itf instantiated in adj?
      let (insts, _) = adjsNormalForm adjs

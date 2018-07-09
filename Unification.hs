@@ -122,19 +122,16 @@ unifyCType (CType xs p0 _) (CType ys p1 _) =
 unifyPeg :: Peg Desugared -> Peg Desugared -> Contextual ()
 unifyPeg (Peg ab0 ty0 _) (Peg ab1 ty1 _) = unifyAb ab0 ab1 >> unify ty0 ty1
 
--- TODO: LC: Tidy the following up:
--- + ItfMap vs. Map Id (Bwd [TyArg Desugared]
--- + Bwd   ->   []?
--- + Introduce normal form for adaptors. Then compare those (see below)
--- + If instances are added but removed in the same port via adaptor, make
---   sure they are indeed removed
+-- Two ports unify if
+-- 1) their adjustments coincide (first normalise both)
+-- 2) their types unify
 unifyPort :: Port Desugared -> Port Desugared -> Contextual ()
 unifyPort (Port adjs1 ty1 _) (Port adjs2 ty2 _) =
   do let (insts1, adps1) = adjsNormalForm adjs1
      let (insts2, adps2) = adjsNormalForm adjs2
      unifyItfMap (ItfMap insts1 (Desugared Generated))  -- TODO: LC: fix this
                  (ItfMap insts2 (Desugared Generated))
-     if adps1 == adps2 then -- TODO: LC: Use normal forms here and compare them
+     if adps1 == adps2 then
        unify ty1 ty2
      else throwError $ "adaptors not the same"
 

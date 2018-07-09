@@ -21,10 +21,10 @@ instance Show (IORef a) where
 
 data Val
   = VA String                                                               -- atom
-  | VI Int                                                              -- int
+  | VI Int                                                                  -- int
   | Val :&& Val                                                             -- cons
   | VX String                                                               -- string
-  | VF Env [([Adap], [String])] [([Pat], Exp)]                              -- function (anonymous)
+  | VF Env [([Adap], [String])] [([Pat], Exp)]                              -- function (anonymous), has environment, for each port: list of adaptors + list of commands to be captured, list of patterns + handling expressions
   | VB String Env                                                           -- built-in function
   | VC Comp                                                                 -- comp
   | VR (IORef Val)                                                          -- reference cell
@@ -47,12 +47,14 @@ data Frame
   = Car Env Exp                                                             -- head can be processed. env, uncomputed tail are recorded
   | Cdr Val                                                                 -- tail can be processed. computed head is recorded
   | Fun Env [Exp]                                                           -- operator can be processed. env, operands are recorded
-  | Arg ([Adap], [String]) Val [Comp] Env [([Adap], [String])] [Exp]                            -- current arg can be processed.
-                                                                            --     [String]   handleable commands of current arg
+  | Arg ([Adap], [String]) Val [Comp] Env [([Adap], [String])] [Exp]        -- current arg can be processed.
+                                                                            --   ([Adap],     adaptors to be applied on match at current arg
+                                                                            --    [String])   handleable commands at current arg
                                                                             --          Val   eval. handler
                                                                             --       [Comp]   eval. args (reversed)
                                                                             --          Env   environment
-                                                                            --   [[String]]   handleable commands
+                                                                            -- [([Adap],      adaptors to be applied at further args
+                                                                            --   [String])]   handleable commands at further args
                                                                             --        [Exp]   non-eval. args
   | Seq Env Exp                                                             -- 1st exp can be processed. env, 2nd exp is recorded
   | Qes Env Exp                                                             -- 1st exp can be processed. env, 2nd exp is recorded
@@ -215,23 +217,23 @@ fetch g y = go g where
 -- 1) Terminating exp: Feed value into top frame
 -- 2) Ongoing exp:     Create new frame
 compute :: Env -> Exp -> Agenda -> Comp
-compute g (EV x)       ls = consume (fetch g x) ls                          -- 1) look-up value
-compute g (EA a)       ls = consume (VA a) ls                               -- 1) feed atom
-compute g (EI n)       ls = consume (VI n) ls                               -- 1) feed int
-compute g (a :& d)     ls = compute g a (Car g d : ls)                      -- 2) compute head. save tail for later.
-compute g (f :$ as)    ls = compute g f (Fun g as : ls)                     -- 2) Application. Compute function. Save args for later.
-compute g (e :! f)     ls = compute g e (Seq g f : ls)                      -- 2) Sequence.    Compute 1st exp.  Save 2nd for later.
-compute g (e :// f)    ls = compute g e (Qes g f : ls)                      -- 2) Composition. Compute 1st exp.  save 2nd for later.
-compute g (EF hss pes) ls = consume (VF g hss pes) ls                       -- 1) feed in function
-compute g (ds :- e)    ls = define g [] ds e ls                             -- (not used by Frank)
-compute g (EX ces)     ls = combine g [] ces ls                             -- 2) compute string
-compute g (ER (cs, r) e) ls = compute g e (Adp (cs, r) : ls)                       -- 2) add commands to be skipped in `ls`
+compute g (EV x)       ls   = consume (fetch g x) ls                        -- 1) look-up value
+compute g (EA a)       ls   = consume (VA a) ls                             -- 1) feed atom
+compute g (EI n)       ls   = consume (VI n) ls                             -- 1) feed int
+compute g (a :& d)     ls   = compute g a (Car g d : ls)                    -- 2) compute head. save tail for later.
+compute g (f :$ as)    ls   = compute g f (Fun g as : ls)                   -- 2) Application. Compute function. Save args for later.
+compute g (e :! f)     ls   = compute g e (Seq g f : ls)                    -- 2) Sequence.    Compute 1st exp.  Save 2nd for later.
+compute g (e :// f)    ls   = compute g e (Qes g f : ls)                    -- 2) Composition. Compute 1st exp.  save 2nd for later.
+compute g (EF hss pes) ls   = consume (VF g hss pes) ls                     -- 1) feed in function
+compute g (ds :- e)    ls   = define g [] ds e ls                           -- (not used by Frank)
+compute g (EX ces)     ls   = combine g [] ces ls                           -- 2) compute string
+compute g (ER (cs, r) e) ls = compute g e (Adp (cs, r) : ls)                -- 2) add commands to be skipped in `ls`
 
 -- Take val `v` and top-frame from stack, apply it to `v` in
 consume :: Val -> Agenda -> Comp
 consume v (Car g d    : ls) = compute g d (Cdr v : ls)                      -- Given: eval. head `v`,     non-eval. tail `d`.  Record `v` and compute tail `d`.
 consume v (Cdr u      : ls) = consume (simplStr u v) (ls)                   -- Given: eval. head `u`,     eval.     tail `v`.  Put together.
-consume v (Fun g as   : ls) = args v [] g (adapsAndHandles v) as (ls)               -- Given: eval. function `v`, non-eval. args `as`. Compute `as`, then feed them into `v`
+consume v (Fun g as   : ls) = args v [] g (adapsAndHandles v) as (ls)       -- Given: eval. function `v`, non-eval. args `as`. Compute `as`, then feed them into `v`
 consume v (Arg _ f cs g
                hss es : ls) = args f (Ret v : cs) g hss es (ls)             -- Given: Eval.:     handler `f`,
                                                                                       --                   first args `cs` (reversed),
@@ -303,7 +305,7 @@ define g dvs ((x := d) : des) e ls =
     defo (_ : des)            = defo des
     defo []                   = []
 
--- Return handleable commands
+-- Return adaptors and handleable commands
 adapsAndHandles :: Val -> [([Adap], [String])]
 adapsAndHandles (VF _ hss _) = hss
 adapsAndHandles _ = []
@@ -313,10 +315,10 @@ adapsAndHandles _ = []
 -- Compute until all [Exp] are [Comp], then call `apply`.
 args :: Val -> [Comp] -> Env -> [([Adap], [String])] -> [Exp] -> Agenda -> Comp
 args f cs g hss [] ls = apply f (reverse cs) ls                             -- apply when all args are evaluated
-args f cs g [] es ls = args f cs g [([], [])] es ls                               -- default to [] (no handleable commands) if not explicit
+args f cs g [] es ls = args f cs g [([], [])] es ls                         -- default to [] (no handleable commands) if not explicit
 args f cs g (hs : hss) (e : es) ls = compute g e
                                              (Arg hs f cs g hss es : ls)    -- compute argument, record rest. will return eventually here.
--- TODO: LC: remove and fix the second case of args (it's a bit of a hack)
+-- TODO: LC: remove and fix the second case of args (it's a bit of a hack right now)
 
 -- `apply` is called by `args` when all arguments are evaluated
 -- given: eval. operator, eval. args, frame stack
@@ -345,11 +347,11 @@ apply f cs ls = error $ concat ["apply: ", show f, show cs, show ls]
 --   cts: commands-to-be-skipped
 command :: String -> [Val] -> SkippedAgenda -> Int -> Agenda -> Comp
 command c vs ks n [] = Call c n vs ks                                       -- if agenda is done (i.e. no handler there), return Call
-command c vs ks n (k@(Arg (adps, hs) f cs g hss es) : ls) =                           -- if there is a handler that can handle `c` and is not to be skipped
-   let n' = applyAdaptorsToCommand adps c n in
+command c vs ks n (k@(Arg (adps, hs) f cs g hss es) : ls) =                 -- if there is a handler...
+   let n' = applyAdaptorsToCommand adps c n in -- apply adaptors in any case
    let count = length (filter (== c) hs) in
-   if n' < count then args f (Call c n' vs ks : cs) g hss es ls                    --    (handler can handle `count` levels, command is lifted by `n` levels),
-                 else command c vs (k : ks) (n'-count) ls
+   if n' < count then args f (Call c n' vs ks : cs) g hss es ls             -- ... that can handle `c`:    handle it
+                 else command c vs (k : ks) (n'-count) ls                   -- ... that cannot handle `c`: recurse
   where applyAdaptorsToCommand :: [Adap] -> String -> Int -> Int
         applyAdaptorsToCommand [] c n = n
         applyAdaptorsToCommand (a:ar) c n = applyAdaptorsToCommand ar c (applyAdaptorToCommand a c n)
@@ -358,16 +360,8 @@ command c vs ks n (k@(Arg (adps, hs) f cs g hss es) : ls) =                     
                                                 then renToFun ren n
                                                 else n
 command c vs ks n (Adp (cs, r) : ls)
-  | c `elem` cs = command c vs (Adp (cs, r) : ks) (renToFun r n) ls -- if there is a lift frame that lifts `c` for `count` times, then `n` is redirected accordingly
+  | c `elem` cs = command c vs (Adp (cs, r) : ks) (renToFun r n) ls         -- if there is an adaptor frame: apply adaptor and recurse
 command c vs ks n (k : ls) = command c vs (k : ks) n ls                     -- skip current handler `k` and recurse
-
-
--- command c vs ks n (k@(Arg (adps, hs) f cs g hss es) : ls)                           -- if there is a handler that can handle `c` and is not to be skipped
---   | n < count = args f (Call c n vs ks : cs) g hss es ls                    --    (handler can handle `count` levels, command is lifted by `n` levels),
---                                                                             --    then fix command-call as argument and continue with `args`
---   | n >= count = command c vs (k : ks) (n-count) ls                         -- if there is a handler that can handle `c` but is to be skipped,
---   where count = length (filter (== c) hs)                        --    then skip that handler and recurse
-
 
 -- given:  env, rules, evaluated args, frame stack
 -- selects first rule that matches and computes that expression
