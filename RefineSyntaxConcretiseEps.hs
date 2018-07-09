@@ -21,10 +21,14 @@ data Node = DtNode (DataT Raw) | ItfNode (Itf Raw) | ItfAlNode (ItfAlias Raw)
 -- Used as a result of inspecting a node on whether it has an
 -- (implicit/explicit) [£]
 data HasEps = HasEps |           -- "Yes" with certainty
-              HasEpsIfAny [Node] -- "Yes" if any of the given nodes (definitions)
-                                 --       have implicit [£]
-                                 -- (n.b. HasEpsIfAny [] corresponds to "No")
+              HasEpsIfAny [Node] -- "Yes" if any of the given nodes
+                                 --   (definitions) have implicit [£]
+                                 -- (n.b. hasNoEps = HasEpsIfAny []
+                                 --   corresponds to "No")
   deriving (Show, Eq)
+
+hasNoEps :: HasEps
+hasNoEps = HasEpsIfAny []
 
 -- Given data type, interface and interface alias def's, determine which of them
 -- carry an implicit or explicit [£] eff var. As the def's may depend on each
@@ -148,11 +152,11 @@ concretiseEps dts itfs itfAls =
                       else anyHasEps $ map (hasEpsTyArg tvs) ts  -- ... or not (but type var)
     where dtIds = [getId d | DtNode d <- nodes]
   hasEpsVType tvs (SCTy ty a)   = hasEpsCType tvs ty
-  hasEpsVType tvs (TVar x a)    = if x `elem` tvs then HasEpsIfAny []      -- indeed type variable
+  hasEpsVType tvs (TVar x a)    = if x `elem` tvs then hasNoEps      -- indeed type variable
                                                   else hasEpsDTTy tvs x [] -- ... or not (but data type)
-  hasEpsVType tvs (StringTy _)  = HasEpsIfAny []
-  hasEpsVType tvs (IntTy _)     = HasEpsIfAny []
-  hasEpsVType tvs (CharTy _)    = HasEpsIfAny []
+  hasEpsVType tvs (StringTy _)  = hasNoEps
+  hasEpsVType tvs (IntTy _)     = hasNoEps
+  hasEpsVType tvs (CharTy _)    = hasNoEps
 
   hasEpsDTTy :: [Id] -> Id -> [TyArg Raw] -> HasEps
   hasEpsDTTy tvs x ts =
@@ -164,7 +168,7 @@ concretiseEps dts itfs itfAls =
         dtHE   = if isDtWithNArgs x' (length ts) then [HasEpsIfAny [x']] else []
         argsHE = map (hasEpsTyArg tvs) ts
         in anyHasEps (dtHE ++ argsHE)
-      Nothing -> HasEpsIfAny []
+      Nothing -> hasNoEps
     where isDtWithNArgs :: Node -> Int -> Bool
           isDtWithNArgs (DtNode (DT _ ps _ _)) n = length ps == n
 
@@ -177,6 +181,7 @@ concretiseEps dts itfs itfAls =
 
   hasEpsAdj :: [Id] -> Adjustment Raw -> HasEps
   hasEpsAdj tvs (ConsAdj x ts a) = anyHasEps (map (hasEpsTyArg tvs) ts)
+  hasEpsAdj _ (AdaptorAdj _ _) = hasNoEps
 
   hasEpsPeg :: [Id] -> Peg Raw -> HasEps
   hasEpsPeg tvs (Peg ab ty a) = anyHasEps [hasEpsAb tvs ab, hasEpsVType tvs ty]
@@ -197,17 +202,17 @@ concretiseEps dts itfs itfAls =
 
           hasEpsInst :: (Id, [TyArg Raw]) -> HasEps
           hasEpsInst (i, inst) = case resolveItfId i of
-            Just x -> if isItfWithNArgs x (length inst) then HasEpsIfAny [x] else HasEpsIfAny []
-            _ -> HasEpsIfAny []
+            Just x -> if isItfWithNArgs x (length inst) then HasEpsIfAny [x] else hasNoEps
+            _ -> hasNoEps
 
           isItfWithNArgs :: Node -> Int -> Bool
           isItfWithNArgs (ItfNode (Itf _ ps _ _))        n = length ps == n
           isItfWithNArgs (ItfAlNode (ItfAlias _ ps _ _)) n = length ps == n
 
   hasEpsAbMod :: [Id] -> AbMod Raw -> HasEps
-  hasEpsAbMod tvs (EmpAb _)     = HasEpsIfAny []
+  hasEpsAbMod tvs (EmpAb _)     = hasNoEps
   hasEpsAbMod tvs (AbVar "£" _) = HasEps
-  hasEpsAbMod tvs (AbVar _ _)   = HasEpsIfAny []
+  hasEpsAbMod tvs (AbVar _ _)   = hasNoEps
 
   hasEpsTyArg :: [Id] -> TyArg Raw -> HasEps
   hasEpsTyArg tvs (VArg t _)  = hasEpsVType tvs t

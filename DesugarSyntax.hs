@@ -209,7 +209,8 @@ desugarItfMap :: ItfMap Refined -> Desugar (ItfMap Desugared)
 desugarItfMap (ItfMap m a) = do m' <- mapM (mapM (mapM desugarTyArg)) m
                                 return $ ItfMap m' (refToDesug a)
 
--- no explicit desugaring: clauses (and constituents) unaffected between Refine/Desugar phase
+-- no explicit desugaring: clauses (and constituents) unaffected between
+-- Refine/Desugar phase
 desugarClause :: Clause Refined -> Desugar (Clause Desugared)
 desugarClause (Cls ps tm a) = do ps' <- mapM desugarPattern ps
                                  tm' <- desugarTm tm
@@ -250,6 +251,8 @@ desugarUse (Op op a) = Op <$> desugarOperator op <*> pure (refToDesug a)
 desugarUse (Adapted rs t a) = Adapted <$> (mapM desugarAdaptor rs)
                                  <*> desugarUse t <*> pure (refToDesug a)
 
+-- explicit refinements:
+-- + Rem, Copy and Swap gets desugared to GeneralAdaptor
 desugarAdaptor :: Adaptor Refined -> Desugar (Adaptor Desugared)
 desugarAdaptor (Rem x n a) = return $ GeneralAdaptor x (renRem n) n (refToDesug a)
 desugarAdaptor (Copy x n a) = return $ GeneralAdaptor x (renCopy n) n (refToDesug a)

@@ -72,16 +72,11 @@ ctrList :: MonadicParsing m => m [Ctr Raw]
 ctrList = sepBy ctr (symbol "|")
 
 ctr :: MonadicParsing m => m (Ctr Raw)
-ctr = attachLoc $ do name <- identifier
-                     args <- many vtype'
-                     return $ Ctr name args
+ctr = attachLoc $ Ctr <$> identifier <*> many vtype'
 
 handlerTopSig :: MonadicParsing m => m (MHSig Raw)
-handlerTopSig = attachLoc $ do name <- try $ do name <- identifier
-                                                symbol ":"
-                                                return name
-                               ty <- sigType
-                               return (Sig name ty)
+handlerTopSig = attachLoc $ Sig <$> (try $ identifier <* symbol ":")        -- try: commit after colon
+                                <*> sigType
 
 -- As the outer braces are optional in top-level signatures we require
 -- that plain pegs must have explicit ability brackets.
@@ -169,20 +164,14 @@ ctype = attachLoc $ do ports <- many (try (port <* symbol "->"))
                        return $ CType ports peg
 
 port :: MonadicParsing m => m (Port Raw)
-port = attachLoc $ do adjs <- adjs
-                      ty <- vtype
-                      return $ Port adjs ty
+port = attachLoc $ Port <$> adjs <*> vtype
 
 peg :: MonadicParsing m => m (Peg Raw)
-peg = attachLoc $ do ab <- ab
-                     ty <- vtype
-                     return $ Peg ab ty
+peg = attachLoc $ Peg <$> ab <*> vtype
 
 -- peg with explicit ability
 pegExplicit :: MonadicParsing m => m (Peg Raw)
-pegExplicit = attachLoc $ do ab <- abExplicit
-                             ty <- vtype
-                             return $ Peg ab ty
+pegExplicit = attachLoc $ Peg <$> abExplicit <*> vtype
 
 adjs :: MonadicParsing m => m [Adjustment Raw]
 adjs = do mAdjs <- optional $ angles (sepBy adj (symbol ","))
@@ -358,7 +347,7 @@ unOperation = provideLoc $ \a -> do
 
 -- use
 use :: MonadicParsing m => m (Tm Raw) -> m (Use Raw)
-use p = redirected (ncuse p) <|>                      -- <RED,...RED> ncuse
+use p = adapted (ncuse p) <|>                      -- <adp_1,...adp_n> ncuse
         cuse p                                        -- cuse
 
 -- comb use
@@ -384,8 +373,8 @@ ause :: MonadicParsing m => m (Tm Raw) -> m (Use Raw)
 ause p = parens (use p) <|>                           -- (use)
          idUse                                        -- x
 
-redirected :: MonadicParsing m => m (Use Raw) -> m (Use Raw)
-redirected p = attachLoc $ do -- <RED1,RED2,...,REDn> stm
+adapted :: MonadicParsing m => m (Use Raw) -> m (Use Raw)
+adapted p = attachLoc $ do -- <adp_1,adp_2,...,adp_n> stm
             xs <- angles (sepBy adaptor (symbol ","))
             t <- p
             return $ Adapted xs t
