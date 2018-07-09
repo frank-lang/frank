@@ -1,5 +1,5 @@
 -- Recursively substitute an interface alias occurrence by its definition
-module RefineSyntaxSubstitItfAliases (substitItfAlsNew, substitItfAls) where
+module RefineSyntaxSubstitItfAliases (substitItfAls) where
 
 import Control.Monad
 import Control.Monad.Except
@@ -15,11 +15,6 @@ import Syntax
 import RefineSyntaxCommon
 import RefineSyntaxConcretiseEps
 import Debug
-
-substitItfAlsNew :: (Id, [TyArg Raw]) -> Refine (M.Map Id (Bwd [TyArg Raw]))
-substitItfAlsNew (x, ts) = do
-  (ItfMap m _) <- substitItfAls (x, ts)
-  return m
 
 -- Given an occurrence of interface instantiation x t_1 ... t_n:
 -- 1) Implicit [£] are made explicit

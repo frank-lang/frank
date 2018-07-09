@@ -117,10 +117,6 @@ newtype Desugared = Desugared Source
 instance NotRaw Desugared where idNotRaw = id
 instance HasSource Desugared where getSource (Desugared s) = s
 
-{-  -}
-
-
-
 {- AST nodes -}
 
 -- Parts of the grammar are specific to raw/refined/desugared syntax.
@@ -677,36 +673,23 @@ emptyItfMap = ItfMap M.empty
 isItfMapEmpty :: ItfMap t -> Bool
 isItfMapEmpty (ItfMap m _) = M.null m
 
--- Remove from the map the instances of every interface in the list.
-removeItfs :: ItfMap t -> [Id] -> ItfMap t
-removeItfs (ItfMap m a) []     = (ItfMap m a)
-removeItfs (ItfMap m a) (x:xr) = case M.findWithDefault BEmp x m of
-  BEmp    -> error "lift invariant broken"
-  ir :< _ -> (ItfMap (M.insert x ir m) a)
-
-
--- Take a list with duplicates and return a map that counts all occurrences
-histogram :: Ord a => [a] -> M.Map a Int
-histogram []     = M.empty
-histogram (x:xr) = if x `M.member` m then M.adjust (+1) x m
-                                     else M.insert x 1 m
-  where m = histogram xr
-
 -- Normal form of lists of adjustments
 
 adjsNormalForm :: [Adjustment Desugared] ->
                   (M.Map Id (Bwd [TyArg Desugared]), M.Map Id (Renaming, Int))
-adjsNormalForm = foldl (flip addAdj) (M.empty, M.empty)
+adjsNormalForm = foldl (flip addAdjNormalForm) (M.empty, M.empty)
 
-addAdj :: Adjustment Desugared ->
-          (M.Map Id (Bwd [TyArg Desugared]), M.Map Id (Renaming, Int)) ->
-          (M.Map Id (Bwd [TyArg Desugared]), M.Map Id (Renaming, Int))
-addAdj (ConsAdj x ts a) (insts, adps) =
-  (adjustWithDefault (:< ts) x BEmp insts,
-   adjustWithDefault (\((rs, r), n) -> ((0:(map (+1) rs), r+1), n+1)) x (renId, 0) adps)
-addAdj (AdaptorAdj (GeneralAdaptor x r1 n1 _) a) (insts, adps) =
-  (insts,
-   adjustWithDefault (\(r2, n2) -> (renCompose r1 r2, max n1 n2)) x (renId, 0) adps)
+addAdjNormalForm :: Adjustment Desugared ->
+  (M.Map Id (Bwd [TyArg Desugared]), M.Map Id (Renaming, Int)) ->
+  (M.Map Id (Bwd [TyArg Desugared]), M.Map Id (Renaming, Int))
+addAdjNormalForm (ConsAdj x ts a) (insts, adps) = (
+  adjustWithDefault (:< ts) x BEmp insts,
+  adjustWithDefault (\((rs, r), n) ->
+    (renToNormalForm (0:(map (+1) rs), r+1), n+1)) x (renId, 0) adps)
+addAdjNormalForm (AdaptorAdj (GeneralAdaptor x r1 n1 _) a) (insts, adps) = (
+  insts,
+  adjustWithDefault (\(r2, n2) ->
+    (renToNormalForm $ renCompose r1 r2, max n1 n2)) x (renId, 0) adps)
 -- TODO: LC: double-check that the last line is correct
 
 -- helpers
