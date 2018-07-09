@@ -21,6 +21,6 @@ Output:   clash expects 2 argument(s) but 1 given (line 8 , column 33)
 
 failing    tests/still-todo/: 3
 successful examples/: 14
-successful regression: 28
-successful tests/should-fail/: 16
-successful tests/should-pass/: 40
+successful regression: 30
+successful tests/should-fail/: 17
+successful tests/should-pass/: 43

@@ -1,0 +1,47 @@
+-- #desc Swap instances via port adjustment
+-- #return [false, true, false]
+
+-- begin standard stuff
+map : {{X -> Y} -> List X -> List Y}
+map f []        = []
+map f (x :: xs) = f x :: map f xs
+
+print : {String -> [Console]Unit}
+print s = map ouch s; unit
+
+if : Bool -> {X} -> {X} -> X
+if true  t f = t!
+if false t f = f!
+-- end standard stuff
+
+
+-- Define effects
+interface BChoice = bchoose: Bool
+
+-- Basic handlers
+trueFix: {<BChoice>X -> X}
+trueFix x = x
+trueFix <bchoose -> k> = trueFix (k true)
+
+falseFix: {<BChoice>X -> X}
+falseFix x = x
+falseFix <bchoose -> k> = falseFix (k false)
+
+boolSwapAndModifier: {<0.BChoice.1,BChoice>X -> [BChoice, BChoice]X}
+boolSwapAndModifier <bchoose -> k> = boolSwapAndModifier (k false)
+boolSwapAndModifier v = v
+
+-- Programs
+boolProg1 : {[BChoice, BChoice, BChoice]Bool}
+boolProg1! = bchoose!
+
+boolProg2 : {[BChoice, BChoice, BChoice]Bool}
+boolProg2! = <-BChoice> bchoose!
+
+boolProg3 : {[BChoice, BChoice, BChoice]Bool}
+boolProg3! = <-BChoice, -BChoice> bchoose!
+
+main: {[Console]List Bool}
+main! = [trueFix (falseFix (boolSwapAndModifier boolProg1!)),  -- boolSwapAndModifier fixes `false`
+         trueFix (falseFix (boolSwapAndModifier boolProg2!)),  -- boolSwapAndModifier redirects commands, `false` becomes `true`
+         trueFix (falseFix (boolSwapAndModifier boolProg3!))]  -- boolSwapAndModifier redirects commands, `true` becomes `false`
