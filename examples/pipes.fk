@@ -49,8 +49,8 @@ catter! = case receive! { []  -> []
 
 pipe : {<Send X>Unit -> <Receive X>Y -> [Abort]Y}
 pipe <send x -> s> <receive -> r> = pipe (s unit) (r x)
-pipe <_>           y              = y
-pipe unit          <receive -> r> = abort!
+pipe      <_>           y              = y
+pipe     unit      <receive -> r> = abort!
 
 doBeDoBeDoNil : {[]List String}
 doBeDoBeDoNil! = ["do", "be", "do", "be", "do", ""]
@@ -90,6 +90,46 @@ logSend <send s -> k> = print "Sending: "; print s; ouch '\n'; send s; logSend (
 
 t6 : {[Console]String}
 t6! = catchList (pipe (logSend sendDoBeDoBeDoNil!) catter!)
+
+lift1Send : {{[E|Send Y]X} -> {[E|Send Y,Send Y]X}}
+lift1Send m = {(lift <Send> (lift <Send> (lift1Send' m!)))!}
+
+lift1Send' : <Send Y>X -> [E|]{[E|Send Y,Send Y]X}
+lift1Send'  x           = {x}
+lift1Send' <send y -> k> = {case (send y) {x -> (lift1Send {k x})!}}
+
+lift1Recv : {{[E|Receive Y]X} -> {[E|Receive Y,Receive Y]X}}
+lift1Recv m = {(lift <Receive> (lift <Receive> (lift1Recv' m!)))!}
+
+lift1Recv' : <Receive Y>X -> [E|]{[E|Receive Y,Receive Y]X}
+lift1Recv'  x           = {x}
+lift1Recv' <receive -> k> = {case receive! {x -> (lift1Recv {k x})!}}
+
+-- lift Abort's in this defn. are needed because we demand equality for the
+-- abilities of a called operator and the ambient. Soln: implement subtyping
+-- relation for abilities.
+--
+-- On the other hand, we may allow the children a, b and c to perform abort's.
+-- Would the equivalence between tM and tN still hold in this case?
+-- I think Abort *needs* to be within the children's abilities because that is
+-- the semantics of pipe: APP adds Abort to all the adjustments when invoked.
+tM : {{[Abort,Send X]Unit} ->
+      {[Abort,Send X,Receive X]Unit} ->
+      {[Abort,Receive X]Y} ->
+      [Abort]Y}
+tM a b c = pipe a! (pipe b! (lift1Recv c)!)
+
+tN : {{[Abort,Send X]Unit} ->
+      {[Abort,Send X,Receive X]Unit} ->
+      {[Abort,Receive X]Y} ->
+      [Abort]Y}
+tN a b c = pipe (pipe (lift1Send a)! b!) c!
+
+t7 : {[Abort]String}
+t7! = tM sendDoBeDoBeDoNil spacer catter
+
+t8 : {[Abort]String}
+t8! = tN sendDoBeDoBeDoNil spacer catter
 
 -- Dont delete these lines, they make this program into a unit test.
 -- #desc   examples/pipes.fk

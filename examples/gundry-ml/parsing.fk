@@ -15,12 +15,12 @@ interface Scan = peek : Char
 
 interface Parser = [Abort,Console,PState,Scan]
 
-shift1Abort : {{[E|Abort]X} -> {[E|Abort,Abort]X}}
-shift1Abort m = {(shift <Abort> (shift <Abort> (shift1Abort' m!)))!}
+lift1Abort : {{[E|Abort]X} -> {[E|Abort,Abort]X}}
+lift1Abort m = {(lift <Abort> (lift <Abort> (lift1Abort' m!)))!}
 
-shift1Abort' : <Abort>X -> [E|]{[E|Abort,Abort]X}
-shift1Abort'  x           = {x}
-shift1Abort' <abort -> k> = {case abort! {x -> (shift1Abort {k x})!}}
+lift1Abort' : <Abort>X -> [E|]{[E|Abort,Abort]X}
+lift1Abort'  x           = {x}
+lift1Abort' <abort -> k> = {case abort! {x -> (lift1Abort {k x})!}}
 
 match : Char -> [Abort,Scan]Unit
 match c = if (eqc peek! c) {accept!} {abort!}
@@ -73,13 +73,13 @@ try <p> = case get! {(Top xs ys t) ->
                         put (Top [] ys (Top xs [] t)); scanner (tryParse p!)
                     | None -> put (Top [] [] None); scanner (tryParse p!)}
 
--- This definition of choice typechecks using the shift1Abort trick!
+-- This definition of choice typechecks using the lift1Abort trick!
 choice : List {[Abort]X} -> [Abort]X
 choice    []     = abort!
-choice (x :: xs) = catch (shift1Abort x)! {choice xs}
+choice (x :: xs) = catch (lift1Abort x)! {choice xs}
 
 some : {{[Abort]X} -> [Abort]List X}
-some p = p! :: (shift <Abort> (many p))
+some p = p! :: (lift <Abort> (many p))
 
 many : {{[Abort]X} -> List X}
 many p = catch (some p) {[]}
