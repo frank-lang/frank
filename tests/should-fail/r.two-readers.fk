@@ -2,7 +2,7 @@
 -- not detected by the compiler.
 
 -- #desc Regression for type-checking bug
--- #return failed to unify X (line 15 , column 21) with Y (line 15 , column 31)
+-- #return failed to unify Y (line 18 , column 32) with X (line 18 , column 22)
 
 -- BEGIN ORIGINAL file (tests/should-pass/shift/r.two-readers.fk)
 -- Regression for a bug concerning lift and expandAb, discovered by Sam.
@@ -16,7 +16,7 @@ readPair : {[Reader X, Reader Y](Pair X Y)}
 readPair! = pair (<-Reader> ask!) (ask!)
 
 readPair' : {[Reader X, Reader Y](Pair Y X)}
-readPair'! = pair (ask!) (<-Reader> ask!)
+readPair'! = pair (<-Reader> ask!) (ask!)
 
 readPair'' : {[Reader X, Reader Y](Pair X Y)}
 readPair''! = let x = <-Reader> ask! in

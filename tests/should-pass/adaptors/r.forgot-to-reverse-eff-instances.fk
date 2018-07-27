@@ -1,0 +1,35 @@
+-- #desc Regression test
+-- #return 3
+
+if : {Bool -> {X} -> {X} -> X}
+if true  t f = t!
+if false t f = f!
+
+map : {{X -> Y} -> List X -> List Y}
+map f []        = []
+map f (x :: xs) = f x :: map f xs
+
+print : {String -> [Console]Unit}
+print s = map ouch s; unit
+
+-- Define
+interface Choice X = choose: X
+
+-- not asking the user anymore, but just fixing true for this reg. test
+userBool: {<Choice Bool>X -> [Console]X}
+userBool x = x
+userBool <choose -> k> = userBool (k true)
+
+intByBool: {<Choice Int>X -> [Choice Bool]X}
+intByBool x = x
+intByBool <choose -> k> = let n = if choose! { if choose! {3} {2} }
+                                             { if choose! {1} {0} }
+                          in intByBool (k n)
+
+-- This used to break here: <-Choice.1> removed the 0-th, not the 1st
+-- instance. Forgot to reverse eff. instances.
+userInt2: {<Choice Int>X -> [Console]X}
+userInt2 <m> = userBool (intByBool (<-Choice.1> m!))
+
+main: {[Console]Int}
+main! = userInt2 choose!

@@ -315,7 +315,7 @@ usetm = (attachLoc $ Use <$> (try $ use nctm)) <|>    -- use
 atm :: MonadicParsing m => m (Tm Raw)
 atm = (attachLoc $ SC <$> suspComp) <|>               -- { p_1 -> t_1 | ... }
       (attachLoc $ StrTm <$> stringLiteral) <|>       -- "string"
-      (attachLoc $ (IntTm . fromIntegral) <$> natural) <|>             -- 42
+      (attachLoc $ (IntTm . fromIntegral) <$> natural) <|>    -- 42
       (attachLoc $ CharTm <$> charLiteral) <|>        -- 'c'
       (attachLoc $ ListTm <$> listTm) <|>             -- [t_1, ..., t_n]
       parens tm                                       -- (ltm ; ... ; ltm)
