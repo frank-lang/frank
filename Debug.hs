@@ -162,9 +162,7 @@ logBeginInferUse u@(App f xs _) = ifDebugTypeCheckOnThen $ do
   debugTypeCheckM $ "begin infer use of app: Under curr. amb. " ++ show (ppAb amb) ++ "\n   infer type of " ++ show (ppUse u) ++ "\n\n"
 logBeginInferUse u@(Adapted rs t _) = ifDebugTypeCheckOnThen $ do
   amb <- getAmbient
-  debugTypeCheckM $ "begin infer use of adapted: Under curr. amb. " ++
-    show (ppAb amb) ++ " adapted by <" ++ (show $ rs) ++
-    ">\n   infer type of " ++ show (ppUse u) ++ "\n\n"
+  debugTypeCheckM $ "begin infer use of app: Under curr. amb. " ++ show (ppAb amb) ++ "\n   infer type of " ++ show (ppUse u) ++ "\n\n"
 
 
 logEndInferUse :: Use Desugared -> VType Desugared -> Contextual ()
@@ -426,7 +424,7 @@ ppUse (RawComb u args _) = PP.lparen <> ppUse u <+> ppArgs args <> PP.rparen
 ppUse (Op op _) = ppOperator op
 ppUse (App u args _) = PP.lparen <> ppUse u <+> ppArgs args <> PP.rparen
 ppUse (Adapted rs t _) =
-  PP.parens $ text "<" <> ppAdaptors rs <> text ">"
+  PP.parens $ text "<" <> ppAdaptors rs <> text ">" <+> ppUse t
 
 -- TODO: LC: fix parenthesis output...
 ppArgs :: (Show a, HasSource a) => [Tm a] -> PP.Doc
