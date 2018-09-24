@@ -17,19 +17,19 @@ prog: {[BChoice, BChoice]Pair Bool Bool}
 prog! = pair (choose!) (<BChoice(1)> choose!)
 
 ff: {Pair Bool Bool}
-ff! = fixTrue (fixFalse (fixTrue (fixFalse (<BChoice(0,2,1,3)> prog!))))
+ff! = fixTrue (fixFalse (fixTrue (fixFalse (<BChoice(1, 2, 0)> prog!))))
 
 ff': {Pair Bool Bool}
-ff'! = fixTrue (fixFalse (fixTrue (fixFalse (<BChoice(0,2, 1,   3)> prog!))))
+ff'! = fixTrue (fixFalse (fixTrue (fixFalse (<BChoice(0, 0, 1, 2, 0)> prog!))))
 
 ft: {Pair Bool Bool}
 ft! = fixTrue (fixFalse (fixTrue (fixFalse prog!)))
 
 tf: {Pair Bool Bool}
-tf! = fixTrue (fixFalse (fixTrue (fixFalse (<BChoice(1,0,2)> prog!))))
+tf! = fixTrue (fixFalse (fixTrue (fixFalse (<BChoice(0, 1)> prog!))))
 
 tt: {Pair Bool Bool}
-tt! = fixTrue (fixFalse (fixTrue (fixFalse (<BChoice(3,1,2,0,4)> prog!))))
+tt! = fixTrue (fixFalse (fixTrue (fixFalse (<BChoice(0, 2, 1, 3)> prog!))))
 
 main: {List (Pair Bool Bool)}
 main! = [ff!, ff'!, ft!, tf!, tt!]

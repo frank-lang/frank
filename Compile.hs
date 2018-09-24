@@ -117,7 +117,7 @@ compileCType :: CType Desugared -> Compile [([S.Adap], [String])]
 compileCType (CType xs _ _) = mapM compilePort xs
 
 compilePort :: Port Desugared -> Compile ([S.Adap], [String])
-compilePort (Port adjs _ _) =
+compilePort p@(Port adjs _ _) =
   do let (insts, adps) = adjsNormalForm adjs
      -- convert insts into list of commands
      let insts' = M.mapWithKey (\i insts ->
@@ -180,12 +180,10 @@ compileUse (Adapted (r:rr) t a) =
      return $ S.ER (cs, r') rest
 
 compileAdaptor :: Adaptor Desugared -> Compile ([String], Renaming)
-compileAdaptor (GeneralAdaptor x r n _) = do cmds <- getCCmds x
-                                             return (cmds, r)
 compileAdaptor adp@(CompilableAdp x m ns _) = do
   cmds <- getCCmds x
   return (cmds, adpToRen adp)
-compileAdaptor a = error (show a)
+
 
 compileDataCon :: DataCon Desugared -> Compile S.Exp
 compileDataCon (DataCon id xs _) = do xs' <- mapM compileTm xs

@@ -156,8 +156,9 @@ checkTopTm x = return x
 
 checkMHDef :: MHDef Desugared -> Contextual (MHDef Desugared)
 checkMHDef (Def id ty@(CType ps q _) cs a) = do
-  cs' <- mapM (\cls -> checkCls cls ps q) cs
-  return $ Def id ty cs' a
+  ty' <- validateCType ty
+  cs' <- mapM (checkCls ty') cs
+  return $ Def id ty' cs' a
 
 -- 1st major TC function besides "check": Infer type of a "use"
 -- Functions below implement the typing rules described in the paper.
@@ -291,8 +292,8 @@ checkTm (DCon (DataCon k xs a') a) ty =
 --        then get bound via checking
 --      - Unify the obtained type for cls_i with overall type ty
 checkSComp :: SComp Desugared -> VType Desugared -> Contextual (SComp Desugared)               -- Comp rule
-checkSComp (SComp xs a) (SCTy (CType ps q _) _) = do
-  xs' <- mapM (\cls -> checkCls cls ps q) xs
+checkSComp (SComp xs a) (SCTy ty@(CType ps q _) _) = do
+  xs' <- mapM (checkCls ty) xs
   return (SComp xs' a)
 checkSComp (SComp xs a) ty = do
   xs' <- mapM (checkCls' ty) xs
@@ -304,8 +305,9 @@ checkSComp (SComp xs a) ty = do
              ps <- mapM (\_ -> freshPort "X" a) pats
              q <- freshPeg "E" "X" a
              -- {p_1 -> ... -> p_n -> q} for fresh flex. var.s ps, q
-             cls' <- checkCls cls ps q                -- assign these variables
-             unify ty (SCTy (CType ps q a) a) -- unify with resulting ty
+             let cty = (CType ps q a)
+             cls' <- checkCls cty cls     -- assign these variables
+             unify ty (SCTy cty a)        -- unify with resulting ty
              purgeMarks
              return cls'
 
@@ -326,9 +328,9 @@ freshPegWithAb ab x a = do ty <- FTVar <$> freshMVar x <*> pure a
                            return $ Peg ab ty a
 
 -- Check that given clause has given susp. comp. type (ports, peg)
-checkCls :: Clause Desugared -> [Port Desugared] -> Peg Desugared ->
-           Contextual (Clause Desugared)
-checkCls cls@(Cls pats tm a) ports (Peg ab ty _)
+checkCls :: CType Desugared -> Clause Desugared ->
+            Contextual (Clause Desugared)
+checkCls (CType ports (Peg ab ty _) _) cls@(Cls pats tm a)
 -- type:     port_1 -> ... -> port_n -> [ab]ty
 -- clause:   pat_1     ...    pat_n  =  tm
   | length pats == length ports =
@@ -380,7 +382,7 @@ checkPat (CmdPat cmd n xs g a) port@(Port adjs ty b) =                          
           -- bindings: continuation + patterns
           return ((Mono g a, kty) : bs)
      else
-       throwError $ errorTCCmdNotFoundInPort cmd port
+       throwError $ errorTCCmdNotFoundInPort cmd n port
 checkPat (ThkPat x a) (Port adjs ty b) =                                         -- P-CatchAll rule
 -- pattern:  x
   do amb <- getAmbient
@@ -414,6 +416,20 @@ checkVPat (StrPat _ a) ty = unify ty (desugaredStrTy a) >> return []
 checkVPat (IntPat _ a) ty = unify ty (IntTy a) >> return []
 -- checkVPat p ty = throwError $ "failed to match value pattern " ++
 --                  (show p) ++ " with type " ++ (show ty)
+
+
+-- Validate that the adaptors in the ports match the peg. Annotate the
+-- adaptors in the ports accordingly via "applyAllAdjustments".
+validateCType :: CType Desugared -> Contextual (CType Desugared)
+validateCType (CType ps q@(Peg ab ty a') a) = do
+  ps' <- mapM validatePort ps
+  return $ CType ps' q a
+  where
+    validatePort :: Port Desugared -> Contextual (Port Desugared)
+    validatePort (Port adjs ty a) = do
+      (adjs', _) <- applyAllAdjustments adjs ab
+      return $ Port adjs' ty a
+
 
 -- Given a list of ids and a type as input, any rigid (val/eff) ty var
 -- contained in ty which does *not* belong to the list is made flexible.
@@ -476,7 +492,8 @@ makeFlexiblePort skip (Port adjs ty a) = Port <$>
                                           makeFlexible skip ty <*>
                                           pure a
 
-applyAllAdjustments :: [Adjustment Desugared] -> Ab Desugared -> Contextual ([Adjustment Desugared], Ab Desugared)
+applyAllAdjustments :: [Adjustment Desugared] -> Ab Desugared ->
+                       Contextual ([Adjustment Desugared], Ab Desugared)
 applyAllAdjustments [] ab = return ([], ab)
 applyAllAdjustments (adj@(ConsAdj x ts _) : adjr) (Ab v p@(ItfMap m a') a) =
   do let ab' = (Ab v (ItfMap (adjustWithDefault (:< ts) x BEmp m) a') a)
@@ -491,21 +508,23 @@ applyAllAdjustments ((AdaptorAdj adp a) : adjr) ab =
        Nothing -> throwError $ errorAdaptor adp ab
 
 applyAdaptor :: Adaptor Desugared -> Ab Desugared -> Maybe (Adaptor Desugared, Ab Desugared)
-applyAdaptor adp@(GeneralAdaptor x r n _) (Ab v p@(ItfMap m a') a) =
+applyAdaptor adp@(Adp x ns a'') (Ab v p@(ItfMap m a') a) =
   let instances = (reverse . bwd2fwd) (M.findWithDefault BEmp x m) in
-  if length instances > n then
-    let renaming = takeWhile (< length instances) $ map (renToFun r) [0 ..] in
-    let instances' = map (instances !!) renaming in
+  if null ns || length instances > maximum ns then
+    let instances' = map (instances !!) ns in
+    let adp' = CompilableAdp x (length instances) ns a'' in
     if null instances' then
-      Just (adp, Ab v (ItfMap (M.delete x m) a') a)
+      Just (adp', Ab v (ItfMap (M.delete x m) a') a)
     else
-      Just (adp, Ab v (ItfMap (
+      Just (adp', Ab v (ItfMap (
         M.insert x ((fwd2bwd . reverse) instances') m
       ) a') a)
   else Nothing
-applyAdaptor adp@(Adp x ns a'') (Ab v p@(ItfMap m a') a) =
+-- TODO: LC: This process of refining the adaptor needs to be done only once.
+-- This works like this, but redundant work can be saved...
+applyAdaptor adp@(CompilableAdp x m' ns a'') (Ab v p@(ItfMap m a') a) =
   let instances = (reverse . bwd2fwd) (M.findWithDefault BEmp x m) in
-  if length instances > maximum ns then
+  if null ns || length instances > maximum ns then
     let instances' = map (instances !!) ns in
     let adp' = CompilableAdp x (length instances) ns a'' in
     if null instances' then

@@ -5,6 +5,7 @@ import Text.PrettyPrint
 -- A renaming is a function from Nat to Nat. Given ms of length k and n,
 -- it can be understood as the infinite list
 --   [m_0, ..., m_k, n, n+1, ...]
+-- Notice that the order of reading is from left to right.
 type Renaming = ([Int], Int)
 
 renToFun :: Renaming -> (Int -> Int)

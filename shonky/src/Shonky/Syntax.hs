@@ -34,7 +34,7 @@ infixr 4 :!
 
 data Def v
   = String := v                                     -- value def
-  | DF String [([Adap], [String])] [([Pat], Exp)] -- handler def:
+  | DF String [([Adap], [String])] [([Pat], Exp)]   -- handler def: (like EF, but with name)
                                                     -- - name
                                                     -- - redirection, executed
                                                     --     before assigning

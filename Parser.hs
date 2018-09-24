@@ -180,8 +180,9 @@ adjs = do mAdjs <- optional $ angles (sepBy adj (symbol ","))
             Just adjs -> return adjs
 
 adj :: MonadicParsing m => m (Adjustment Raw)
-adj = consAdj <|>
-      (attachLoc $ AdaptorAdj <$> adaptor)
+adj = (attachLoc $ AdaptorAdj <$> adaptor) <|>
+      consAdj
+
 
 
 
@@ -247,7 +248,7 @@ vtype' = parens vtype <|>
 
 tyArg :: MonadicParsing m => m (TyArg Raw)
 tyArg = attachLoc $ VArg <$> vtype' <|>
-                         EArg <$> abExplicit
+                    EArg <$> abExplicit
 
 -- Parse a potential datatype. Note it may actually be a type variable.
 dataInstance :: MonadicParsing m => m (VType Raw)
@@ -380,13 +381,14 @@ adapted p = attachLoc $ do -- <adp_1,adp_2,...,adp_n> stm
             return $ Adapted xs t
 
 adaptor :: MonadicParsing m => m (Adaptor Raw)
-adaptor = (provideLoc $ \a -> do x <- try $ do x <- identifier
-                                               symbol "("
-                                               return x
-                                 ns <- sepBy natural (symbol ",")
-                                 symbol ")"
+adaptor = (provideLoc $ \a -> do (x, ns) <- try $ do x <- identifier
+                                                     symbol "("
+                                                     ns <- sepBy natural (symbol ",")
+                                                     symbol ")"
+                                                     return (x, ns)
                                  let ns' = map fromIntegral ns
                                  return $ Adp x ns' a)
+                                 -- TODO: LC: make "try" block more minimal?
 
 idUse :: MonadicParsing m => m (Use Raw)
 idUse = attachLoc $ do x <- identifier

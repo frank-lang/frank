@@ -101,8 +101,8 @@ errorTCNotInScope op = "'" ++ getOpName op ++ "' not in scope (" ++ (show $ ppSo
 errorTCPatternPortMismatch :: Clause Desugared -> String
 errorTCPatternPortMismatch cls = "number of patterns not equal to number of ports (" ++ (show $ ppSourceOf cls) ++ ")"
 
-errorTCCmdNotFoundInPort :: Id -> Port Desugared -> String
-errorTCCmdNotFoundInPort cmd port = "command " ++ cmd ++ " not found in adjustments of port " ++ (show $ ppPort port) ++ " (" ++ (show $ ppSourceOf port) ++ ")"
+errorTCCmdNotFoundInPort :: Id -> Int -> Port Desugared -> String
+errorTCCmdNotFoundInPort cmd n port = "command " ++ cmd ++ "." ++ show n ++ " not found in adjustments of port " ++ (show $ ppPort port) ++ " (" ++ (show $ ppSourceOf port) ++ ")"
 
 errorTCNotACtr :: Id -> String
 errorTCNotACtr x = "'" ++ x ++ "' is not a constructor"
@@ -128,7 +128,11 @@ errorUnifItfMaps m1 m2 =
   "cannot unify interface maps " ++ (show $ ppItfMap m1) ++ " (" ++ (show $ ppSourceOf m1) ++ ")" ++ " and " ++ (show $ ppItfMap m2) ++ " (" ++ (show $ ppSourceOf m2) ++ ")"
 
 errorAdaptor :: Adaptor Desugared -> Ab Desugared -> String
-errorAdaptor adpd@(GeneralAdaptor x r n _) ab =
+errorAdaptor adpd@(Adp x ns _) ab =
+  "Adaptor " ++ (show $ ppAdaptor adpd) ++
+  " is not a valid adaptor in ambient " ++ (show $ ppAb ab) ++
+  " (" ++  (show $ ppSourceOf adpd) ++ ")"
+errorAdaptor adpd@(CompilableAdp x m ns _) ab =
   "Adaptor " ++ (show $ ppAdaptor adpd) ++
   " is not a valid adaptor in ambient " ++ (show $ ppAb ab) ++
   " (" ++  (show $ ppSourceOf adpd) ++ ")"
@@ -250,6 +254,9 @@ debugTypeCheckM :: String -> Contextual ()
 debugTypeCheckM str = do
   cxt <- getContext
   seq (ppContext cxt) traceM str
+
+debugM :: (Monad m) => String -> m ()
+debugM = traceM
 
 {- Syntax pretty printers -}
 
@@ -443,12 +450,11 @@ ppAdaptors :: (Show a, HasSource a) => [Adaptor a] -> PP.Doc
 ppAdaptors rs = PP.hsep $ intersperse PP.comma $ map ppAdaptor rs
 
 ppAdaptor :: (Show a, HasSource a) => Adaptor a -> PP.Doc
-ppAdaptor (Rem x n _) = text "-" <> text x <> text "." <> int n
-ppAdaptor (Swap x m n _) = int m <> text "." <> text x <>
-                               text "." <> int n
-ppAdaptor (GeneralAdaptor x r n _) = text x <+> text "--" <> int n <> text "-->" <+> ppRenaming r
-ppAdaptor (Adp x ns _) = text x <+> text "--" <> text (show ns)
-ppAdaptor (CompilableAdp x m ns _) = text x <+> text "+-" <> int m <> text "--" <> text (show ns)
+ppAdaptor (Adp x ns _) =
+  text x <> text "(" <> sep (punctuate comma (map int ns)) <> text ")"
+ppAdaptor (CompilableAdp x m ns _) =
+  text x <> text "(" <> sep (punctuate comma (map int ns)) <> text ")(" <>
+  int m <> text ")"
 
 {- TypeCheckCommon pretty printers -}
 
@@ -488,17 +494,23 @@ ppBwd = ppFwd . bwd2fwd
 -- Pretty printing routines
 
 ppProgShonky :: [Def Exp] -> PP.Doc
-ppProgShonky xs = vcat (map ppDef xs)
+ppProgShonky xs = vcat (punctuate (text "\n") (map ppDef xs))
 
 ppDef :: Def Exp -> PP.Doc
 ppDef (id := e) = text id <+> text "->" <+> ppExp e
 ppDef (DF id [] []) = error "ppDef invariant broken: empty Def Exp detected."
 ppDef p@(DF id hss es) = header $+$ vcat cs
-  where header = text id <> PP.parens (hsep args) <> colon
-        args = punctuate comma $ (map (hsep . map text . snd) hss)
+  where header = text id <> PP.parens (hsep portAnnots) <> colon
+        portAnnots = punctuate comma $ map ppPort hss
         cs = punctuate comma $
                map (\x -> text id <> (nest 3 (ppClauseShonky ($$) x))) es
--- TODO: LC: pretty-print ren argument (remove ". snd")
+        ppPort :: ([Adap], [String]) -> PP.Doc
+        ppPort (adps, cmds) = PP.parens ((hsep $ punctuate comma (map ppAdap adps))
+                            <+> comma <+> (hsep $ punctuate comma (map text cmds)))
+        ppAdap :: Adap -> PP.Doc
+        ppAdap (cmds, r) = text "([" <> (hsep $ punctuate comma (map text cmds)) <> text "]" <+>
+                           comma <+> ppRenaming r <+> text ")"
+-- TODO: LC: refactor above pretty-printer
 
 ppText :: (a -> PP.Doc) -> [Either Char a] -> PP.Doc
 ppText f ((Left c) : xs) = (text $ escChar c) <> (ppText f xs)
@@ -530,6 +542,7 @@ ppExp (f :$ xs) = let args = hcat $ punctuate comma (map ppExp xs) in
 ppExp (e :! e') = ppExp e <> semi <> ppExp e'
 ppExp (e :// e') = ppExp e <> text "/" <> ppExp e'
 ppExp (EF xs ys) =
+-- TODO: LC: Print xs
   let clauses = map (ppClauseShonky (<+>)) ys in
   PP.braces $ hcat (punctuate comma clauses)
 ppExp (EX xs) = text "[|" <> ppText ppExp xs

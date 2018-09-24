@@ -112,7 +112,7 @@ def process_directive(x,ds,k,v,args):
         isSuccess = out == v
 
         # Stats
-        isRegression = True if os.path.basename(x).startswith('r') else False
+        isRegression = True if os.path.basename(x).startswith('r.') else False
         if isRegression:
             registerStat("regression", isSuccess)
         for d in dirs:

@@ -528,20 +528,14 @@ type TyArg a = AnnotTFix a TyArgF
 pattern VArg ty a = Fx (AnnF (MkVArg ty, a))
 pattern EArg ab a = Fx (AnnF (MkEArg ab, a))
 
+-- TODO: LC: Make distinction between MkAdp and MkCompilableAdp on
+-- type-level (GADT)
 data AdaptorF :: ((* -> *) -> (* -> *)) -> * -> * where
-  MkRem :: NotDesugared (t Identity ()) => Id -> Int -> AdaptorF t r        -- remove effect at position `n`
-  MkCopy :: NotDesugared (t Identity ()) => Id -> Int -> AdaptorF t r       -- copy effect at position `n`
-  MkSwap :: NotDesugared (t Identity ()) => Id -> Int -> Int -> AdaptorF t r-- swap effects at positions `m`, `n`
-  MkGeneralAdaptor ::  Id -> Renaming -> Int -> AdaptorF t r                -- general renaming for effect lists with positions up to at least `n`
-  MkAdp :: Id -> [Int] -> AdaptorF t r
-  MkCompilableAdp :: Id -> Int -> [Int] -> AdaptorF t r
+  MkAdp :: Id -> [Int] -> AdaptorF t r                                      -- adapt an interface `x` in an ability from right to left according to `ns`
+  MkCompilableAdp :: Id -> Int -> [Int] -> AdaptorF t r                     -- adapt an interface `x` in an ability that has exactly `n` instances of it from right to left according to `ns`
 deriving instance (Show r, Show (TFix t AdaptorF)) => Show (AdaptorF t r)
 deriving instance (Eq r, Eq (TFix t AdaptorF)) => Eq (AdaptorF t r)
 type Adaptor a = AnnotTFix a AdaptorF
-pattern Rem x n a = Fx (AnnF (MkRem x n, a))
-pattern Copy x n a = Fx (AnnF (MkCopy x n, a))
-pattern Swap x m n a = Fx (AnnF (MkSwap x m n, a))
-pattern GeneralAdaptor x r n a = Fx (AnnF (MkGeneralAdaptor x r n, a))
 pattern Adp x ns a = Fx (AnnF (MkAdp x ns, a))
 pattern CompilableAdp x m ns a = Fx (AnnF (MkCompilableAdp x m ns, a))
 
@@ -692,11 +686,6 @@ addAdjNormalForm (ConsAdj x ts a) (insts, adps) = (
   adjustWithDefault (:< ts) x BEmp insts,
   adjustWithDefault (\(rs, r) ->
     (renToNormalForm (0:(map (+1) rs), r+1))) x renId adps)
-addAdjNormalForm (AdaptorAdj (GeneralAdaptor x r1 n1 _) a) (insts, adps) = (
-  insts,
-  adjustWithDefault (\r2 ->
-    (renToNormalForm $ renCompose r1 r2)) x renId adps)
--- -- TODO: LC: double-check that the last line is correct
 addAdjNormalForm (AdaptorAdj adp@(CompilableAdp x m ns _) a) (insts, adps) = (
   insts,
   adjustWithDefault (\r ->

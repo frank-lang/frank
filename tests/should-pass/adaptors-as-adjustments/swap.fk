@@ -27,7 +27,7 @@ falseFix: {<BChoice>X -> X}
 falseFix x = x
 falseFix <bchoose -> k> = falseFix (k false)
 
-boolSwapAndModifier: {<0.BChoice.1,BChoice>X -> [BChoice, BChoice]X}
+boolSwapAndModifier: {<BChoice(0, 1), BChoice>X -> [BChoice, BChoice]X}
 boolSwapAndModifier <bchoose -> k> = boolSwapAndModifier (k false)
 boolSwapAndModifier v = v
 
@@ -36,10 +36,10 @@ boolProg1 : {[BChoice, BChoice, BChoice]Bool}
 boolProg1! = bchoose!
 
 boolProg2 : {[BChoice, BChoice, BChoice]Bool}
-boolProg2! = <-BChoice> bchoose!
+boolProg2! = <BChoice(2, 1)> bchoose!
 
 boolProg3 : {[BChoice, BChoice, BChoice]Bool}
-boolProg3! = <-BChoice, -BChoice> bchoose!
+boolProg3! = <BChoice(2)> bchoose!
 
 main: {[Console]List Bool}
 main! = [trueFix (falseFix (boolSwapAndModifier boolProg1!)),  -- boolSwapAndModifier fixes `false`

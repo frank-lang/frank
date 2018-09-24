@@ -120,7 +120,7 @@ writingActor! = let you = spawn nicePrintActor in
 -- For liftBody we need exactly that all but the ambient effects be
 -- the same.
 liftBody : {{[Actor X]Unit} -> [E |]{[Actor X, Co [RefState], RefState]Unit}}
-liftBody m = {<-RefState, -Co> m!}
+liftBody m = {<RefState(), Co()> m!}
 
 
 act : {Mailbox X -> <Actor X>Unit -> [Co [RefState], RefState]Unit}
@@ -139,10 +139,10 @@ act mine     <send (mbox m) x -> k> = let q = execFifo (enqueue x) (read m) in
 act mine     unit = unit
 
 runActor : {<Actor X>Unit -> [RefState]Unit}
-runActor <m> = bfFifo (act (mbox (new (emptyZipQ!))) (<-Co> m!))
+runActor <m> = bfFifo (act (mbox (new (emptyZipQ!))) (<Co()> m!))
 
 bfFifo : {<Co>Unit -> Unit}
-bfFifo <m> = fifo (scheduleBF (<-Queue> m!))
+bfFifo <m> = fifo (scheduleBF (<Queue()> m!))
 
 ------------------------------------------------------------------------------
 -- Scheduling as in coop.fk
@@ -161,7 +161,7 @@ runNext! = case dequeue! { (just (proc x)) -> x!
 scheduleBF : {<Co>Unit -> [Queue Proc]Unit}
 scheduleBF <yield -> k>  = enqProc {scheduleBF (k unit)};
                            runNext!
-scheduleBF <fork p -> k> = enqProc {scheduleBF (<-Queue> p!)};
+scheduleBF <fork p -> k> = enqProc {scheduleBF (<Queue()> p!)};
                            scheduleBF (k unit)
 scheduleBF unit          = runNext!
 
@@ -170,7 +170,7 @@ scheduleDF : {<Co>Unit -> [Queue Proc]Unit}
 scheduleDF <yield -> k>  = enqProc {scheduleDF (k unit)};
                            runNext!
 scheduleDF <fork p -> k> = enqProc {scheduleDF (k unit)};
-                           scheduleDF (<-Queue> p!)
+                           scheduleDF (<Queue()> p!)
 scheduleDF unit          = runNext!
 
 -----------------------------------------------------------------------------
@@ -182,4 +182,4 @@ scheduleDF unit          = runNext!
 -- #return calculating (1+1) + (2+2)... 6 unit
 
 main: {[Console, RefState]Unit}
-main! = runActor (<-RefState> divConqActor!)
+main! = runActor (<RefState()> divConqActor!)
