@@ -34,14 +34,13 @@ import Debug
 prog :: (MonadicParsing m) => m (Prog Raw, [FilePath])
 prog = do whiteSpace
           (tts,fs) <- liftM eplist (many defOrInc)
-          eof
+          eof -- disallows gibberish at the end of the file
           return $ (MkProg tts,fs)
 
 defOrInc :: (MonadicParsing m) => m (Either (TopTm Raw) FilePath)
 defOrInc = choice [Left <$> def,
                    Right <$> (reserved "include" >> identifier)]
 
--- the eof disallows gibberish at the end of the file!
 
 def :: MonadicParsing m => m (TopTm Raw)
 def = attachLoc (DataTm <$> dataDef <|>
@@ -105,6 +104,18 @@ sigType = (do a <- getLoc
                   Nothing -> modifyAnn a ct
                   Just (CType ports peg a') ->
                         CType (Port [] (SCTy ct a') a' : ports) peg a) <|>
+          -- Part of new syntax [...]{... -> A} instead of {... -> [...]A}
+          (do a <- getLoc
+              ab <- ab
+              symbol "{"
+              ct <- ctypeN ab
+              symbol "}"
+              rest <- optional (symbol "->" *> ctype)
+              return $
+                case rest of
+                  Nothing -> modifyAnn a ct
+                  Just (CType ports peg a') ->
+                        CType (Port [] (SCTy ct a') a' : ports) peg a) <|>
           attachLoc (do ports <- some (try (port <* symbol "->"))
                         peg <- peg
                         return $ CType ports peg) <|>
@@ -157,6 +168,16 @@ itfAliasDef = attachLoc $ do
 -----------
 -- Types --
 -----------
+
+-- Part of new syntax [...]{... -> A} instead of {... -> [...]A}
+ctypeN :: MonadicParsing m => Ab Raw -> m (CType Raw)
+ctypeN ab = attachLoc $ do ports <- many (try (port <* symbol "->"))
+                           peg <- pegN ab
+                           return $ CType ports peg
+
+-- Part of new syntax [...]{... -> A} instead of {... -> [...]A}
+pegN :: MonadicParsing m => Ab Raw -> m (Peg Raw)
+pegN ab = attachLoc $ Peg ab <$> vtype
 
 ctype :: MonadicParsing m => m (CType Raw)
 ctype = attachLoc $ do ports <- many (try (port <* symbol "->"))
