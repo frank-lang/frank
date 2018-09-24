@@ -31,6 +31,7 @@ type PMap = M.Map FilePath (Prog Raw)
 existsMain :: Prog t -> Bool
 existsMain (MkProg xs) = any (== "main") [id | DefTm (Def id _ _ _) _ <- xs]
 
+splice :: Prog Raw -> Tm Raw -> Prog Raw
 splice (MkProg xs) tm = MkProg $ xs ++ ys
   where ys = [sig, cls]
         sig = SigTm (Sig id (CType [] peg b) b) b
@@ -105,6 +106,7 @@ parseEvalTm v = case runTokenParse tm v of
   Left err -> die err
   Right tm -> return tm
 
+refineComb :: Either String (Prog Raw) -> Tm Raw -> IO (Prog Refined)
 refineComb prog tm = case prog of
     Left err -> die err
     Right p -> case refine (splice p tm) of
@@ -125,11 +127,11 @@ checkProg p _ =
     Left err -> die err
     Right p' -> return p'
 
-checkUse :: Prog Desugared -> Use Desugared -> IO (VType Desugared)
+checkUse :: Prog Desugared -> Use Desugared -> IO (Use Desugared, VType Desugared)
 checkUse p use =
   case inferEvalUse p use of
     Left err -> die err
-    Right ty -> return ty
+    Right (use, ty) -> return (use, ty)
 
 compileProg :: String -> Prog Desugared -> Args -> IO Shonky.Env
 compileProg progName p args =
@@ -152,22 +154,24 @@ compileAndRunProg fileName args =
      prog <- parseProg fileName args
      case lookup "eval" args of
        Just [v] -> do tm <- parseEvalTm v
+                      -- lift tm to top term and append to prog
                       p <- refineComb prog tm
-                      let (p',tm) = exorcise (desugar p)
-                          use = extractEvalUse tm
-                      _ <- checkProg p' args
-                      _ <- checkUse p' use
-                      env <- compileProg progName (glue p' tm) args
+                      -- tear apart again
+                      let (p',ttm) = exorcise (desugar p)
+                          use = extractEvalUse ttm
+                      p'' <- checkProg p' args
+                      (use', _) <- checkUse p'' use
+                      env <- compileProg progName (glue p'' ttm) args
                       evalProg env "%eval()"
        Just _ -> die "only one evaluation point permitted"
        Nothing -> do p <- refineAndDesugarProg prog
-                     _ <- checkProg p args
-                     env <- compileProg progName p args
+                     p' <- checkProg p args
+                     env <- compileProg progName p' args
                      case lookup "entry-point" args of
                        Just [v] -> evalProg env (v ++ "()")
                        Just _  -> die "only one entry point permitted"
                        Nothing ->
-                         if existsMain p then
+                         if existsMain p' then
                            evalProg env "main()"
                          else
                            putStrLn ("Compilation successful! " ++

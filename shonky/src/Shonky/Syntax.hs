@@ -57,13 +57,15 @@ data Pat
 
 data VPat
   = VPV String              -- LC: ?
-  | VPI Int             -- int value
+  | VPI Int                 -- int value
   | VPA String              -- atom value
   | VPat :&: VPat           -- cons value
   | VPX [Either Char VPat]  -- LC: ?
   | VPQ String              -- LC: ?
   deriving (Show, Eq)
 
+-- [String]   commands to be adapted
+-- Renaming
 type Adap = ([String], Renaming)
 
 pProg :: P [Def Exp]

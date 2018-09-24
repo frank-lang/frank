@@ -447,6 +447,8 @@ ppAdaptor (Rem x n _) = text "-" <> text x <> text "." <> int n
 ppAdaptor (Swap x m n _) = int m <> text "." <> text x <>
                                text "." <> int n
 ppAdaptor (GeneralAdaptor x r n _) = text x <+> text "--" <> int n <> text "-->" <+> ppRenaming r
+ppAdaptor (Adp x ns _) = text x <+> text "--" <> text (show ns)
+ppAdaptor (CompilableAdp x m ns _) = text x <+> text "+-" <> int m <> text "--" <> text (show ns)
 
 {- TypeCheckCommon pretty printers -}
 

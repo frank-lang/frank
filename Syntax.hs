@@ -419,7 +419,7 @@ type CType a = AnnotTFix a CTypeF
 pattern CType ports peg a = Fx (AnnF (MkCType ports peg, a))
 
 data PortF :: ((* -> *) -> (* -> *)) -> * -> * where
-  MkPort :: [TFix t AdjustmentF] -> TFix t VTypeF -> PortF t r                       -- ports
+  MkPort :: [TFix t AdjustmentF] -> TFix t VTypeF -> PortF t r              -- ports
 deriving instance (Show (TFix t AdjustmentF),
                    Show (TFix t VTypeF),
                    Show r, Show (TFix t PortF)) => Show (PortF t r)
@@ -477,7 +477,7 @@ pattern ItfMap m a = Fx (AnnF (MkItfMap m, a))
 
 -- Adjustments
 data AdjustmentF :: ((* -> *) -> (* -> *)) -> * -> * where
-  MkConsAdj :: Id -> [TFix t TyArgF] -> AdjustmentF t r -- interface-id, list of ty arg's
+  MkConsAdj :: Id -> [TFix t TyArgF] -> AdjustmentF t r                     -- interface-id, list of ty arg's
   MkAdaptorAdj :: TFix t AdaptorF -> AdjustmentF t r
 deriving instance (Show (TFix t TyArgF),
                    Show (TFix t AdaptorF),
@@ -533,6 +533,8 @@ data AdaptorF :: ((* -> *) -> (* -> *)) -> * -> * where
   MkCopy :: NotDesugared (t Identity ()) => Id -> Int -> AdaptorF t r       -- copy effect at position `n`
   MkSwap :: NotDesugared (t Identity ()) => Id -> Int -> Int -> AdaptorF t r-- swap effects at positions `m`, `n`
   MkGeneralAdaptor ::  Id -> Renaming -> Int -> AdaptorF t r                -- general renaming for effect lists with positions up to at least `n`
+  MkAdp :: Id -> [Int] -> AdaptorF t r
+  MkCompilableAdp :: Id -> Int -> [Int] -> AdaptorF t r
 deriving instance (Show r, Show (TFix t AdaptorF)) => Show (AdaptorF t r)
 deriving instance (Eq r, Eq (TFix t AdaptorF)) => Eq (AdaptorF t r)
 type Adaptor a = AnnotTFix a AdaptorF
@@ -540,6 +542,8 @@ pattern Rem x n a = Fx (AnnF (MkRem x n, a))
 pattern Copy x n a = Fx (AnnF (MkCopy x n, a))
 pattern Swap x m n a = Fx (AnnF (MkSwap x m n, a))
 pattern GeneralAdaptor x r n a = Fx (AnnF (MkGeneralAdaptor x r n, a))
+pattern Adp x ns a = Fx (AnnF (MkAdp x ns, a))
+pattern CompilableAdp x m ns a = Fx (AnnF (MkCompilableAdp x m ns, a))
 
 desugaredStrTy :: Desugared -> VType Desugared
 desugaredStrTy a = DTTy "List" [VArg (CharTy a) a] a
@@ -674,22 +678,29 @@ isItfMapEmpty :: ItfMap t -> Bool
 isItfMapEmpty (ItfMap m _) = M.null m
 
 -- Normal form of lists of adjustments
-
+-- M.Map Id (Bwd [TyArg Desugared]:  I -> Enrichments for I (instances which are
+--                                   handled here)
+-- M.Map Id (Renaming, Int):         I -> Total renaming for I, number of enrichments for I
 adjsNormalForm :: [Adjustment Desugared] ->
-                  (M.Map Id (Bwd [TyArg Desugared]), M.Map Id (Renaming, Int))
+                  (M.Map Id (Bwd [TyArg Desugared]), M.Map Id Renaming)
 adjsNormalForm = foldl (flip addAdjNormalForm) (M.empty, M.empty)
 
 addAdjNormalForm :: Adjustment Desugared ->
-  (M.Map Id (Bwd [TyArg Desugared]), M.Map Id (Renaming, Int)) ->
-  (M.Map Id (Bwd [TyArg Desugared]), M.Map Id (Renaming, Int))
+  (M.Map Id (Bwd [TyArg Desugared]), M.Map Id Renaming) ->
+  (M.Map Id (Bwd [TyArg Desugared]), M.Map Id Renaming)
 addAdjNormalForm (ConsAdj x ts a) (insts, adps) = (
   adjustWithDefault (:< ts) x BEmp insts,
-  adjustWithDefault (\((rs, r), n) ->
-    (renToNormalForm (0:(map (+1) rs), r+1), n+1)) x (renId, 0) adps)
+  adjustWithDefault (\(rs, r) ->
+    (renToNormalForm (0:(map (+1) rs), r+1))) x renId adps)
 addAdjNormalForm (AdaptorAdj (GeneralAdaptor x r1 n1 _) a) (insts, adps) = (
   insts,
-  adjustWithDefault (\(r2, n2) ->
-    (renToNormalForm $ renCompose r1 r2, max n1 n2)) x (renId, 0) adps)
+  adjustWithDefault (\r2 ->
+    (renToNormalForm $ renCompose r1 r2)) x renId adps)
+-- -- TODO: LC: double-check that the last line is correct
+addAdjNormalForm (AdaptorAdj adp@(CompilableAdp x m ns _) a) (insts, adps) = (
+  insts,
+  adjustWithDefault (\r ->
+    (renToNormalForm $ renCompose (adpToRen adp) r)) x renId adps)
 -- TODO: LC: double-check that the last line is correct
 
 -- helpers
@@ -700,3 +711,6 @@ adjustWithDefault f k def m =
                           _ -> x
   in
   M.adjust f k (M.alter g k m)
+
+adpToRen :: Adaptor Desugared -> Renaming
+adpToRen (CompilableAdp x m ns _) = (reverse ns, m)

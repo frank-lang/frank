@@ -260,6 +260,7 @@ desugarAdaptor (Swap x m n a) = return $ GeneralAdaptor x (renSwap m n) (max m n
                                                           (refToDesug a)
 desugarAdaptor (GeneralAdaptor x r n a) = return $ GeneralAdaptor x r n
                                                      (refToDesug a)
+desugarAdaptor (Adp x ns a) = return $ Adp x ns (refToDesug a)                                                     
 
 desugarOperator :: Operator Refined -> Desugar (Operator Desugared)
 desugarOperator (Mono x a) = return $ Mono x (refToDesug a)

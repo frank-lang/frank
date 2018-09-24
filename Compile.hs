@@ -124,7 +124,7 @@ compilePort (Port adjs _ _) =
                                 replicate ((length . bwd2fwd) insts) i) insts
      cmds <- liftM concat $ mapM getCCmds (concat (M.elems insts'))
      -- convert renamings into list of Adap
-     let (ids, rens) = fmap (map fst) (unzip (M.assocs adps))   -- (id, ren)
+     let (ids, rens) = unzip (M.assocs adps)   -- (id, ren)
      rencmds <- mapM getCCmds ids
      return (zip rencmds rens, cmds)
 
@@ -182,6 +182,10 @@ compileUse (Adapted (r:rr) t a) =
 compileAdaptor :: Adaptor Desugared -> Compile ([String], Renaming)
 compileAdaptor (GeneralAdaptor x r n _) = do cmds <- getCCmds x
                                              return (cmds, r)
+compileAdaptor adp@(CompilableAdp x m ns _) = do
+  cmds <- getCCmds x
+  return (cmds, adpToRen adp)
+compileAdaptor a = error (show a)
 
 compileDataCon :: DataCon Desugared -> Compile S.Exp
 compileDataCon (DataCon id xs _) = do xs' <- mapM compileTm xs

@@ -380,26 +380,13 @@ adapted p = attachLoc $ do -- <adp_1,adp_2,...,adp_n> stm
             return $ Adapted xs t
 
 adaptor :: MonadicParsing m => m (Adaptor Raw)
-adaptor = (attachLoc $ Rem <$ symbol "-" <*> identifier <*> optionalIndex) <|>
-          (attachLoc $ Copy <$ symbol "+" <*> identifier <*> optionalIndex) <|>
-          (attachLoc $ (flip Swap) <$> parseInt <* symbol "."
-                               <*> identifier <* symbol "." <*> parseInt) <|>
-          (provideLoc $ \a -> do x <- try $ do x <- identifier
+adaptor = (provideLoc $ \a -> do x <- try $ do x <- identifier
                                                symbol "("
                                                return x
-                                 ns <- sepBy1 natural (symbol ",")
+                                 ns <- sepBy natural (symbol ",")
                                  symbol ")"
                                  let ns' = map fromIntegral ns
-                                 let r = listToRen ns'
-                                 let maxim = maximum (0:(init ns'))
-                                 return $ GeneralAdaptor x r maxim a)
-  where optionalIndex :: MonadicParsing m => m Int
-        optionalIndex = do mn <- optional (symbol "." *> parseInt)
-                           case mn of Just n  -> return n
-                                      Nothing -> return 0
-        listToRen :: [Int] -> ([Int], Int)
-        listToRen [] = error "invariant broken"
-        listToRen xs = (init xs, last xs)
+                                 return $ Adp x ns' a)
 
 idUse :: MonadicParsing m => m (Use Raw)
 idUse = attachLoc $ do x <- identifier
