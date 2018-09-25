@@ -95,27 +95,16 @@ handlerTopSig = attachLoc $ Sig <$> (try $ identifier <* symbol ":")        -- t
 --   x : []Int
 sigType :: MonadicParsing m => m (CType Raw)
 sigType = (do a <- getLoc
-              symbol "{"
-              ct <- ctype
-              symbol "}"
-              rest <- optional (symbol "->" *> ctype)
+              ct <- ctypeOld
+              rest <- optional (symbol "->" *> ctypeOldNoBrac)
               return $
                 case rest of
                   Nothing -> modifyAnn a ct
                   Just (CType ports peg a') ->
                         CType (Port [] (SCTy ct a') a' : ports) peg a) <|>
+          -- TODO: LC: Integrate the new syntax properly...
           -- Part of new syntax [...]{... -> A} instead of {... -> [...]A}
-          (do a <- getLoc
-              ab <- ab
-              symbol "{"
-              ct <- ctypeN ab
-              symbol "}"
-              rest <- optional (symbol "->" *> ctype)
-              return $
-                case rest of
-                  Nothing -> modifyAnn a ct
-                  Just (CType ports peg a') ->
-                        CType (Port [] (SCTy ct a') a' : ports) peg a) <|>
+          try ctypeNew <|>
           attachLoc (do ports <- some (try (port <* symbol "->"))
                         peg <- peg
                         return $ CType ports peg) <|>
@@ -169,20 +158,30 @@ itfAliasDef = attachLoc $ do
 -- Types --
 -----------
 
--- Part of new syntax [...]{... -> A} instead of {... -> [...]A}
-ctypeN :: MonadicParsing m => Ab Raw -> m (CType Raw)
-ctypeN ab = attachLoc $ do ports <- many (try (port <* symbol "->"))
-                           peg <- pegN ab
-                           return $ CType ports peg
-
--- Part of new syntax [...]{... -> A} instead of {... -> [...]A}
-pegN :: MonadicParsing m => Ab Raw -> m (Peg Raw)
-pegN ab = attachLoc $ Peg ab <$> vtype
-
+-- Supports both syntaxes [...]{... -> A} and {... -> [...]A}
 ctype :: MonadicParsing m => m (CType Raw)
-ctype = attachLoc $ do ports <- many (try (port <* symbol "->"))
-                       peg <- peg
-                       return $ CType ports peg
+ctype = ctypeNew <|> ctypeOld
+
+-- New syntax [...]{... -> A}, must have explicit [...]
+ctypeNew :: MonadicParsing m => m (CType Raw)
+ctypeNew = do ab <- abExplicit
+              sndPart ab
+  where
+  sndPart :: MonadicParsing m => Ab Raw -> m (CType Raw)
+  sndPart ab = braces (attachLoc $ do ports <- many (try (port <* symbol "->"))
+                                      peg <- pegSndPart ab
+                                      return $ CType ports peg)
+  pegSndPart :: MonadicParsing m => Ab Raw -> m (Peg Raw)
+  pegSndPart ab = attachLoc $ Peg ab <$> vtype
+
+-- Old syntax {... -> [...]A}, does not need to have explicit [...]
+ctypeOld :: MonadicParsing m => m (CType Raw)
+ctypeOld = braces (ctypeOldNoBrac)
+
+ctypeOldNoBrac :: MonadicParsing m => m (CType Raw)
+ctypeOldNoBrac = attachLoc $ do ports <- many (try (port <* symbol "->"))
+                                peg <- peg
+                                return $ CType ports peg
 
 port :: MonadicParsing m => m (Port Raw)
 port = attachLoc $ Port <$> adjs <*> vtype
@@ -260,7 +259,7 @@ vtype = try dataInstance <|> -- could possibly also be a MKTvar (determined
 -- By writing "(X)" one can escape back to vtype
 vtype' :: MonadicParsing m => m (VType Raw)
 vtype' = parens vtype <|>
-              (attachLoc $ SCTy <$> try (braces ctype)) <|>
+              (attachLoc $ SCTy <$> try ctype) <|>
               (attachLoc $ StringTy <$ reserved "String") <|>
               (attachLoc $ IntTy <$ reserved "Int") <|>
               (attachLoc $ CharTy <$ reserved "Char") <|>
