@@ -184,7 +184,24 @@ ctypeOldNoBrac = attachLoc $ do ports <- many (try (port <* symbol "->"))
                                 return $ CType ports peg
 
 port :: MonadicParsing m => m (Port Raw)
-port = attachLoc $ Port <$> adjs <*> vtype
+port = attachLoc $ Port <$> portAdjs <*> vtype
+
+portAdjs :: MonadicParsing m => m [Adjustment Raw]
+portAdjs = do mAdjs <- optional $ angles (do adps <- portAdps
+                                             extensions <- portExtensions
+                                             return $ adps ++ extensions)
+              case mAdjs of
+                Nothing   -> return []
+                Just adjs -> return adjs
+
+portAdps :: MonadicParsing m => m [Adjustment Raw]
+portAdps = try (do adps <- sepBy (attachLoc $ AdaptorAdj <$> adaptor) (symbol ",")
+                   symbol "|"
+                   return adps) <|>
+           return []
+
+portExtensions :: MonadicParsing m => m [Adjustment Raw]
+portExtensions = sepBy consAdj (symbol ",")
 
 peg :: MonadicParsing m => m (Peg Raw)
 peg = attachLoc $ Peg <$> ab <*> vtype
@@ -396,19 +413,33 @@ ause p = parens (use p) <|>                           -- (use)
 
 adapted :: MonadicParsing m => m (Use Raw) -> m (Use Raw)
 adapted p = attachLoc $ do -- <adp_1,adp_2,...,adp_n> stm
-            xs <- angles (sepBy adaptor (symbol ","))
-            t <- p
-            return $ Adapted xs t
+              xs <- angles (sepBy adaptor (symbol ","))
+              t <- p
+              return $ Adapted xs t
 
 adaptor :: MonadicParsing m => m (Adaptor Raw)
-adaptor = (provideLoc $ \a -> do (x, ns) <- try $ do x <- identifier
-                                                     symbol "("
-                                                     ns <- sepBy natural (symbol ",")
-                                                     symbol ")"
-                                                     return (x, ns)
-                                 let ns' = map fromIntegral ns
-                                 return $ Adp x ns' a)
-                                 -- TODO: LC: make "try" block more minimal?
+adaptor = attachLoc $ do
+            x <- identifier
+            (do symbol "("
+                liat <- identifier -- (reverse tail)
+                left <- many identifier
+                symbol "->"
+                right <- many identifier
+                symbol ")"
+                return $ RawAdp x liat left right)
+             <|> (return $ RawAdp x "s" ["x"] ["s"])
+
+adaptor' :: MonadicParsing m => m (Adaptor Raw)
+adaptor' = (provideLoc $ \a -> do (x, liat, left, right) <- try $ do x <- identifier
+                                                                     symbol "("
+                                                                     liat <- identifier -- (reverse tail)
+                                                                     left <- many identifier
+                                                                     symbol "->"
+                                                                     right <- many identifier
+                                                                     symbol ")"
+                                                                     return (x, liat, left, right)
+                                  return $ RawAdp x liat left right a)
+                                 -- TODO: LC: make "try" block more minimal...
 
 idUse :: MonadicParsing m => m (Use Raw)
 idUse = attachLoc $ do x <- identifier

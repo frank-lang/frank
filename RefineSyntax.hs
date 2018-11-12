@@ -7,6 +7,7 @@ import Data.Foldable
 import Data.Functor.Identity
 
 import Data.List
+import Data.Maybe
 import qualified Data.Map.Strict as M
 import qualified Data.Set as S
 
@@ -390,13 +391,22 @@ refineUse (Adapted rs t a) =
        Right tm -> throwError $ errorRefExpectedUse tm
 
 refineAdaptor :: Adaptor Raw -> Refine (Adaptor Refined)
-refineAdaptor (Adp x ns a) = returnOrThrow x a (Adp x ns (rawToRef a))
-  where
-    returnOrThrow :: Id -> Raw -> Adaptor Refined -> Refine (Adaptor Refined)
-    returnOrThrow x a adp = do itfCx <- getRItfs
-                               if x `M.member` itfCx then return adp
-                               else throwError $
-                                    errorRefIdNotDeclared "interface" x a
+refineAdaptor adp@(RawAdp x liat left right a) = do
+  itfCx <- getRItfs
+  if x `M.member` itfCx then
+    -- TODO: LC: left-hand side must consist of distinct names
+    -- Check whether first element of right-hand side is liat
+    if null right || head right == liat then
+      if null right then return $ Adp x Nothing [] (rawToRef a)
+      else
+        let mm = Just (length left) in
+        let right' = tail right in
+        let rightNs = map (\p -> elemIndex p (reverse left)) right' in
+        if any isNothing rightNs then throwError "adaptor error"
+        else return $ Adp x (Just (length left)) (map fromJust rightNs) (rawToRef a)
+    else
+      throwError $ "adaptor error"
+  else throwError $ errorRefIdNotDeclared "interface" x a
 
 refineTm :: Tm Raw -> Refine (Tm Refined)
 refineTm (Let x t1 t2 a) =

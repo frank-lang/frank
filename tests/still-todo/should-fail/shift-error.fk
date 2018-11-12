@@ -5,4 +5,4 @@ num : {Int}
 num! = 2
 
 main : {Int}
-main! = <Console(1)> num!
+main! = <Console> num!

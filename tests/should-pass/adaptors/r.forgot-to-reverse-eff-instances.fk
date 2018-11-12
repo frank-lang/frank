@@ -29,7 +29,7 @@ intByBool <choose -> k> = let n = if choose! { if choose! {3} {2} }
 -- This used to break here: <-Choice.1> removed the 0-th, not the 1st
 -- instance. Forgot to reverse eff. instances.
 userInt2: {<Choice Int>X -> [Console]X}
-userInt2 <m> = userBool (intByBool (<Choice(0)> m!))
+userInt2 <m> = userBool (intByBool (<Choice(s y x -> s x)> m!))
 
 main: {[Console]Int}
 main! = userInt2 choose!

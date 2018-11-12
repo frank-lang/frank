@@ -508,32 +508,34 @@ applyAllAdjustments ((AdaptorAdj adp a) : adjr) ab =
        Nothing -> throwError $ errorAdaptor adp ab
 
 applyAdaptor :: Adaptor Desugared -> Ab Desugared -> Maybe (Adaptor Desugared, Ab Desugared)
-applyAdaptor adp@(Adp x ns a'') (Ab v p@(ItfMap m a') a) =
-  let instances = (reverse . bwd2fwd) (M.findWithDefault BEmp x m) in
-  if null ns || length instances > maximum ns then
-    let instances' = map (instances !!) ns in
-    let adp' = CompilableAdp x (length instances) ns a'' in
-    if null instances' then
-      Just (adp', Ab v (ItfMap (M.delete x m) a') a)
-    else
-      Just (adp', Ab v (ItfMap (
-        M.insert x ((fwd2bwd . reverse) instances') m
-      ) a') a)
+applyAdaptor adp ab@(Ab v p@(ItfMap m a') a) =
+  case adpToCompilableAdp ab adp of
+    Nothing -> Nothing
+    Just adp'@(CompilableAdp x m' ns a'') ->
+      let instances = (reverse . bwd2fwd) (M.findWithDefault BEmp x m) in
+      let instances' = map (instances !!) ns in
+      if null instances' then
+        Just (adp', Ab v (ItfMap (M.delete x m) a') a)
+      else
+        Just (adp', Ab v (ItfMap (
+          M.insert x ((fwd2bwd . reverse) instances') m
+        ) a') a)
+
+adpToCompilableAdp :: Ab Desugared -> Adaptor Desugared -> Maybe (Adaptor Desugared)
+adpToCompilableAdp (Ab v p@(ItfMap m a') a) adp@(Adp x mm ns a'') =
+  let instancesLength = (length . bwd2fwd) (M.findWithDefault BEmp x m) in
+  if null ns || instancesLength > maximum ns then
+    -- ns is only the xiferp (reverse prefix)
+    -- now compute the liat (reverse tail)
+    let liat = case mm of
+                 Nothing -> []
+                 (Just jm) -> reverse [jm .. instancesLength - 1] in
+    let ns' = liat ++ ns in
+    Just $ CompilableAdp x instancesLength ns' a''
   else Nothing
--- TODO: LC: This process of refining the adaptor needs to be done only once.
--- This works like this, but redundant work can be saved...
-applyAdaptor adp@(CompilableAdp x m' ns a'') (Ab v p@(ItfMap m a') a) =
-  let instances = (reverse . bwd2fwd) (M.findWithDefault BEmp x m) in
-  if null ns || length instances > maximum ns then
-    let instances' = map (instances !!) ns in
-    let adp' = CompilableAdp x (length instances) ns a'' in
-    if null instances' then
-      Just (adp', Ab v (ItfMap (M.delete x m) a') a)
-    else
-      Just (adp', Ab v (ItfMap (
-        M.insert x ((fwd2bwd . reverse) instances') m
-      ) a') a)
-  else Nothing
+adpToCompilableAdp (Ab v p@(ItfMap m a') a) adp@(CompilableAdp x m' ns a'') =
+  let instancesLength = (length . bwd2fwd) (M.findWithDefault BEmp x m) in
+  if instancesLength == m' then Just adp else Nothing
 
 applyAllAdaptors :: [Adaptor Desugared] -> Ab Desugared -> Contextual ([Adaptor Desugared], Ab Desugared)
 applyAllAdaptors adps ab = do

@@ -531,12 +531,14 @@ pattern EArg ab a = Fx (AnnF (MkEArg ab, a))
 -- TODO: LC: Make distinction between MkAdp and MkCompilableAdp on
 -- type-level (GADT)
 data AdaptorF :: ((* -> *) -> (* -> *)) -> * -> * where
-  MkAdp :: Id -> [Int] -> AdaptorF t r                                      -- adapt an interface `x` in an ability from right to left according to `ns`
+  MkRawAdp :: Id -> Id -> [Id] -> [Id] -> AdaptorF (AnnotT Raw) r           -- e.g. I(s y x -> y x) (s is first arg, [y x] is second arg, [y x] is third arg)
+  MkAdp :: Id -> Maybe Int -> [Int] -> AdaptorF t r                         -- adapt an interface `x` in an ability from right to left according to `ns` and (possibly - according to Maybe) attach all instances from `m` on
   MkCompilableAdp :: Id -> Int -> [Int] -> AdaptorF t r                     -- adapt an interface `x` in an ability that has exactly `n` instances of it from right to left according to `ns`
 deriving instance (Show r, Show (TFix t AdaptorF)) => Show (AdaptorF t r)
 deriving instance (Eq r, Eq (TFix t AdaptorF)) => Eq (AdaptorF t r)
 type Adaptor a = AnnotTFix a AdaptorF
-pattern Adp x ns a = Fx (AnnF (MkAdp x ns, a))
+pattern RawAdp x liat left right a = Fx (AnnF (MkRawAdp x liat left right, a))
+pattern Adp x mm ns a = Fx (AnnF (MkAdp x mm ns, a))
 pattern CompilableAdp x m ns a = Fx (AnnF (MkCompilableAdp x m ns, a))
 
 desugaredStrTy :: Desugared -> VType Desugared

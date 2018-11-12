@@ -128,7 +128,7 @@ errorUnifItfMaps m1 m2 =
   "cannot unify interface maps " ++ (show $ ppItfMap m1) ++ " (" ++ (show $ ppSourceOf m1) ++ ")" ++ " and " ++ (show $ ppItfMap m2) ++ " (" ++ (show $ ppSourceOf m2) ++ ")"
 
 errorAdaptor :: Adaptor Desugared -> Ab Desugared -> String
-errorAdaptor adpd@(Adp x ns _) ab =
+errorAdaptor adpd@(Adp x ns k _) ab =
   "Adaptor " ++ (show $ ppAdaptor adpd) ++
   " is not a valid adaptor in ambient " ++ (show $ ppAb ab) ++
   " (" ++  (show $ ppSourceOf adpd) ++ ")"
@@ -450,8 +450,10 @@ ppAdaptors :: (Show a, HasSource a) => [Adaptor a] -> PP.Doc
 ppAdaptors rs = PP.hsep $ intersperse PP.comma $ map ppAdaptor rs
 
 ppAdaptor :: (Show a, HasSource a) => Adaptor a -> PP.Doc
-ppAdaptor (Adp x ns _) =
-  text x <> text "(" <> sep (punctuate comma (map int ns)) <> text ")"
+ppAdaptor (RawAdp x liat left right _) =
+  text x <> text "(" <> text (show liat) <+> sep (punctuate (text " ") (map (text . show) left)) <+> text "->" <+> sep (punctuate (text " ") (map (text . show) right)) <> text ")"
+ppAdaptor (Adp x mm ns _) =
+  text x <> text "(" <> text (show mm) <> comma <+> sep (punctuate comma (map int ns)) <> text ")"
 ppAdaptor (CompilableAdp x m ns _) =
   text x <> text "(" <> sep (punctuate comma (map int ns)) <> text ")(" <>
   int m <> text ")"

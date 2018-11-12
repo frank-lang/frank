@@ -1,5 +1,5 @@
 -- #desc Remove an instance that is not there
--- #return Adaptor BChoice(9, 3, 2, 1, 0) is not a valid adaptor in ambient [£ | BChoice , BChoice , BChoice , BChoice] (line 20 , column 46)
+-- #return Adaptor BChoice(Just 10, 9, 3, 2, 1, 0) is not a valid adaptor in ambient [£ | BChoice , BChoice , BChoice , BChoice] (line 20 , column 46)
 
 data Pair X Y = pair X Y
 
@@ -14,10 +14,10 @@ fixFalse x = x
 fixFalse <choose -> k> = fixFalse (k false)
 
 prog: {[BChoice, BChoice]Pair Bool Bool}
-prog! = pair (choose!) (<BChoice(1)> choose!)
+prog! = pair (choose!) (<BChoice> choose!)
 
 ff: {Pair Bool Bool}
-ff! = fixTrue (fixFalse (fixTrue (fixFalse (<BChoice(9, 3, 2, 1, 0)> prog!))))
+ff! = fixTrue (fixFalse (fixTrue (fixFalse (<BChoice(s j i h g f e d c b a -> s j d c b a)> prog!))))
 
 main: {Unit}
 main! = unit
