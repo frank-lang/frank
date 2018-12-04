@@ -512,6 +512,12 @@ makeIntBinOp a c = Def [c] (CType [Port [] (IntTy a) a
                                   ,Port [] (IntTy a) a]
                                   (Peg (Ab (AbVar "£" a) (ItfMap M.empty a) a) (IntTy a) a) a) [] a
 
+makeIntBinCmp :: Refined -> Char -> MHDef Refined
+makeIntBinCmp a c = Def [c] (CType [Port [] (IntTy a) a
+                                   ,Port [] (IntTy a) a]
+                             (Peg (Ab (AbVar "£" a) (ItfMap M.empty a) a)
+                              (DTTy "Bool" [] a) a) a) [] a
+
 {-- The initial state for the refinement pass. -}
 
 builtinDataTs :: [DataT Refined]
@@ -541,6 +547,7 @@ builtinItfAliases = []
 
 builtinMHDefs :: [MHDef Refined]
 builtinMHDefs = map (makeIntBinOp (Refined BuiltIn)) "+-" ++
+                map (makeIntBinCmp (Refined BuiltIn)) "><" ++
                 [caseDef, charEq, alphaNumPred]
 
 charEq :: MHDef Refined

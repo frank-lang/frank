@@ -172,8 +172,26 @@ minus g [a1,a2] = VI (f a1 - f a2)
           _ -> error "minus: argument not an int"
 minus g _ = error "minus: incorrect number of arguments, expected 2."
 
+builtinPred :: Bool -> Val
+builtinPred b = (if b then VA "true" else VA "false") :&& VA ""
+
+lt :: Env -> [Comp] -> Val
+lt g [a1,a2] = builtinPred ((f a1) < (f a2))
+  where f x = case x of
+          Ret (VI n) -> n
+          _ -> error "plus: argument not an int"
+lt g _ = error "plus: incorrect number of arguments, expected 2."
+
+gt :: Env -> [Comp] -> Val
+gt g [a1,a2] = builtinPred ((f a1) > (f a2))
+  where f x = case x of
+          Ret (VI n) -> n
+          _ -> error "plus: argument not an int"
+gt g _ = error "plus: incorrect number of arguments, expected 2."
+
+
 eqc :: Env -> [Comp] -> Val
-eqc g [a1,a2] = (if (f a1) == (f a2) then VA "true" else VA "false") :&& VA ""
+eqc g [a1,a2] = builtinPred ((f a1) == (f a2))
   where f x = case x of
           Ret (VX [c]) -> c
           _ -> error "eqc: argument not a character"
@@ -191,6 +209,7 @@ alphaNumPred g _ =
 
 builtins :: M.Map String (Env -> [Comp] -> Val)
 builtins = M.fromList [("plus", plus), ("minus", minus), ("eqc", eqc)
+                      ,("lt", lt), ("gt", gt)
                       ,("isAlphaNum", alphaNumPred)]
 
 -- Look-up a definition
@@ -455,7 +474,9 @@ txt (u :&& v)  = txt u ++ txt v
 envBuiltins :: Env
 envBuiltins = Empty :/ [DF "plus" [] []
                        ,DF "minus" [] []
-                       ,DF "eqc"   [] []]
+                       ,DF "eqc"   [] []
+                       ,DF "gt"    [] []
+                       ,DF "lt"    [] []]
 
 prog :: Env -> [Def Exp] -> Env
 prog g ds = g' where

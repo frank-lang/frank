@@ -16,6 +16,10 @@ not : {Bool -> Bool}
 not false = true
 not true  = false
 
+and : Bool -> Bool -> Bool
+and   true    true  = true
+and    _       _    = false
+
 {-- Control structures --}
 
 -- lazy conditional
@@ -36,6 +40,10 @@ snd (pair _ y) = y
 eqN : {Nat -> Nat -> Bool}
 eqN zero zero = true
 eqN (suc n) (suc m) = eqN n m
+
+-- Equality on integers
+eqInt : {Int -> Int -> Bool}
+eqInt  n m = if (n < m) {false} {if (n > m) {false} {true}}
 
 -- List operations
 rev' : {List X -> List X -> List X}

@@ -368,7 +368,7 @@ letTm p p' = attachLoc $ do reserved "let"
                             return $ Let x t t'
 
 binOpLeft :: MonadicParsing m => m (Use Raw)
-binOpLeft = attachLoc $ do op <- choice $ map symbol ["+","-","*","/"]
+binOpLeft = attachLoc $ do op <- choice $ map symbol ["+","-","*","/",">","<"]
                            return $ RawId op
 
 binOpRight :: MonadicParsing m => m (Use Raw)
