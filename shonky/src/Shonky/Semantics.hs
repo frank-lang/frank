@@ -267,7 +267,7 @@ consume v (Txt g cs ces      : ls) = combine g (revapp (txt v) cs) ces (ls) -- (
 consume v (Adp (cs, r)       : ls) = consume v ls                           -- ignore addaptor when value is obtained
 consume v []                       = Ret v
 
--- inch and ouch commands in the IO monad
+-- inch, ouch, inint and ouint commands in the IO monad
 -- only if the level is 0 --TODO LC: rethink this?
 ioHandler :: Comp -> IO Val
 ioHandler (Ret v) = return v
@@ -278,6 +278,10 @@ ioHandler (Call "inch" 0 [] ks) =
      ioHandler (consume (VX [c']) (reverse ks))
 ioHandler comp@(Call "ouch" 0 [VX [c]] ks) =
   do putChar c
+     hFlush stdout
+     ioHandler (consume (VA "unit" :&& VA "") (reverse ks))
+ioHandler comp@(Call "ouint" 0 [VI k] ks) =
+  do putStr (show k)
      hFlush stdout
      ioHandler (consume (VA "unit" :&& VA "") (reverse ks))
 ioHandler (Call "new" 0 [v] ks) =

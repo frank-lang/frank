@@ -1,0 +1,67 @@
+-- non-determinism
+-- interface Choice = choice : Bool
+
+-- choose : {Bool -> {[Choice]X} -> {[Choice]X} -> [Choice]X}
+-- choose tt p q = p!
+-- choose ff p q = q!
+
+map : {{X -> Y} -> List X -> List Y}
+map f []        = []
+map f (x :: xs) = f x :: map f xs
+
+print : {String -> [Console]Unit}
+print s = map ouch s; unit
+
+interface Abort = abort X : X
+
+interface Search = sch : List Int
+
+interface Insert = ins : Int -> Unit
+
+interface Delete = del : Int -> Unit
+
+printList : {List Int -> [0|Abort,Console,Search]Unit}
+printList xs = print "["; map {x -> ouint x; ouch ','} xs; print "]\n"
+
+-- remove the k-th entry from the list
+rm : {Bool -> Int -> List Int -> [0|Abort,Console]List Int}
+-- TODO: figure out why this doesn't work
+-- rm tt _  _ = abort! -- k < 0 
+rm _ 0 (x :: xs) = xs
+rm _ k (x :: xs) = x :: (rm ((k-1) < 0) (k-1) xs)
+rm _ k     _     = abort! -- empty list
+
+proc : {List Int -> <Search>Unit -> <Insert>Unit -> <Delete>Unit ->
+       	     [0|Abort,Console]Unit}
+proc [] <sch -> s> <ins x -> i> <d> = proc [x] (s []) (i unit) (d unit)
+proc xs <sch -> s> <ins x -> i> <del k -> d> =
+   proc (x :: rm (k < 0) k xs) (s xs) (i unit) (d unit)
+proc xs <sch -> s> <ins x -> i> unit = proc (x :: xs) (s xs) (i unit) unit
+proc xs <sch -> s>     unit    <del k -> d> =
+   proc (rm (k < 0) k xs) (s xs) unit (d unit)
+proc xs <sch -> s>     unit     unit = proc xs (s xs) unit unit
+proc []   unit     <ins x -> i> <d> = proc [x] unit (i unit) (d unit)
+proc xs   unit     <ins x -> i> <del k -> d> =
+   proc (x :: rm (k < 0) k xs) unit (i unit) (d unit)
+proc xs unit unit unit = unit
+
+test : {[0]Bool}
+test! = 0 < 0
+
+searcher : {[0|Abort,Console,Search]Unit}
+searcher! = let xs = sch! in
+            print "Got : "; printList xs; print "\n";
+	    print "updating...\n";
+            print "Got : "; printList sch!; print "\n";
+	    print "updating...\n";
+            print "Got : "; printList sch!; print "\n";
+	    unit
+
+inserter : {[0|Abort,Console,Insert]Unit}
+inserter! = ins 54; print "inserting 23...\n"; ins 23
+
+deleter : {[0|Abort,Console,Delete]Unit}
+deleter! = print "deleting 2nd element...\n"; del 1
+
+main : {[0|Abort,Console]Unit}
+main! = proc [1,2,3] searcher! inserter! deleter!
