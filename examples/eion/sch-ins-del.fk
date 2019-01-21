@@ -12,56 +12,67 @@ map f (x :: xs) = f x :: map f xs
 print : {String -> [Console]Unit}
 print s = map ouch s; unit
 
-interface Abort = abort X : X
-
 interface Search = sch : List Int
 
 interface Insert = ins : Int -> Unit
 
-interface Delete = del : Int -> Unit
+interface Remove = rm : Int
 
-printList : {List Int -> [0|Abort,Console,Search]Unit}
-printList xs = print "["; map {x -> ouint x; ouch ','} xs; print "]\n"
+data IO = pInt Int | pStr String
 
--- remove the k-th entry from the list
-rm : {Bool -> Int -> List Int -> [0|Abort,Console]List Int}
--- TODO: figure out why this doesn't work
--- rm tt _  _ = abort! -- k < 0 
-rm _ 0 (x :: xs) = xs
-rm _ k (x :: xs) = x :: (rm ((k-1) < 0) (k-1) xs)
-rm _ k     _     = abort! -- empty list
+interface PIO = push : List IO -> Unit
 
-proc : {List Int -> <Search>Unit -> <Insert>Unit -> <Delete>Unit ->
-       	     [0|Abort,Console]Unit}
-proc [] <sch -> s> <ins x -> i> <d> = proc [x] (s []) (i unit) (d unit)
-proc xs <sch -> s> <ins x -> i> <del k -> d> =
-   proc (x :: rm (k < 0) k xs) (s xs) (i unit) (d unit)
+listToIO : {List Int -> [0|Console,PIO,Search]List IO}
+listToIO    [] = []
+listToIO (x :: []) = [pInt x]
+listToIO (x :: xs) = pInt x :: pStr "," :: listToIO xs
+
+-- Insert at the end, remove from the start
+
+append : {List X -> List X -> List X}
+append []        ys = ys
+append (x :: xs) ys = x :: (append xs ys)
+
+proc : {List Int -> <Search>Unit -> <Insert>Unit -> <Remove>Unit ->
+       	     [0|Console,PIO]Unit}
+proc [] <sch -> s> <ins x -> i> <r> = proc [x] (s []) (i unit) r!
+proc (x :: xs) <sch -> s> <ins y -> i> <rm -> r> =
+   proc (append xs [y]) (s (x :: xs)) (i unit) (r x)
 proc xs <sch -> s> <ins x -> i> unit = proc (x :: xs) (s xs) (i unit) unit
-proc xs <sch -> s>     unit    <del k -> d> =
-   proc (rm (k < 0) k xs) (s xs) unit (d unit)
-proc xs <sch -> s>     unit     unit = proc xs (s xs) unit unit
-proc []   unit     <ins x -> i> <d> = proc [x] unit (i unit) (d unit)
-proc xs   unit     <ins x -> i> <del k -> d> =
-   proc (x :: rm (k < 0) k xs) unit (i unit) (d unit)
-proc xs unit unit unit = unit
+proc (x :: xs)  <sch -> s>  unit  <rm -> r> = proc xs (s (x :: xs)) unit (r x)
+proc    xs      <sch -> s>  unit   <r> = proc xs (s xs) unit r!
+proc    []         unit  <ins x -> i> <r> = proc [x] unit (i unit) r!
+proc (x :: xs)     unit  <ins y -> i> <rm -> r> =
+  proc (append xs [y]) unit (i unit) (r x)
+proc    xs         unit  <ins y -> i> unit =
+  proc (append xs [y]) unit (i unit) unit
+proc  (x :: xs) unit unit <rm -> r> = proc xs unit unit (r x)
+proc      _     unit unit    <r>    = unit
 
-test : {[0]Bool}
-test! = 0 < 0
-
-searcher : {[0|Abort,Console,Search]Unit}
+searcher : {[0|Console,PIO,Search]Unit}
 searcher! = let xs = sch! in
-            print "Got : "; printList xs; print "\n";
-	    print "updating...\n";
-            print "Got : "; printList sch!; print "\n";
-	    print "updating...\n";
-            print "Got : "; printList sch!; print "\n";
+            push (append ((pStr "Got : [") :: listToIO xs) [pStr "]\n"]);
+	    push [pStr "updating...\n"];
+            push (append ((pStr "Got : [") :: listToIO sch!) [pStr "]\n"]);
+	    push [pStr "updating...\n"];
+            push (append ((pStr "Got : [") :: listToIO sch!) [pStr "]\n"]);
 	    unit
 
-inserter : {[0|Abort,Console,Insert]Unit}
-inserter! = ins 54; print "inserting 23...\n"; ins 23
+inserter : {[0|Console,PIO,Insert]Unit}
+inserter! = push [pStr "ins 54; "]; ins 54; push [pStr "ins 23;\n"]; ins 23
 
-deleter : {[0|Abort,Console,Delete]Unit}
-deleter! = print "deleting 2nd element...\n"; del 1
+deleter : {[0|Console,PIO,Remove]Unit}
+deleter! = push [pStr "removing element...\n"];
+	   let x = rm! in
+	   push [pStr "Removed : ", pInt x , pStr "\n"]
 
-main : {[0|Abort,Console]Unit}
-main! = proc [1,2,3] searcher! inserter! deleter!
+-- A mutex over I/O so the output from the threads don't overlap.
+ioMutex : {<PIO>Unit -> [0|Console]Unit}
+ioMutex   <push xs -> k> = case xs
+  { ((pInt x) :: xs) -> ouint x; ioMutex (k (push xs))
+  | ((pStr s) :: xs) -> print s; ioMutex (k (push xs))
+  |         []       -> ioMutex (k unit)}
+ioMutex     unit        = unit
+
+main : {[0|Console]Unit}
+main! = ioMutex (proc [1] searcher! inserter! deleter!)
