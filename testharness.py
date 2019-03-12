@@ -9,7 +9,6 @@ import io
 import os
 from subprocess import Popen,PIPE,TimeoutExpired
 
-
 class TestHarnessLogger:
     """Defines the logger for the test harness.
 
@@ -306,4 +305,5 @@ if __name__ == "__main__":
                         help="Produce verbose output. {0}".format(more))
     args = parser.parse_args()
     # Invariant: All directories end with a forward slash.
-    main(["tests/should-pass/", "examples/"], ["tests/should-fail/"], args)
+    main(["tests/should-pass/", "tests/still-todo/should-pass/", "examples/"],
+         ["tests/should-fail/", "tests/still-todo/should-fail/"], args)

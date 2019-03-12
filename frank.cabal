@@ -25,6 +25,7 @@ executable frank
                , RefineSyntaxSubstitItfAliases
                , Shonky.Semantics
                , Shonky.Syntax
+               , Shonky.Renaming
                , Syntax
                , TypeCheck
                , TypeCheckCommon

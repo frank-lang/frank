@@ -64,7 +64,7 @@ scheduleBF' unit          = runNext!
 scheduleBF : {<Co>Unit -> [Queue Proc]Unit}
 scheduleBF <yield -> k>  = enqProc {scheduleBF (k unit)};
                            runNext!
-scheduleBF <fork p -> k> = enqProc {scheduleBF (shift <Queue> p!)};
+scheduleBF <fork p -> k> = enqProc {scheduleBF (lift <Queue> p!)};
                            scheduleBF (k unit)
 scheduleBF unit          = runNext!
 
@@ -73,7 +73,7 @@ scheduleDF : {<Co>Unit -> [Queue Proc]Unit}
 scheduleDF <yield -> k>  = enqProc {scheduleDF (k unit)};
                            runNext!
 scheduleDF <fork p -> k> = enqProc {scheduleDF (k unit)};
-                           scheduleDF (shift <Queue> p!)
+                           scheduleDF (lift <Queue> p!)
 scheduleDF unit          = runNext!
 
 -- FIFO queue implementation using a zipper
@@ -92,10 +92,10 @@ bfFifo' : {<Co [Queue Proc], Queue Proc>Unit -> Unit}
 bfFifo' <m> = fifo (scheduleBF' m!)
 
 bfFifo : {<Co>Unit -> Unit}
-bfFifo <m> = fifo (scheduleBF (shift <Queue> m!))
+bfFifo <m> = fifo (scheduleBF (lift <Queue> m!))
 
 dfFifo : {<Co>Unit -> Unit}
-dfFifo <m> = fifo (scheduleDF (shift <Queue> m!))
+dfFifo <m> = fifo (scheduleDF (lift <Queue> m!))
 
 main : {[Console]Unit}
 main! = print "BF':"; bfFifo' test!;

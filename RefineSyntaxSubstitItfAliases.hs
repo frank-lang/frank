@@ -97,9 +97,9 @@ substitInCType subst (CType ports peg a) = do ports' <- mapM (substitInPort subs
                                               return $ CType ports' peg' a
 
 substitInPort :: Subst -> Port Raw -> Refine (Port Raw)
-substitInPort subst (Port adj ty a) = do adj' <- substitInAdj subst adj
-                                         ty' <- substitInVType subst ty
-                                         return $ Port adj' ty' a
+substitInPort subst (Port adjs ty a) = do adjs' <- mapM (substitInAdj subst) adjs
+                                          ty' <- substitInVType subst ty
+                                          return $ Port adjs' ty' a
 
 substitInPeg :: Subst -> Peg Raw -> Refine (Peg Raw)
 substitInPeg subst (Peg ab ty a) = do ab' <- substitInAb subst ab
@@ -109,9 +109,10 @@ substitInPeg subst (Peg ab ty a) = do ab' <- substitInAb subst ab
 substitInAb :: Subst -> Ab Raw -> Refine (Ab Raw)
 substitInAb subst = return
 
-substitInAdj :: Subst -> Adj Raw -> Refine (Adj Raw)
-substitInAdj subst (Adj m a) = do itfMap <- substitInItfMap subst m
-                                  return $ Adj itfMap a
+substitInAdj :: Subst -> Adjustment Raw -> Refine (Adjustment Raw)
+substitInAdj subst (ConsAdj x ts a) = do
+  ts' <- mapM (substitInTyArg subst) ts
+  return $ ConsAdj x ts' a
 
 substitInItfMap :: Subst -> ItfMap Raw -> Refine (ItfMap Raw)
 substitInItfMap subst (ItfMap m a) = ItfMap <$> mapM (mapM (mapM (substitInTyArg subst))) m <*> pure a

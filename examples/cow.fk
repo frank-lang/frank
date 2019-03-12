@@ -1,12 +1,7 @@
-map : {{X -> Y} -> List X -> List Y}
-map f []        = []
-map f (x :: xs) = f x :: map f xs
-
-print : {String -> [Console]Unit}
-print s = map ouch s; unit
+include prelude
 
 {-- Andrej Bauer's recursive cow --}
-interface Cow = moo : {[Cow,Console]Unit}
+interface Cow = moo : {[Cow, Console]Unit}
 
 cow : {[Cow,Console]Unit}
 cow! = (moo!)!
@@ -17,13 +12,4 @@ eat unit       = unit
 
 go : {[Console]Unit}
 go! = eat cow!
-
-
-
-
-
-
--- just a stub: use --entry-point tX to do something interesting
-main : {Unit}
-main! = unit
 

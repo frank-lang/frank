@@ -1,0 +1,6 @@
+- Replace Bwd by ordinary list?
+- Interface aliases should be allowed in adjustments, too
+- Refactor Parser.hs into applicative style
+- ItfMap should not be a syntactic element, so not attached with source code location etc.
+- When defining interface Left = left: Int, there should be an error as there is already the definition Either (commands and constructors share the same namespace)
+- Better error reporting for macros "include prelude" (print precise location) 

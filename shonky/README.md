@@ -1,5 +1,7 @@
 # shonky
 
+*This is a fork of the original Shonky repo at https://github.com/pigworker/shonky. There have been some changes made to it which are all integrated in this file, i.e. you can use "git diff" to get an overview over the changes.*
+
 This is the repo for a rough-and-ready untyped, hilariously impure, sort-of functional programming language. The key point of it is to support local handling of computational effect, just using the regular application syntax. Application becomes a general means by which one process can coroutine a bunch of subprocesses. It's kind of an untyped version of Frank, and it may yet evolve in that direction. Of course, effectful programming needs dependent types to model the correctness of behaviour with respect to status. But that's another story. Mostly, I just want to improve my kit for building web pages, so although I currently have an interpreter written in Haskell, I might write back ends for JavaScript and for PHP.
 
 ## syntax
@@ -7,11 +9,11 @@ This is the repo for a rough-and-ready untyped, hilariously impure, sort-of func
 The basic values are a superficial variant on s-expressions. (In what follows, I write whitespace wherever it is permitted and show by its absence where it is not.)
 
     a ::= <nonempty sequences of alphanumeric characters>
-    
+
     e ::= 'a                      -- an atom
         | [ ]                     -- the null atom
         | [ e e' ]                -- a cons cell
-        
+
     e' ::= , e e'                 -- list notation for | [ e e' ]
          |                        -- list notation for | []
          | | e                    -- pair notation
@@ -20,6 +22,7 @@ However, I'm not in the business of representing computations as values, so I th
 
     e :+= a                       -- a variable
         | e( e , .. )             -- n-adic application
+        | ^< a .. >( e )          -- lift
         | e; e                    -- sequencing, taking the value of the second expression
         | e/ e                    -- sequencing, taking the value of the first expression
 
@@ -35,26 +38,28 @@ We have also the means to delay computation by writing n-adic functions (where n
 
     e :+= { e }                   -- 0-adic thunk
         | { h c , .. c }          -- pattern-matching function
-        
+
     h ::=                         -- no effect-handling
         | ( a' , .. ) :           -- declaration of ability to intercept commands on some ports
-        
+
     a' ::=                        -- no more handling
          | a a'                   -- handling a command, and maybe other commands
-        
+
     c ::= ( p , .. ) -> e         -- pattern-matching clause
 
 Functions are defined by a nonempty sequence of pattern-matching clauses. For the most part, we tend just to match on the structure of the values which arrive at a given port. However, we may indicate a *handling* behaviour by saying which commands will be trapped by which ports.
 
+    n ::= <non-negative integer>
+
     p ::= { a }                   -- 0-adic thunk pattern (matching values or locally handled commands)
-        | { 'a( q , .. ) -> a }   -- command pattern, with patterns for command arguments and a resumption variable
+        | { 'a.n( q , .. ) -> a } -- command pattern with specified level, patterns for command arguments and a resumption variable
         | q                       -- value pattern
-        
+
     q ::= a                       -- variable matching value
         | 'a                      -- atom matching itself
         | = a                     -- pattern matching value of variable, if variable is an atom
         | [ q q' ]                -- cons cell pattern
-   
+
     q' ::= [ , q q' ]             -- list notation for | [ q q' ]
          |                        -- list notation for | []
          | | q                    -- pair notation
@@ -65,7 +70,7 @@ You can make blocks of (recursive) definitions. We'll need them to do more inter
 
     d' ::=
          | d d'
-    
+
     d ::= a -> e                  -- value definition
         | ah ac , ..              -- definition of a handler (where each a repeats the function name)
         | ac , ..                 -- definition of a function (where each a repeats the function name)

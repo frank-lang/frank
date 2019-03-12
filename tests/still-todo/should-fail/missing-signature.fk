@@ -1,0 +1,7 @@
+-- #desc operator definitions should be accompanied by a type signature
+-- #return missing type signature for operator "foo"
+
+foo! = 42
+
+main : {Unit}
+main! = unit

@@ -1,0 +1,70 @@
+-- interpreting boolean readonly state as integer readonly state
+data Bool = true | false
+
+interface Reader S = ask : S
+
+-- the following handler assumes that Reader Int is available in the
+-- ability of the input computation
+c : {<Reader Bool>X -> [Reader Int]X}
+c x          = x
+c <ask -> k> = case ask! { 0 -> c (k false)
+                         | n -> c (k true) }
+
+-- we can easily reify c as a function f, illustrating the requirement
+-- for Reader Int to appear in the ability of the input computation
+f : {{[E | Reader Int, Reader Bool]X} -> {[E | Reader Int]X}}
+f m = {c m!}
+
+-- the lift1 operator for Reader
+lift1Reader : {{[E | Reader T]X} -> {[E | Reader S, Reader T]X}}
+lift1Reader m = {(lift <Reader> (lift <Reader> (lift1Reader' m!)))!}
+--
+-- BUG: typechecking fails if we attempt to combine two copies of
+-- Reader into one lift - duplicates appear to be ignored
+--
+-- lift1Reader m = {(lift <Reader, Reader> (lift1Reader' m!))!}
+
+lift1Reader' : {<Reader T>X -> {[Reader S, Reader T]X}}
+lift1Reader' x          = {x}
+lift1Reader' <ask -> k> = {let x = ask! in (lift1Reader {k x})!}
+
+-- d is the closest approximation we can currently get to a variant of
+-- c that does not require Reader Int to be in the ability of the
+-- input computation
+d : {<Reader Bool>X -> {[Reader Int]X}}
+d <m> = {c (lift1Reader m)!}
+
+-- we can reify d as a function g, in which Reader Int does not appear
+-- in the input computation
+g : {{[E | Reader Bool]X} -> {[E | Reader Int]X}}
+g m = {(lift <Reader> (d m!))!}
+
+-- e is equivalent to d but defined directly rather than by factoring
+-- through lift1
+e : {<Reader Bool>X -> {[Reader Int]X}}
+e x          = {x}
+e <ask -> k> = {case ask! { 0 -> e' {k false}
+                          | n -> e' {k true}}}
+
+e' : {{[Reader Bool]X} -> [Reader Int]X}
+e' m = (lift <Reader> (e m!))!
+
+-- a basic integer reader that always reads 42
+reader : {<Reader Int>X -> X}
+reader x          = x
+reader <ask -> k> = reader (k 42)
+
+e1 : {[Reader Bool]Bool}
+e1! = ask!
+
+e2 : {[0 | Reader Bool]Bool}
+e2! = ask!
+
+t1 : {[0]Bool}
+t1! = reader (c e1!)
+
+t2 : {[0]Bool}
+t2! = reader (lift <Reader> (d e2!))!
+
+main : {[0]Bool}
+main! = t2!

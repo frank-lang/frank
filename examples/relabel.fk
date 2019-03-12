@@ -1,0 +1,43 @@
+include prelude
+
+data Tree X = Leaf X | Node (Tree X) (Tree X)
+
+labels : Tree X -> List X
+labels  (Leaf x) = [x]
+labels  (Node l r) = append (labels l) (labels r)
+
+label : Tree X -> Int -> Pair (Tree Int) Int
+label   (Leaf x)   n   = pair (Leaf n) (n + 1)
+label   (Node l r) n   = case (label l n)
+                         { (pair l' n') ->
+                              case (label r n')
+                              {(pair r' n'') -> pair (Node l' r') n''}
+                         }
+
+relabel : Tree X -> Tree Int
+relabel t = fst (label t 0)
+
+nodups : List Int -> Bool
+nodups      []     = true
+nodups   (x :: xs) = and (not (elem eqInt xs x)) (nodups xs)
+
+-- Now for a stateful version
+
+first : X -> Y -> X
+first   x    y = x
+
+fresh : {[State Int]Int}
+fresh! = first get! (put (get! + 1))
+
+label' : {Tree X   -> [State Int]Tree Int}
+label'  (Leaf x)   = Leaf fresh!
+label'  (Node l r) = Node (label' l) (label' r)
+
+relabelS : Tree X -> Tree Int
+relabelS t = evalState 0 (label' t)
+
+tree : {Tree Bool}
+tree! = Node (Node (Leaf true) (Leaf false)) (Node (Leaf true) (Leaf false))
+
+main : {Bool}
+main! = nodups (labels (relabelS tree!))

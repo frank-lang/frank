@@ -1,11 +1,4 @@
---- start of standard stuff ---
-map : {{X -> Y} -> List X -> List Y}
-map f []        = []
-map f (x :: xs) = f x :: map f xs
-
-print : {String -> [Console]Unit}
-print s = map ouch s; unit
---- end of standard stuff ---
+include prelude
 
 {--- Cooperative concurrency ---}
 interface Yield = yield : Unit

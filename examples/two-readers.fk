@@ -3,23 +3,7 @@ interface Reader S = ask : S
 data Pair X Y = pair X Y
 
 readPair : {[Reader X, Reader Y](Pair X Y)}
-readPair! = pair (shift <Reader> ask!) (ask!)
-
-readPair' : {[Reader X, Reader Y](Pair Y X)}
-readPair'! = pair (ask!) (shift <Reader> ask!)
-
-readPair'' : {[Reader X, Reader Y](Pair X Y)}
-readPair''! = let x = shift <Reader> ask! in
-              let y = ask! in
-              pair x y
-
--- BUG: this should type-check and behave as readPair and readPair''
--- but it fails to type-check!
---
--- readPair''' : {[Reader X, Reader Y](Pair X Y)}
--- readPair'''! = let y = ask! in
---                let x = shift <Reader> ask! in
---                pair x y
+readPair! = pair (lift <Reader> ask!) (ask!)
 
 runReader : {S -> <Reader S>X -> X}
 runReader s <ask -> k> = runReader s (k s)

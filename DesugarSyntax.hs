@@ -5,8 +5,11 @@ import Control.Monad.State
 import Control.Monad.Identity
 import qualified Data.Map.Strict as M
 
+import BwdFwd
 import Syntax
 import FreshNames
+
+import Shonky.Renaming
 
 type Desugar = StateT DState (FreshMT Identity)
 
@@ -170,9 +173,10 @@ desugarCType :: CType Refined -> Desugar (CType Desugared)
 desugarCType (CType ports peg a) =
   CType <$> mapM desugarPort ports <*> desugarPeg peg <*> pure (refToDesug a)
 
--- nothing happens on this level
 desugarPort :: Port Refined -> Desugar (Port Desugared)
-desugarPort (Port adj ty a) = Port <$> desugarAdj adj <*> desugarVType ty <*> pure (refToDesug a)
+desugarPort (Port adjs ty a) = Port <$> (mapM desugarAdjustment adjs)
+                                    <*> desugarVType ty
+                                    <*> pure (refToDesug a)
 
 -- nothing happens on this level
 desugarPeg :: Peg Refined -> Desugar (Peg Desugared)
@@ -197,14 +201,16 @@ desugarAbMod (AbVar x a) =
        Just var -> return var
 
 -- nothing happens on this level
-desugarAdj :: Adj Refined -> Desugar (Adj Desugared)
-desugarAdj (Adj itfMap a) = Adj <$> desugarItfMap itfMap <*> pure (refToDesug a)
+desugarAdjustment :: Adjustment Refined -> Desugar (Adjustment Desugared)
+desugarAdjustment (ConsAdj x ts a) = ConsAdj x <$> (mapM desugarTyArg ts) <*> pure (refToDesug a)
+desugarAdjustment (AdaptorAdj adp a) = AdaptorAdj <$> (desugarAdaptor adp) <*> pure (refToDesug a)
 
 desugarItfMap :: ItfMap Refined -> Desugar (ItfMap Desugared)
 desugarItfMap (ItfMap m a) = do m' <- mapM (mapM (mapM desugarTyArg)) m
                                 return $ ItfMap m' (refToDesug a)
 
--- no explicit desugaring: clauses (and constituents) unaffected between Refine/Desugar phase
+-- no explicit desugaring: clauses (and constituents) unaffected between
+-- Refine/Desugar phase
 desugarClause :: Clause Refined -> Desugar (Clause Desugared)
 desugarClause (Cls ps tm a) = do ps' <- mapM desugarPattern ps
                                  tm' <- desugarTm tm
@@ -221,8 +227,9 @@ desugarTm (DCon d a) = DCon <$> desugarDCon d <*> pure (refToDesug a)
 
 desugarPattern :: Pattern Refined -> Desugar (Pattern Desugared)
 desugarPattern (VPat v a) = VPat <$> desugarVPat v <*> pure (refToDesug a)
-desugarPattern (CmdPat c vs k a) = do vs' <- mapM desugarVPat vs
-                                      return $ CmdPat c vs' k (refToDesug a)
+desugarPattern (CmdPat c n vs k a) = do vs' <- mapM desugarVPat vs
+                                        return $ CmdPat c n vs' k
+                                                        (refToDesug a)
 desugarPattern (ThkPat x a) = return $ ThkPat x (refToDesug a)
 
 desugarVPat :: ValuePat Refined -> Desugar (ValuePat Desugared)
@@ -241,7 +248,13 @@ desugarUse :: Use Refined -> Desugar (Use Desugared)
 desugarUse (App use xs a) =
   App <$> desugarUse use <*> mapM desugarTm xs <*> pure (refToDesug a)
 desugarUse (Op op a) = Op <$> desugarOperator op <*> pure (refToDesug a)
-desugarUse (Shift p t a) = Shift p <$> desugarUse t <*> pure (refToDesug a)
+desugarUse (Adapted rs t a) = Adapted <$> (mapM desugarAdaptor rs)
+                                 <*> desugarUse t <*> pure (refToDesug a)
+
+-- explicit refinements:
+-- + Rem, Copy and Swap gets desugared to GeneralAdaptor
+desugarAdaptor :: Adaptor Refined -> Desugar (Adaptor Desugared)
+desugarAdaptor (Adp x ns k a) = return $ Adp x ns k (refToDesug a)                                                     
 
 desugarOperator :: Operator Refined -> Desugar (Operator Desugared)
 desugarOperator (Mono x a) = return $ Mono x (refToDesug a)

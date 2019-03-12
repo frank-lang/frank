@@ -25,9 +25,9 @@ data Log [] X = start {[]X}
 
 data Buffer = empty | hold Char
 
-input :  Log [LookAhead, Abort, Console] X ->
+input :  Log [LookAhead, Abort] X ->
          Buffer ->
-         <LookAhead, Abort>X ->
+         <Console|LookAhead, Abort>X ->
          [Console]X
 input _ _        x               = x
 input l (hold c) <peek -> k>     =
@@ -41,7 +41,7 @@ input l empty    <peek -> k>     = on inch!
   | c    -> input (inched l k) (hold c) (k c) }
 input l _        <aborting -> k> = rollback l
 
-rollback : Log [LookAhead, Abort, Console] X ->
+rollback : Log [LookAhead, Abort] X ->
            [Console]X
 rollback (start p)    = parse p
 -- 1) code in the paper
@@ -50,7 +50,7 @@ rollback (ouched l)   = map ouch "\b \b"; rollback l
 --rollback (ouched l)   = on (map ouch "\b \b") {_ -> rollback l}
 rollback (inched l k) = input l empty (k peek!)
 
-parse : {[LookAhead, Abort, Console]X} -> [Console]X
+parse : {[LookAhead, Abort]X} -> [Console]X
 parse p = input (start p) empty p!
 
 -- a basic parser that counts a sequence of zeros

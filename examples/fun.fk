@@ -41,15 +41,15 @@ t3! = map ouch "Hello world!\n"; unit
 
 --- control
 
--- kay m n:
+-- konst m n:
 --   do m, do n, return the result of doing m
-kay : {X -> Y -> X}
-kay x y = x
+konst : {X -> Y -> X}
+konst x y = x
 
-t4 : {[0|Console]Char}
-t4! = kay (inch!) (ouch 'f')
+t4 : {[0 | Console]Char}
+t4! = konst (inch!) (ouch 'f')
 
-t5 : {[0|Console]Char}
+t5 : {[0 | Console]Char}
 t5! = print "Please type a character\n"; inch!
 
 -- eager conditional
@@ -57,10 +57,10 @@ iffy : Bool -> X -> X -> X
 iffy true  t f = t
 iffy false t f = f
 
-t6 : {[0|Console]Unit}
+t6 : {[0 | Console]Unit}
 t6! = iffy true (print "T\n") (print "F\n")
 
-t7 : {[0|Console]Unit}
+t7 : {[0 | Console]Unit}
 t7! = if true {print "T\n"} {print "F\n"}
 
 -- sequencing
@@ -72,11 +72,11 @@ t8! = case inch! { 'a' -> 65
                  | 'b' -> 66
                  | x   -> -1 }
 
--- Alternative implementation of `if' using `on'
+-- Alternative implementation of `if' using `case'
 --
 -- if : Bool -> {X} -> {X} -> X
--- if b t e = on b { true  -> t!
---                 | false -> e! }
+-- if b t e = case b { true  -> t!
+--                   | false -> e! }
 
 --- some user-defined interfaces
 
@@ -84,10 +84,12 @@ interface Send X = send : X -> Unit
 
 interface Receive X = receive : X
 
-interface State S = get : S
-                  | put : S -> Unit
+-- Defined in prelude
+--interface State S = get : S
+--                  | put : S -> Unit
 
-interface Choice = choice : Bool
+-- Alternative definition for Choice (see prelude)
+--interface Choice = choice : Bool
 
 {-- Alternative definition for Abort (see prelude) --}
 --interface Abort = aborting : Zero
@@ -110,7 +112,7 @@ t10! = catch (head []) { -1 }
 t11 : {[0]Int}
 t11! = catch (head [42]) { -1 }
 
-t12 : {[0|Console]Int}
+t12 : {[0 | Console]Int}
 t12! = catch (print "hello\n"; head []) { -1 }
 
 -- Dont delete these lines, they make this program into a unit test.
