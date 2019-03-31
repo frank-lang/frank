@@ -213,7 +213,9 @@ refineItfInst :: Raw -> (Id, [TyArg Raw]) ->
 refineItfInst a (x, ts) = do
 --                  x t_11 ... t_1n
   -- replace interface aliases by interfaces
-  (ItfMap m' _) <- substitItfAls (x, ts)
+  m' <- substitItfAls (x, ts) >>= \i -> case i of
+    ItfMap m _ -> pure m
+    _ -> throwError "Expected ItfMap but found something else."
 --                  x t_11 ... t_1n, ..., x t_m1 t_mn
   -- refine instantiations of each interface
   m'' <- M.fromList <$> (mapM (refineItfInsts a)) (M.toList m')

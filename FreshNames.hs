@@ -6,6 +6,7 @@ module FreshNames where
 import Control.Monad.State
 import Control.Monad.Identity
 import Control.Monad.Except
+import Control.Monad.Fail
 
 -- this monad will supply fresh and is really a state monad transformer
 newtype FreshMT m a = Fresh { unFresh :: StateT Int m a }
