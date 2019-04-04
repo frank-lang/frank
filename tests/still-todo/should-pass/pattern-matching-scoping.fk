@@ -1,0 +1,16 @@
+-- #desc The `f` in `if` does not shadow the global `f`.
+-- #return unit
+
+if : {Bool -> {X} -> {X} -> X}
+if true  t f = t!
+if false t f = f!
+
+interface I = c: Unit
+
+f: {<I>Bool -> Int}
+f <c -> k> = f (k unit)
+f true     = 1
+f false    = 0
+
+main: {Unit}
+main! = unit

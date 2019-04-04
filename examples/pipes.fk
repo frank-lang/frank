@@ -1,42 +1,9 @@
 {--- Pipes: multihandlers ---}
 
---- start of standard stuff ---
-data Zero =     -- empty type
-
-data Maybe X = nothing | just X
-
-append : List X -> List X -> List X
-append []        ys = ys
-append (x :: xs) ys = x :: append xs ys
-
-map : {X -> Y} -> List X -> List Y
-map f []        = []
-map f (x :: xs) = f x :: map f xs
-
-print : String -> [Console]Unit
-print s = map ouch s; unit
-
-if : Bool -> {X} -> {X} -> X
-if true t f = t!
-if false t f = f!
-
-on : X -> {X -> Y} -> Y
-on x f = f x
+include prelude
 
 interface Send X = send : X -> Unit
-
 interface Receive X = receive : X
-
-interface Abort = aborting : Zero
-
-abort : {[Abort]X}
-abort! = on aborting! {}
-
-catch : {<Abort>X -> {X} -> X}
-catch x               h = x
-catch <aborting -> k> h = h!
---- end of standard stuff ---
-
 
 -- send a list of values
 sends : {List X -> [Send X]Unit}
@@ -52,7 +19,7 @@ pipe <send x -> s> <receive -> r> = pipe (s unit) (r x)
 pipe      <_>           y              = y
 pipe     unit      <receive -> r> = abort!
 
-doBeDoBeDoNil : {[]List String}
+doBeDoBeDoNil : {List String}
 doBeDoBeDoNil! = ["do", "be", "do", "be", "do", ""]
 
 sendDoBeDoBeDoNil : {[Send String]Unit}
@@ -64,16 +31,16 @@ t1! = pipe sendDoBeDoBeDoNil! catter!
 spacer : [Send String, Receive String]Unit
 spacer! = send receive!; send " "; spacer!
 
-t2 : [Abort]String
+t2 : {[Abort]String}
 t2! = pipe sendDoBeDoBeDoNil! (pipe spacer! catter!)
 
-catchList : <Abort>List X -> List X
+catchList : {<Abort>List X -> List X}
 catchList <x> = catch x! {[]}
 
-t3 : {[]String}
+t3 : {String}
 t3! = catchList t2!
 
-t4 : {[]String}
+t4 : {String}
 t4! = catchList (pipe (sends ["do", "be", []])
                       (pipe spacer! catter!))
 
@@ -84,7 +51,7 @@ sendsPrint (s :: ss) = print "Sending: "; print s; ouch '\n'; send s; sendsPrint
 t5 : {[Console]String}
 t5! = catchList (pipe (sendsPrint doBeDoBeDoNil!) catter!)
 
-logSend : <Send String>X -> [Console, Send String]X
+logSend : {<Send String>X -> [Console, Send String]X}
 logSend x             = x
 logSend <send s -> k> = print "Sending: "; print s; ouch '\n'; send s; logSend (k unit)
 
@@ -133,8 +100,7 @@ t8! = tN sendDoBeDoBeDoNil spacer catter
 
 -- Dont delete these lines, they make this program into a unit test.
 -- #desc   examples/pipes.fk
+-- #flags  ~include examples/
 -- #return unit
-
--- just a stub: use --entry-point tX to do something interesting
-main : {[]Unit}
+main: {Unit}
 main! = unit

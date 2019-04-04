@@ -3,39 +3,44 @@ module Shonky.Syntax where
 import Control.Monad
 import Control.Applicative
 import Data.Char
-import Text.PrettyPrint.Leijen hiding ((<$>), empty)
+import Text.PrettyPrint hiding ((<$>), empty)
 
 import Data.List
 import qualified Data.Map as M
 
+import Shonky.Renaming
+
 -- A program is of type [Def Exp]
 
 data Exp
-  = EV String                     -- variable
-  | EI Integer                    -- integer
-  | EA String                     -- atom
-  | Exp :& Exp                    -- cons
-  | Exp :$ [Exp]                  -- n-ary application
-  | Exp :! Exp                    -- composition (;)
-  | Exp :// Exp                   -- composition (o)
-  | EF [[String]] [([Pat], Exp)]  -- handler
-    --   [[String]]:     for each arg pos, which commands are handled
-    --                   and how often (potentially multiple occurrences)?
-    --   [([Pat], Exp)]: pattern matching rules
-  | [Def Exp] :- Exp              -- ? (not used by Frank)
-  | EX [Either Char Exp]          -- string concatenation expression
+  = EV String                               -- variable
+  | EI Int                                  -- int
+  | EA String                               -- atom
+  | Exp :& Exp                              -- cons
+  | Exp :$ [Exp]                            -- n-ary application
+  | Exp :! Exp                              -- composition (;)
+  | Exp :// Exp                             -- composition (o)
+  | EF [([Adap], [String])] [([Pat], Exp)]  -- handler                      -- [([Adap], [String])]:     for each arg pos, which adaptors are applied and which commands are handled and how often (potentially multiple occurrences)?
+                                                                            -- [([Pat], Exp)]: pattern matching rules
+  | [Def Exp] :- Exp                        -- ? (not used by Frank)
+  | EX [Either Char Exp]                    -- string concat expression
     -- (used only for characters in source Frank (Left c), but used by
     -- strcat)
-  | ES [String] Exp               -- lift
-    --  [String]: set of commands-to-be-lifted
+  | ER Adap Exp                             -- adapted exp
   deriving (Show, Eq)
 infixr 6 :&
 infixl 5 :$
 infixr 4 :!
 
 data Def v
-  = String := v                          -- value def
-  | DF String [[String]] [([Pat], Exp)]  -- handler def
+  = String := v                                     -- value def
+  | DF String [([Adap], [String])] [([Pat], Exp)]   -- handler def: (like EF, but with name)
+                                                    -- - name
+                                                    -- - redirection, executed
+                                                    --     before assigning
+                                                    --     commands to arg pos
+                                                    -- - commands at args
+                                                    -- - patterns + bodies
   deriving (Show, Eq)
 
 {--
@@ -47,17 +52,21 @@ data Def v
 data Pat
   = PV VPat
   | PT String
-  | PC String Integer [VPat] String
+  | PC String Int [VPat] String
   deriving (Show, Eq)
 
 data VPat
   = VPV String              -- LC: ?
-  | VPI Integer             -- int value
+  | VPI Int                 -- int value
   | VPA String              -- atom value
   | VPat :&: VPat           -- cons value
   | VPX [Either Char VPat]  -- LC: ?
   | VPQ String              -- LC: ?
   deriving (Show, Eq)
+
+-- [String]   commands to be adapted
+-- Renaming
+type Adap = ([String], Renaming)
 
 pProg :: P [Def Exp]
 pProg = pGap *> many (pDef <* pGap)
@@ -70,32 +79,31 @@ pId = do c <- pLike pChar (\c -> isAlpha c || c == '_' || c == '%')
          cs <- many (pLike pChar (\c -> isAlphaNum c || c == '\''))
          return (c : cs)
 
-pInteger :: P Integer
-pInteger = do cs <- some (pLike pChar isDigit)
-              let x = concatMap (show . toInteger . digitToInt) cs
-              return $ (read x :: Integer)
+pInt :: P Int
+pInt = do cs <- some (pLike pChar isDigit)
+          let x = concatMap (show . digitToInt) cs
+          return $ (read x :: Int)
 
 pP :: String -> P ()
 pP s = () <$ traverse (pLike pChar . (==)) s
 
 pExp :: P Exp
-pExp = (((ES <$ pGap <* pP "shift" <* pGap <* pP "<" <* pGap <*>
+pExp = ((((\x -> ER (x, renRem 0)) <$ pGap <* pP "neg" <* pGap <* pP "<" <* pGap <*>
           pCSep (pId <* pGap) ">" <*
           pGap <* pP "(" <* pGap <*>
           pExp <*
           pGap <* pP ")" <* pGap)
        <|> EV <$> pId
-       <|> EI <$> pInteger
+       <|> EI <$> pInt
        <|> EA <$ pP "'" <*> pId
        <|> EX <$ pP "[|" <*> pText pExp
        <|> id <$ pP "[" <*> pLisp pExp (EA "") (:&)
        <|> thunk <$ pP "{" <* pGap <*> pExp <* pGap <* pP "}"
        <|> EF <$ pP "{" <* pGap <*>
-          (id <$ pP "(" <*> pCSep (many (pId <* pGap)) ")"
+          (id <$ pP "(" <*> (map (\x -> ([], x)) <$> pCSep (many (pId <* pGap)) ")")
               <* pGap <* pP ":" <* pGap
-           <|> pure []) <*> pCSep pClause "" <* pGap <* pP "}"
-       <|> ES <$ pP "^" <* pP "[" <*> pCSep pId "]" <* pP "("
-           <*> pExp <* pP ")"
+           <|> pure [])
+          <*> pCSep pClause "" <* pGap <* pP "}"
        ) >>= pApp)
        <|> (:-) <$ pP "{|" <*> pProg <* pP "|}" <* pGap <*> pExp
      where thunk e = EF [] [([], e)]
@@ -140,21 +148,22 @@ pClause = (,) <$ pP "(" <*> pCSep pPat ")"
 
 pRules :: String -> P (Def Exp)
 pRules f = DF f <$>
-  (id <$ pP "(" <*> pCSep (many (pId <* pGap)) ")" <* pGap
+  (id <$ pP "(" <*> (map (\x -> ([], x)) <$> pCSep (many (pId <* pGap)) ")") <* pGap
      <* pP ":" <* pGap) <*>
   pCSep (pP f *> pClause) ""
   <|> DF f [] <$> ((:) <$> pClause <*>
        many (id <$ pGap <* pP "," <* pGap <* pP f <*> pClause))
+-- TODO: LC: Parse adjustments/renamings in ports
 
 pPat :: P Pat
 pPat = PT <$ pP "{" <* pGap <*> pId <* pGap <* pP "}"
-   <|> PC <$ pP "{" <* pGap <* pP "'" <*> pId <* pP "." <*> pInteger <* pP "(" <*> pCSep pVPat ")"
+   <|> PC <$ pP "{" <* pGap <* pP "'" <*> pId <* pP "." <*> pInt <* pP "(" <*> pCSep pVPat ")"
           <* pGap <* pP "->" <* pGap <*> pId <* pGap <* pP "}"
    <|> PV <$> pVPat
 
 pVPat :: P VPat
 pVPat = VPV <$> pId
-  <|> VPI <$> pInteger
+  <|> VPI <$> pInt
   <|> VPA <$ pP "'" <*> pId
   <|> VPX <$ pP "[|" <*> pText pVPat
   <|> VPQ <$ pP "=" <* pGap <*> pId
@@ -195,100 +204,3 @@ instance Alternative P where
   p <|> q = P $ \ s -> case parse p s of
     Nothing -> parse q s
     y -> y
-
--- Pretty printing routines
-
-ppProg :: [Def Exp] -> Doc
-ppProg xs = vcat (punctuate line (map ppDef xs))
-
-ppDef :: Def Exp -> Doc
-ppDef (id := e) = text id <+> text "->" <+> ppExp e
-ppDef (DF id [] []) = error "ppDef invariant broken: empty Def Exp detected."
-ppDef p@(DF id hss es) = header <$$> vcat cs
-  where header = text id <> parens (hsep args) <> colon
-        args = punctuate comma $ (map (hsep . map text) hss)
-        cs = punctuate comma $
-               map (\x -> text id <> (nest 3 (ppClause (<$$>) x))) es
-
-ppText :: (a -> Doc) -> [Either Char a] -> Doc
-ppText f ((Left c) : xs) = (text $ escChar c) <> (ppText f xs)
-ppText f ((Right x) : xs) = text "`" <> f x <> text "`" <> (ppText f xs)
-ppText f [] = text "|]"
-
-isEscChar :: Char -> Bool
-isEscChar c = any (c ==) ['\n','\t','\b']
-
-escChar :: Char -> String
-escChar c = f [('\n', "\\n"),('\t', "\\t"),('\b', "\\b")]
-  where f ((c',s):xs) = if c == c' then s else f xs
-        f [] = [c]
-
-ppClause :: (Doc -> Doc -> Doc) -> ([Pat], Exp) -> Doc
-ppClause comb (ps, e) =
-  let rhs = parens (hsep $ punctuate comma (map ppPat ps))
-      lhs = ppExp e in
-  rhs <+> text "->" `comb` lhs
-
-ppExp :: Exp -> Doc
-ppExp (EV x) = text x
-ppExp (EI n) = integer n
-ppExp (EA x) = text $ "'" ++ x
-ppExp (e :& e') | isListExp e = text "[" <> ppListExp e'
-ppExp p@(_ :& _) = text "[" <> ppExp' p
-ppExp (f :$ xs) = let args = hcat $ punctuate comma (map ppExp xs) in
-  ppExp f <> text "(" <> args <> text ")"
-ppExp (e :! e') = ppExp e <> semi <> ppExp e'
-ppExp (e :// e') = ppExp e <> text "/" <> ppExp e'
-ppExp (EF xs ys) =
-  let clauses = map (ppClause (<+>)) ys in
-  braces $ hcat (punctuate comma clauses)
-ppExp (EX xs) = text "[|" <> ppText ppExp xs
-ppExp (ES cs e) = let args = hsep $ punctuate comma (map text cs) in
-  text "^" <+> angles args <+> parens (ppExp e)
-
-ppExp' :: Exp -> Doc
-ppExp' (e :& EA "") = ppExp e <> rbracket
-ppExp' (e :& es) = ppExp e <> comma <> ppExp' es
-ppExp' e = ppExp e
-
-isListExp :: Exp -> Bool
-isListExp (e :& _) = isListExp e
-isListExp _ = False
-
--- Special case for lists
-ppListExp :: Exp -> Doc
-ppListExp (e :& EA "") = ppExp e <> text "]"
-ppListExp (e :& es) = ppExp e <> text "|" <> ppListExp es
-ppListExp (EA "") = text "]"
-ppListExp _ = text "ppListExp: invariant broken"
-
-ppPat :: Pat -> Doc
-ppPat (PV x) = ppVPat x
-ppPat (PT x) = braces $ text x
-ppPat (PC cmd n ps k) = let args = hcat $ punctuate comma (map ppVPat ps) in
-  let cmdtxt = text (cmd ++ ".") <> integer n in
-  braces $ text "'" <> cmdtxt <> parens args <+> text "->" <+> text k
-
-ppVPat :: VPat -> Doc
-ppVPat (VPV x) = text x
-ppVPat (VPI n) = integer n
-ppVPat (VPA x) = text $ "'" ++ x
-ppVPat (VPX xs) = text "[|" <> ppText ppVPat xs
-ppVPat (v1 :&: v2 :&: v3) = ppVPat (v1 :&: (v2 :&: v3))
-ppVPat (v :&: v') | isListPat v = lbracket <> ppVPatList v'
-ppVPat p@(_ :&: _) = lbracket <> ppVPat' p
-
-ppVPatList :: VPat -> Doc
-ppVPatList (v :&: VPA "") = ppVPat v <> rbracket
-ppVPatList (v :&: vs) = ppVPat v <> text "|" <> ppVPatList vs
-ppVPatList (VPA "") = lbracket
-ppVPatList _ = error "ppVPatList: broken invariant"
-
-ppVPat' :: VPat -> Doc
-ppVPat' (v :&: VPA "") = ppVPat v <> text "]"
-ppVPat' (v :&: vs) = ppVPat v <> comma <> ppVPat' vs
-ppVPat' v = ppVPat v
-
-isListPat :: VPat -> Bool
-isListPat (v :&: _) = isListPat v
-isListPat _ = False

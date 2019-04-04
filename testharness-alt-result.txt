@@ -1,0 +1,26 @@
+tests/still-todo/should-fail/missing-signature.fk
+FAIL
+Expected: missing type signature for operator "foo"
+Output:   unit
+
+
+
+tests/still-todo/should-fail/shift-error.fk
+FAIL
+Expected: Adaptor Console(1) is not a valid adaptor in ambient [£] (line 8 , column 10)
+Output:   2
+
+
+
+tests/still-todo/should-pass/let-scoping.fk
+FAIL
+Expected: 42
+Output:   clash expects 2 argument(s) but 1 given (line 8 , column 33)
+
+
+
+failing    tests/still-todo/: 3
+successful examples/: 14
+successful regression: 21
+successful tests/should-fail/: 17
+successful tests/should-pass/: 44

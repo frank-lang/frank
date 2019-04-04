@@ -1,0 +1,35 @@
+-- #desc Remove an instance via port adjustment
+-- #return 3
+
+-- begin standard stuff
+map : {{X -> Y} -> List X -> List Y}
+map f []        = []
+map f (x :: xs) = f x :: map f xs
+
+print : {String -> [Console]Unit}
+print s = map ouch s; unit
+
+if : Bool -> {X} -> {X} -> X
+if true  t f = t!
+if false t f = f!
+-- end standard stuff
+
+
+-- Define effects
+interface BChoice = bchoose: Bool
+interface IChoice = ichoose: Int
+
+-- Basic handlers
+boolFix: {<BChoice>X -> X}
+boolFix x = x
+boolFix <bchoose -> k> = boolFix (k true)
+
+-- Scenario 2: Unintentionally Exposed Intermediate Effects: SOLVED!
+intByBool: {<BChoice | IChoice>X -> [BChoice]X}
+intByBool x = x
+intByBool <ichoose -> k> = let n = if bchoose! { if bchoose! {3} {2} }
+                                               { if bchoose! {1} {0} }
+                           in intByBool (k n)
+
+main: {[Console]Int}
+main! = boolFix (intByBool (ichoose!))

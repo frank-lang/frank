@@ -8,12 +8,12 @@ import Control.Monad.Identity
 import Control.Monad.Except
 
 -- this monad will supply fresh and is really a state monad transformer
-newtype FreshMT m a = Fresh { unFresh :: StateT Integer m a }
+newtype FreshMT m a = Fresh { unFresh :: StateT Int m a }
                       deriving (Functor, Applicative, Monad,
-                                MonadState Integer)
+                                MonadState Int)
 
 class Monad m => GenFresh m where
-  fresh :: m Integer
+  fresh :: m Int
 
 evalFreshMT :: Monad m => FreshMT m a -> m a
 evalFreshMT m = evalStateT (unFresh m) 0

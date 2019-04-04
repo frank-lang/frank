@@ -7,6 +7,7 @@ import Data.Foldable
 import Data.Functor.Identity
 
 import Data.List
+import Data.Maybe
 import qualified Data.Map.Strict as M
 import qualified Data.Set as S
 
@@ -152,9 +153,9 @@ refineCType (CType xs z a) = do ys <- mapM refinePort xs
                                 return $ CType ys peg (rawToRef a)
 
 refinePort :: Port Raw -> Refine (Port Refined)
-refinePort (Port adj ty a) = do adj' <- refineAdj adj
-                                ty' <- refineVType ty
-                                return $ Port adj' ty' (rawToRef a)
+refinePort (Port adjs ty a) = do adjs' <- mapM refineAdj adjs
+                                 ty' <- refineVType ty
+                                 return $ Port (concat adjs') ty' (rawToRef a)
 
 refinePeg :: Peg Raw -> Refine (Peg Refined)
 refinePeg (Peg ab ty a) = do ab' <- refineAb ab
@@ -193,9 +194,30 @@ refineAbMod :: AbMod Raw -> AbMod Refined
 refineAbMod (EmpAb a) = EmpAb (rawToRef a)
 refineAbMod (AbVar x a) = AbVar x (rawToRef a)
 
-refineAdj :: Adj Raw -> Refine (Adj Refined)
-refineAdj (Adj m a) = do m' <- refineItfMap m
-                         return $ Adj m' (rawToRef a)
+refineAdj :: Adjustment Raw -> Refine [Adjustment Refined]
+refineAdj (ConsAdj x ts a) = do
+  tss' <- refineItfInst a (x, ts)
+  let tss'' = M.foldlWithKey (\acc itf ts' -> acc ++ instsToAdjs itf ts') [] tss'
+  --LAST STOP
+  return $ tss''
+  where instsToAdjs :: Id -> Bwd [TyArg Refined] -> [Adjustment Refined]
+        instsToAdjs itf ts = map (\ts' -> ConsAdj itf ts' (rawToRef a)) (bwd2fwd ts)
+refineAdj (AdaptorAdj adp a) = do
+  adp' <- refineAdaptor adp
+  return $ [AdaptorAdj adp' (rawToRef a)]
+
+-- Explicit refinements:
+-- + interface aliases are substituted
+refineItfInst :: Raw -> (Id, [TyArg Raw]) ->
+                 Refine (M.Map Id (Bwd [TyArg Refined]))
+refineItfInst a (x, ts) = do
+--                  x t_11 ... t_1n
+  -- replace interface aliases by interfaces
+  (ItfMap m' _) <- substitItfAls (x, ts)
+--                  x t_11 ... t_1n, ..., x t_m1 t_mn
+  -- refine instantiations of each interface
+  m'' <- M.fromList <$> (mapM (refineItfInsts a)) (M.toList m')
+  return m''
 
 -- Explicit refinements:
 -- + interface aliases are substituted
@@ -205,30 +227,32 @@ refineItfMap (ItfMap m a) = do
   ms <- mapM (\(x, insts) -> mapM (\inst -> substitItfAls (x, inst)) (bwd2fwd insts)) (M.toList m)
   let (ItfMap m' a') = foldl plusItfMap (emptyItfMap a) (concat ms)
   -- refine instantiations of each interface
-  m'' <- M.fromList <$> (mapM refineEntry) (M.toList m')
+  m'' <- M.fromList <$> (mapM (refineItfInsts a)) (M.toList m')
   return $ ItfMap m'' (rawToRef a)
-  where refineEntry :: (Id, Bwd [TyArg Raw]) -> Refine (Id, Bwd [TyArg Refined])
-        refineEntry (x, insts) =
+
+refineItfInsts :: Raw -> (Id, Bwd [TyArg Raw]) ->
+                  Refine (Id, Bwd [TyArg Refined])
+refineItfInsts a (x, insts) = do
 --                  x t_11 ... t_1n, ..., x t_m1 t_mn
-          do itfs <- getRItfs
-             case M.lookup x itfs of
-               Just ps -> do
---                1) interface x p_1 ... p_n     = ...
---             or 2) interface x p_1 ... p_n [£] = ...
---                   and [£] has been explicitly added before
---                if 2), set t_{n+1} := [£]
-                  evset <- getEVSet
-                  ctx <- getTopLevelCtxt
-                  insts' <- mapM (\ts -> do let a' = Raw (implicitNear a)
-                                            let ts' = if "£" `S.member` evset ||
-                                                         isHdrCtxt ctx
-                                                      then concretiseEpsArg ps ts a'
-                                                      else ts
-                                            checkArgs x (length ps) (length ts') a
-                                            mapM refineTyArg ts')
-                                 insts
-                  return (x, insts')
-               Nothing -> throwError $ errorRefIdNotDeclared "interface" x a
+  itfs <- getRItfs
+  case M.lookup x itfs of
+    Just ps -> do
+--            1) interface x p_1 ... p_n     = ...
+--         or 2) interface x p_1 ... p_n [£] = ...
+--               and [£] has been explicitly added before
+--            if 2), set t_{n+1} := [£]
+       evset <- getEVSet
+       ctx <- getTopLevelCtxt
+       insts' <- mapM (\ts -> do let a' = Raw (implicitNear a)
+                                 let ts' = if "£" `S.member` evset ||
+                                              isHdrCtxt ctx
+                                           then concretiseEpsArg ps ts a'
+                                           else ts
+                                 checkArgs x (length ps) (length ts') a
+                                 mapM refineTyArg ts')
+                      insts
+       return (x, insts')
+    Nothing -> throwError $ errorRefIdNotDeclared "interface" x a
 
 -- Explicit refinements:
 -- + implicit [£] ty args to data types are made explicit
@@ -358,19 +382,31 @@ refineUse (RawComb x xs a) =
        Left use -> do xs' <- mapM refineTm xs
                       return $ Left $ App use xs' (rawToRef a)
        Right tm -> throwError $ errorRefExpectedUse tm
-refineUse (Lift itfs t a) =
+refineUse (Adapted rs t a) =
   -- First check the existence of the interfaces
-  do mapM_ exists (S.toList itfs)
+  do rs' <- mapM refineAdaptor rs
      t' <- refineUse t
      case t' of
-       Left u   -> return $ Left $ Lift itfs u (rawToRef a)
+       Left u   -> return $ Left $ Adapted rs' u (rawToRef a)
        Right tm -> throwError $ errorRefExpectedUse tm
-  where exists :: Id -> Refine ()
-        exists x =
-          do itfCx <- getRItfs
-             if M.member x itfCx
-             then return ()
-             else throwError $ errorRefIdNotDeclared "interface" x a
+
+refineAdaptor :: Adaptor Raw -> Refine (Adaptor Refined)
+refineAdaptor adp@(RawAdp x liat left right a) = do
+  itfCx <- getRItfs
+  if x `M.member` itfCx then
+    -- TODO: LC: left-hand side must consist of distinct names
+    -- Check whether first element of right-hand side is liat
+    if null right || head right == liat then
+      if null right then return $ Adp x Nothing [] (rawToRef a)
+      else
+        let mm = Just (length left) in
+        let right' = tail right in
+        let rightNs = map (\p -> elemIndex p (reverse left)) right' in
+        if any isNothing rightNs then throwError "adaptor error"
+        else return $ Adp x (Just (length left)) (map fromJust rightNs) (rawToRef a)
+    else
+      throwError $ "adaptor error"
+  else throwError $ errorRefIdNotDeclared "interface" x a
 
 refineTm :: Tm Raw -> Refine (Tm Refined)
 refineTm (Let x t1 t2 a) =
@@ -471,10 +507,16 @@ initialiseRState dts itfs itfAls hdrs =
      putRCtrs       ctrs'
      putRMHs        hdrs'
 
-makeIntBinOp :: Refined ->Char -> MHDef Refined
-makeIntBinOp a c = Def [c] (CType [Port (Adj (ItfMap M.empty a) a) (IntTy a) a
-                                  ,Port (Adj (ItfMap M.empty a) a) (IntTy a) a]
+makeIntBinOp :: Refined -> Char -> MHDef Refined
+makeIntBinOp a c = Def [c] (CType [Port [] (IntTy a) a
+                                  ,Port [] (IntTy a) a]
                                   (Peg (Ab (AbVar "£" a) (ItfMap M.empty a) a) (IntTy a) a) a) [] a
+
+makeIntBinCmp :: Refined -> Char -> MHDef Refined
+makeIntBinCmp a c = Def [c] (CType [Port [] (IntTy a) a
+                                   ,Port [] (IntTy a) a]
+                             (Peg (Ab (AbVar "£" a) (ItfMap M.empty a) a)
+                              (DTTy "Bool" [] a) a) a) [] a
 
 {-- The initial state for the refinement pass. -}
 
@@ -489,8 +531,10 @@ builtinDataTs = [DT "List" [("X", VT)] [Ctr "cons" [TVar "X" b
 
 builtinItfs :: [Itf Refined]
 builtinItfs = [Itf "Console" [] [Cmd "inch" [] [] (CharTy b) b
-                                  ,Cmd "ouch" [] [CharTy b]
-                                                   (DTTy "Unit" [] b) b] b
+                                ,Cmd "ouch" [] [CharTy b]
+                                 (DTTy "Unit" [] b) b
+                                ,Cmd "ouint" [] [IntTy b]
+                                 (DTTy "Unit" [] b) b] b
               ,Itf "RefState" [] [Cmd "new" [("X", VT)] [TVar "X" b]
                                                             (DTTy "Ref" [VArg (TVar "X" b) b] b) b
                                    ,Cmd "write" [("X", VT)] [DTTy "Ref" [VArg (TVar "X" b) b] b
@@ -505,18 +549,19 @@ builtinItfAliases = []
 
 builtinMHDefs :: [MHDef Refined]
 builtinMHDefs = map (makeIntBinOp (Refined BuiltIn)) "+-" ++
+                map (makeIntBinCmp (Refined BuiltIn)) "><" ++
                 [caseDef, charEq, alphaNumPred]
 
 charEq :: MHDef Refined
-charEq = Def "eqc" (CType [Port (Adj (ItfMap M.empty a) a) (CharTy a) a
-                          ,Port (Adj (ItfMap M.empty a) a) (CharTy a) a]
+charEq = Def "eqc" (CType [Port [] (CharTy a) a
+                          ,Port [] (CharTy a) a]
                           (Peg (Ab (AbVar "£" a) (ItfMap M.empty a) a)
                                (DTTy "Bool" [] a) a) a) [] a
   where a = Refined BuiltIn
 
 alphaNumPred :: MHDef Refined
 alphaNumPred = Def "isAlphaNum"
-               (CType [Port (Adj (ItfMap M.empty a) a) (CharTy a) a]
+               (CType [Port [] (CharTy a) a]
                           (Peg (Ab (AbVar "£" a) (ItfMap M.empty a) a)
                                (DTTy "Bool" [] a) a) a) [] a
   where a = Refined BuiltIn
@@ -525,9 +570,9 @@ caseDef :: MHDef Refined
 caseDef = Def
           "case"
           (CType
-            [Port (Adj (ItfMap M.empty b) b) (TVar "X" b) b
-            ,Port (Adj (ItfMap M.empty b) b)
-             (SCTy (CType [Port (Adj (ItfMap M.empty b) b) (TVar "X" b) b]
+            [Port [] (TVar "X" b) b
+            ,Port []
+             (SCTy (CType [Port [] (TVar "X" b) b]
                       (Peg (Ab (AbVar "£" b) (ItfMap M.empty b) b) (TVar "Y" b) b) b) b) b]
             (Peg (Ab (AbVar "£" b) (ItfMap M.empty b) b) (TVar "Y" b) b) b)
           [Cls

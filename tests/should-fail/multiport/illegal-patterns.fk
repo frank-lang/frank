@@ -1,6 +1,5 @@
 -- #desc   Use of illegal command pattern (see more in comments below)
--- #return something like "illegal command pattern"
-
+-- #return command ask.2 not found in adjustments of port <Reader Int , Reader Int>Int (line 6 , column 16)
 
 interface Reader X = ask: X
 
@@ -10,11 +9,7 @@ constHandler <ask.0 -> k> = constHandler (k 3)
 constHandler <ask.2 -> k> = constHandler (k 7) -- <- This pattern should be illegal
 
 myreader: {[Reader Int, Reader Int]Int}
-myreader! = ask! + (lift <Reader> ask!)
-
--- Dont delete these lines, they make this program into a unit test.
--- #desc   examples/multi-port.fk
--- #return 10
+myreader! = ask! + (<Reader> ask!)
 
 main: {[Console]Int}
 main! = constHandler myreader!

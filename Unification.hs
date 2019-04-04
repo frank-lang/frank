@@ -115,9 +115,6 @@ unifyItfMap m0@(ItfMap m0' a) m1@(ItfMap m1' b) = do
           Just insts' -> if length insts /= length insts' then throwError $ errorUnifItfMaps m0 m1
                          else zipWithM_ (zipWithM_ unifyTyArg) (bwd2fwd insts) (bwd2fwd insts')
 
-unifyAdj :: Adj Desugared -> Adj Desugared -> Contextual ()
-unifyAdj (Adj m0 _) (Adj m1 _) = unifyItfMap m0 m1
-
 unifyCType :: CType Desugared -> CType Desugared -> Contextual ()
 unifyCType (CType xs p0 _) (CType ys p1 _) =
   zipWithM_ unifyPort xs ys >> unifyPeg p0 p1
@@ -125,9 +122,18 @@ unifyCType (CType xs p0 _) (CType ys p1 _) =
 unifyPeg :: Peg Desugared -> Peg Desugared -> Contextual ()
 unifyPeg (Peg ab0 ty0 _) (Peg ab1 ty1 _) = unifyAb ab0 ab1 >> unify ty0 ty1
 
+-- Two ports unify if
+-- 1) their adjustments coincide (first normalise both)
+-- 2) their types unify
 unifyPort :: Port Desugared -> Port Desugared -> Contextual ()
-unifyPort (Port adj0 ty0 _) (Port adj1 ty1 _) = unifyAdj adj0 adj1 >>
-                                                                  unify ty0 ty1
+unifyPort (Port adjs1 ty1 _) (Port adjs2 ty2 _) =
+  do let (insts1, adps1) = adjsNormalForm adjs1
+     let (insts2, adps2) = adjsNormalForm adjs2
+     unifyItfMap (ItfMap insts1 (Desugared Generated))  -- TODO: LC: fix this
+                 (ItfMap insts2 (Desugared Generated))
+     if adps1 == adps2 then
+       unify ty1 ty2
+     else throwError $ "adaptors not the same"
 
 -- unify a meta variable "x" with a type "ty"
 solve :: Id -> Desugared -> Suffix -> VType Desugared -> Contextual ()
@@ -180,9 +186,9 @@ substTyArg :: VType Desugared -> Id -> TyArg Desugared -> TyArg Desugared
 substTyArg ty x (VArg t a) = VArg (subst ty x t) a
 substTyArg ty x (EArg ab a) = EArg (substAb ty x ab) a
 
-substAdj :: VType Desugared -> Id -> Adj Desugared -> Adj Desugared
-substAdj ty x (Adj (ItfMap m a') a) = Adj (ItfMap m' a') a
-  where m' = M.map (fmap (map (substTyArg ty x))) m
+substAdj :: VType Desugared -> Id -> Adjustment Desugared -> Adjustment Desugared
+substAdj ty x (ConsAdj y ts a) = ConsAdj y (map (substTyArg ty x) ts) a
+substAdj ty x (AdaptorAdj adp a) = AdaptorAdj adp a
 
 substCType :: VType Desugared -> Id -> CType Desugared -> CType Desugared
 substCType ty x (CType ps peg a) =
@@ -192,7 +198,7 @@ substPeg :: VType Desugared -> Id -> Peg Desugared -> Peg Desugared
 substPeg ty x (Peg ab pty a) = Peg (substAb ty x ab) (subst ty x pty) a
 
 substPort :: VType Desugared -> Id -> Port Desugared -> Port Desugared
-substPort ty x (Port adj pty a) = Port (substAdj ty x adj) (subst ty x pty) a
+substPort ty x (Port adjs pty a) = Port (map (substAdj ty x) adjs) (subst ty x pty) a
 
 substEVar :: Ab Desugared -> Id -> VType Desugared -> VType Desugared
 substEVar ab x (DTTy dt ts a) = DTTy dt (map (substEVarTyArg ab x) ts) a
@@ -210,9 +216,9 @@ substEVarTyArg :: Ab Desugared -> Id -> TyArg Desugared -> TyArg Desugared
 substEVarTyArg ab x (VArg t a)  = VArg (substEVar ab x t) a
 substEVarTyArg ab x (EArg ab' a) = EArg (substEVarAb ab x ab') a
 
-substEVarAdj :: Ab Desugared -> Id -> Adj Desugared -> Adj Desugared
-substEVarAdj ab x (Adj (ItfMap m a') a) = Adj (ItfMap m' a') a
-  where m' = M.map (fmap (map (substEVarTyArg ab x))) m
+substEVarAdj :: Ab Desugared -> Id -> Adjustment Desugared -> Adjustment Desugared
+substEVarAdj ab x (ConsAdj y ts a) = ConsAdj y (map (substEVarTyArg ab x) ts) a
+substEvarAdj ab x (AdaptorAdj adp a) = AdaptorAdj adp a
 
 substEVarCType :: Ab Desugared -> Id -> CType Desugared -> CType Desugared
 substEVarCType ab x (CType ps peg a) =
@@ -223,8 +229,8 @@ substEVarPeg ab' x (Peg ab pty a) =
   Peg (substEVarAb ab' x ab) (substEVar ab' x pty) a
 
 substEVarPort :: Ab Desugared -> Id -> Port Desugared -> Port Desugared
-substEVarPort ab x (Port adj pty a) =
-  Port (substEVarAdj ab x adj) (substEVar ab x pty) a
+substEVarPort ab x (Port adjs pty a) =
+  Port (map (substEVarAdj ab x) adjs) (substEVar ab x pty) a
 
 {- Helpers -}
 

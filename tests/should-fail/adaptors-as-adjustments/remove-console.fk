@@ -1,0 +1,25 @@
+-- #desc Require an instance that has been removed via port adjustment
+-- #return cannot unify abilities [£ | Console] (line 21 , column 15) and [£] (line 24 , column 9)
+
+-- begin standard stuff
+map : {{X -> Y} -> List X -> List Y}
+map f []        = []
+map f (x :: xs) = f x :: map f xs
+
+print : {String -> [Console]Unit}
+print s = map ouch s; unit
+
+if : Bool -> {X} -> {X} -> X
+if true  t f = t!
+if false t f = f!
+-- end standard stuff
+
+
+notifyConsoleOnValue: {<Console |>A -> [Console]A}
+notifyConsoleOnValue v = print "value!"; v
+
+consoleful: {[Console]Int}
+consoleful! = print "outputting 7"; 7
+
+main: {[Console]Int}
+main! = notifyConsoleOnValue (consoleful!)

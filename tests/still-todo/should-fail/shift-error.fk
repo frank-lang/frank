@@ -1,0 +1,8 @@
+-- #desc The interfaces supplied to lift must occur in the ambient
+-- #return Adaptor Console(1) is not a valid adaptor in ambient [£] (line 8 , column 10)
+
+num : {Int}
+num! = 2
+
+main : {Int}
+main! = <Console> num!

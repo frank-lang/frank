@@ -36,7 +36,7 @@ data TCState = MkTCState
   , amb :: Ab Desugared     -- current ambient
   , cmdMap :: IdCmdInfoMap  -- cmd-id -> (itf-id, itf-ty-vars, cmd-arg-tys, cmd-ret-ty)
   , ctrMap :: CtrInfoMap    -- ctr-id -> (dt-id, dt-ty-vars, cmd-arg-tys)
-  , ms :: [Integer]         -- each entry represents one type checking phase.
+  , ms :: [Int]         -- each entry represents one type checking phase.
                             --            counts the marks in that phase
   }
 
@@ -88,8 +88,8 @@ fmvAbMod (EmpAb _) = S.empty
 fmvAbMod (AbRVar _ _) = S.empty
 fmvAbMod (AbFVar x _) = S.singleton x
 
-fmvAdj :: Adj Desugared -> S.Set Id
-fmvAdj (Adj (ItfMap m _) _) = foldMap (foldMap (foldMap fmvTyArg)) (M.elems m)
+fmvAdj :: Adjustment Desugared -> S.Set Id
+fmvAdj (ConsAdj x ts _) = foldMap fmvTyArg ts
 
 fmvCType :: CType Desugared -> S.Set Id
 fmvCType (CType ps q _) = S.union (foldMap fmvPort ps) (fmvPeg q)
@@ -98,7 +98,7 @@ fmvPeg :: Peg Desugared -> S.Set Id
 fmvPeg (Peg ab ty _) = S.union (fmvAb ab) (fmv ty)
 
 fmvPort :: Port Desugared -> S.Set Id
-fmvPort (Port adj ty _) = S.union (fmvAdj adj) (fmv ty)
+fmvPort (Port adjs ty _) = S.union (foldMap fmvAdj adjs) (fmv ty)
 
 entrify :: Suffix -> [Entry]
 entrify = map $ uncurry FlexMVar
@@ -140,7 +140,7 @@ purgeMarks = do s <- get
                 let n = head (ms s)
                 put $ s { ctx = skim n (ctx s), ms = tail (ms s) }
   where -- delete everything up to (and including) the recent n Mark's
-        skim :: Integer -> Context -> Context
+        skim :: Int -> Context -> Context
         skim 0 es = es
         skim n (es :< Mark) = skim (n-1) es
         skim n (es :< _) = skim n es
