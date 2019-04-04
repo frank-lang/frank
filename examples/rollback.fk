@@ -7,9 +7,9 @@ data Log X = start {X}
            | inched (Log X) {Char -> X}
            | ouched (Log X)
 
-input : {Log X [LookAhead, Abort, Console] ->
+input : {Log X [LookAhead, Abort] ->
          Maybe Char ->
-         <LookAhead, Abort>X ->
+         <Console|LookAhead, Abort>X ->
          [Console]X}
 input _ _        x             = x
 input l (just c) <peek -> k>   = input l (just c) (k c)
@@ -27,12 +27,12 @@ input l _        <abort -> k>  = rollback l
 --           <Consle|LookAhead, Abort>X ->
 --           [Console]X
 
-rollback : {Log X [LookAhead, Abort, Console] -> [Console]X}
+rollback : {Log X [LookAhead, Abort] -> [Console]X}
 rollback (start p)    = parse p
 rollback (ouched l)   = map ouch "\b \b"; rollback l
 rollback (inched l k) = input l nothing (k peek!)
 
-parse : {{[LookAhead, Abort, Console]X} -> [Console]X}
+parse : {{[LookAhead, Abort]X} -> [Console]X}
 parse p = input (start p) nothing p!
 
 -- a basic parser that counts a sequence of zeros
