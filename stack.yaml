@@ -3,6 +3,7 @@ extra-package-dbs: []
 packages:
 - '.'
 extra-deps:
+- wl-pprint-1.2.1
 - Unique-0.4.5
-- indentation-trifecta-0.0.1
-resolver: lts-7.8
+- indentation-trifecta-0.1.0
+resolver: lts-13.8
