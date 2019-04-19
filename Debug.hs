@@ -2,6 +2,8 @@
 {-# LANGUAGE GADTs #-}
 module Debug where
 
+import Prelude hiding ((<>))
+
 import BwdFwd
 import Syntax
 import ParserCommon

@@ -1,5 +1,7 @@
 module Shonky.Semantics where
 
+import Prelude hiding ((<>))
+
 import Control.Monad
 import Debug.Trace
 import System.IO

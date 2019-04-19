@@ -8,6 +8,7 @@ import qualified Data.Set as S
 import Control.Monad
 import Control.Monad.Except
 import Control.Monad.Identity
+import Control.Monad.Fail (MonadFail (..))
 import Control.Monad.State hiding (modify)
 
 import BwdFwd
@@ -46,6 +47,9 @@ deriving instance Monad Contextual
 deriving instance MonadState TCState Contextual
 deriving instance MonadError String Contextual
 deriving instance GenFresh Contextual
+
+instance MonadFail Contextual where
+  fail = throwError
 
 data Entry = FlexMVar Id Decl
            | TermVar (Operator Typed) (VType Desugared)
