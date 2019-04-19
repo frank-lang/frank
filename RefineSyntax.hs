@@ -27,36 +27,41 @@ refine prog = evalState (runExceptT (refine' prog)) initRefine
 -- + built-in data types, interfaces, operators are added
 refine' :: Prog Raw -> Refine (Prog Refined)
 refine' (MkProg xs) = do
-  -- Make sure datatypes have unique ids
-  checkUniqueIds ([d | (DataTm d _) <- xs]) (errorRefDuplTopTm "datatype")
-  -- Make sure interfaces and interface aliases have unique ids
-  checkUniqueIds ([i | i@(ItfTm _ _) <- xs] ++
-                  [i | i@(ItfAliasTm _ _) <- xs])
-    (errorRefDuplTopTm "interface/interface alias")
   -- Concretise epsilon vars
   let (dts, itfs, itfAls) = concretiseEps [d | DataTm d _ <- xs]
                                           [i | ItfTm i _ <- xs]
                                           [i | ItfAliasTm i _ <- xs]
   let hdrSigs = [s | SigTm s _ <- xs]
   let hdrDefs = [c | ClsTm c _ <- xs]
+  let rawBuiltinItfTms = map (\itf -> ItfTm itf b) builtinItfs
+  let builtinMHDTms = map (\hdr -> DefTm hdr a) builtinMHDefs
   -- Initialise refinement state
-  initialiseRState dts itfs itfAls hdrSigs
+  initialiseRState dts itfs itfAls
   -- Refine top level terms
   putTopLevelCtxt Datatype
   dtTms <- mapM refineDataT dts
   putTopLevelCtxt Interface
   itfTms <- mapM refineItf itfs
   putTopLevelCtxt InterfaceAlias
-  itfAlTms <- mapM refineItfAl itfAls
+  mapM_ refineItfAl itfAls
   putTopLevelCtxt Handler
   hdrs <- mapM (refineMH hdrDefs) hdrSigs
+  -- Make sure (built-in) interfaces and interface aliases have unique ids
+  -- Performing this check after refinement to prioritise more precise error
+  -- messages.
+  checkUniqueIds ([i | i@(ItfTm _ _) <- xs] ++
+                  [i | i@(ItfAliasTm _ _) <- xs] ++
+                  [i | i@(ItfTm _ _) <- rawBuiltinItfTms])
+    (errorRefDuplTopTm "interface/interface alias")
   -- Check uniqueness of hdrs w.r.t builtin ones
-  -- checkUniqueIds ([h | (DefTm h _) <- hdrs] ++ builtinMHDefs)
-  --   (errorRefDuplTopTm "operator")
+  checkUniqueIds ([h | h@(DefTm _ _) <- hdrs] ++
+                  [h | h@(DefTm _ _) <- builtinMHDTms])
+    (errorRefDuplTopTm "operator")
+  builtinItfTms <- mapM refineItf builtinItfs
   return $ MkProg (map (\dt -> DataTm dt a) builtinDataTs ++ dtTms ++
-                   map (\itf -> ItfTm itf a) builtinItfs ++ itfTms ++
-                   map (\hdr -> DefTm hdr a) builtinMHDefs ++ hdrs)
+                   builtinItfTms ++ itfTms ++ builtinMHDTms ++ hdrs)
   where a = Refined BuiltIn
+        b = Raw BuiltIn
 
 -- Explicit refinements:
 -- + data type has unique effect & type variables
@@ -96,7 +101,7 @@ refineItf i@(Itf itf ps cmds a) =
 
 -- Explicit refinements:
 -- + interface has unique effect & type variables
-refineItfAl :: ItfAlias Raw -> Refine (ItfAlias Refined)
+refineItfAl :: ItfAlias Raw -> Refine ()
 refineItfAl i@(ItfAlias itfAl ps _ a) =
 --          interface itf p_1 ... p_m = [itf_1 t_11 ... t_1n, ...]
   if uniqueIds (map fst ps) then
@@ -112,7 +117,6 @@ refineItfAl i@(ItfAlias itfAl ps _ a) =
        itfMap' <- refineItfMap singletonItfMap
        putEVSet S.empty                                -- reset
        putTMap M.empty                                 -- reset
-       return $ ItfAlias itfAl ps itfMap' a'
   else throwError $ errorRefDuplParamItfAl i
   where a' = rawToRef a
 
@@ -332,8 +336,7 @@ refineMHCls (MHCls _ cls a) = refineClause cls
 -- Explicit refinements:
 -- + id "x" is refined to 1) DataCon:          0-ary constructor if matching
 --                        2) Use . Op . CmdId: command operator if matching
---                        3) Use . Op . Poly:  poly multihandler operator if it exists
---                        4) Use . Op . Mono:  mono multihandler
+--                        3) Use . Op . VarId: value variable otherwise
 -- + applications (MkRawComb) are refined same way as ids
 -- + let x = e1 in e2    -->   case e1 {x -> e2}
 -- + [x, y, z]           -->   x cons (y cons (z cons nil))
@@ -341,39 +344,21 @@ refineUse :: Use Raw -> Refine (Either (Use Refined) (Tm Refined))
 refineUse (RawId id a) =
   do ctrs <- getRCtrs
      cmds <- getRCmds
-     hdrs <- getRMHs
-     case id `findPair` ctrs of
-        Just n -> do checkArgs id n 0 a
-                     return $ Right $ DCon (DataCon id [] a') a'
-        Nothing ->
-          case id `findPair` cmds of
-            Just n -> return $ Left $ Op (CmdId id a') a'
-            -- TODO: LC: Do we need to check command's arity = 0?
-            Nothing ->
-              case id `findPair` hdrs of
-                -- polytypic (n=0 means: takes no argument, x!)
-                Just n -> return $ Left $ Op (Poly id a') a'
-                -- TODO: LC: Same here, check for handler's arity = 0?
-                -- monotypic: must be local variable
-                Nothing -> return $ Left $ Op (Mono id a') a'
+     if id `elem` ctrs
+       then return $ Right $ DCon (DataCon id [] a') a'
+       else if id `elem` cmds
+            then return $ Left $ Op (CmdId id a') a'
+            else return $ Left $ Op (VarId id a') a'
   where a' = rawToRef a
 refineUse (RawComb (RawId id b) xs a) =
   do xs' <- mapM refineTm xs
      ctrs <- getRCtrs
      cmds <- getRCmds
-     hdrs <- getRMHs
-     case id `findPair` ctrs of
-        Just n -> do checkArgs id n (length xs') a
-                     return $ Right $ DCon (DataCon id xs' b') a'
-        Nothing ->
-          case id `findPair` cmds of
-            Just n -> do checkArgs id n (length xs') a
-                         return $ Left $ App (Op (CmdId id b') b') xs' a'
-            Nothing ->
-              case id `findPair` hdrs of
-                Just n -> do checkArgs id n (length xs') a
-                             return $ Left $ App (Op (Poly id b') b') xs' a'
-                Nothing -> return $ Left $ App (Op (Mono id b') b') xs' a'
+     if id `elem` ctrs
+       then return $ Right $ DCon (DataCon id xs' b') a'
+       else if id `elem` cmds
+            then return $ Left $ App (Op (CmdId id b') b') xs' a'
+            else return $ Left $ App (Op (VarId id b') b') xs' a'
   where a' = rawToRef a
         b' = rawToRef b
 refineUse (RawComb x xs a) =
@@ -412,7 +397,7 @@ refineTm :: Tm Raw -> Refine (Tm Refined)
 refineTm (Let x t1 t2 a) =
   do s1 <- refineTm t1
      s2 <- refineTm $ SC (SComp [Cls [VPat (VarPat x a) a] t2 a] a) a
-     return $ Use (App (Op (Poly "case" a') a') [s1, s2] a') a'
+     return $ Use (App (Op (VarId "case" a') a') [s1, s2] a') a'
   where a' = rawToRef a
 refineTm (SC x a) = do x' <- refineSComp x
                        return $ SC x' (rawToRef a)
@@ -445,37 +430,33 @@ refineClause (Cls ps tm a) = do ps' <- mapM refinePattern ps
                                 return $ Cls ps' tm' (rawToRef a)
 
 -- Explicit refinements:
--- + command patterns (e.g. <send x -> k>) must refer to existing command and
---   match # of args
+-- + command patterns (e.g. <send x -> k>) must refer to existing command.
 refinePattern :: Pattern Raw -> Refine (Pattern Refined)
 refinePattern (VPat p a) = VPat <$> refineVPat p <*> (pure $ rawToRef a)
 refinePattern (CmdPat x n ps k a) =
   do cmds <- getRCmds
-     case x `findPair` cmds of
-       Just n' -> do checkArgs x n' (length ps) a
-                     ps' <- mapM refineVPat ps
-                     return $ CmdPat x n ps' k (rawToRef a)
-       Nothing -> throwError $ errorRefIdNotDeclared "command" x a
+     if x `elem` cmds
+       then do ps' <- mapM refineVPat ps
+               return $ CmdPat x n ps' k (rawToRef a)
+       else throwError $ errorRefIdNotDeclared "command" x a
 refinePattern (ThkPat x a) = return $ ThkPat x (rawToRef a)
 
 -- Explicit refinements:
 -- + variable patterns, e.g. "x", are refined to ctrs if "x" is 0-ary ctr
--- + data patterns have to be fully instantiated constructors
+-- + data patterns have to be defined constructors
 -- + cons (%::%) and list patterns ([%, %, %]) become data patterns (cons exps)
 refineVPat :: ValuePat Raw -> Refine (ValuePat Refined)
 refineVPat (VarPat x a) =
   do ctrs <- getRCtrs
-     case x `findPair` ctrs of
-       Just n -> do checkArgs x n 0 a
-                    return $ DataPat x [] (rawToRef a)
-       Nothing -> return $ VarPat x (rawToRef a)
+     if x `elem` ctrs
+       then return $ DataPat x [] (rawToRef a)
+       else return $ VarPat x (rawToRef a)
 refineVPat (DataPat x xs a) =
   do ctrs <- getRCtrs
-     case x `findPair` ctrs of
-       Just n -> do checkArgs x n (length xs) a
-                    xs' <- mapM refineVPat xs
-                    return $ DataPat x xs' (rawToRef a)
-       Nothing -> throwError $ errorRefIdNotDeclared "constructor" x a
+     if x `elem` ctrs
+       then do xs' <- mapM refineVPat xs
+               return $ DataPat x xs' (rawToRef a)
+       else throwError $ errorRefIdNotDeclared "constructor" x a
 refineVPat (IntPat i a) = return $ IntPat i (rawToRef a)
 refineVPat (CharPat c a) = return $ CharPat c (rawToRef a)
 refineVPat (StrPat s a) = return $ StrPat s (rawToRef a)
@@ -491,13 +472,12 @@ refineVPat (ListPat ps a) =
          (DataPat "nil" [] (rawToRef a))
          ps'
 
-initialiseRState :: [DataT Raw] -> [Itf Raw] -> [ItfAlias Raw] -> [MHSig Raw] -> Refine ()
-initialiseRState dts itfs itfAls hdrs =
+initialiseRState :: [DataT Raw] -> [Itf Raw] -> [ItfAlias Raw] -> Refine ()
+initialiseRState dts itfs itfAls =
   do i <- getRState
      itfs'   <- foldM addItf      (interfaces i)       itfs
      itfAls' <- foldM addItfAlias (interfaceAliases i) itfAls
      dts'    <- foldM addDataT    (datatypes i)        dts
-     hdrs'   <- foldM addMH       (handlers i)         hdrs
      cmds'   <- foldM addCmd      (cmds i)             (concatMap getCmds itfs)
      ctrs'   <- foldM addCtr      (ctrs i)             (concatMap getCtrs dts)
      putRItfs       itfs'
@@ -505,7 +485,6 @@ initialiseRState dts itfs itfAls hdrs =
      putRDTs        dts'
      putRCmds       cmds'
      putRCtrs       ctrs'
-     putRMHs        hdrs'
 
 makeIntBinOp :: Refined -> Char -> MHDef Refined
 makeIntBinOp a c = Def [c] (CType [Port [] (IntTy a) a
@@ -529,7 +508,7 @@ builtinDataTs = [DT "List" [("X", VT)] [Ctr "cons" [TVar "X" b
                 ,DT "Ref" [("X", VT)] [] b]
   where b = Refined BuiltIn
 
-builtinItfs :: [Itf Refined]
+builtinItfs :: [Itf Raw]
 builtinItfs = [Itf "Console" [] [Cmd "inch" [] [] (CharTy b) b
                                 ,Cmd "ouch" [] [CharTy b]
                                  (DTTy "Unit" [] b) b
@@ -542,7 +521,7 @@ builtinItfs = [Itf "Console" [] [Cmd "inch" [] [] (CharTy b) b
                                                              (DTTy "Unit" [] b) b
                                    ,Cmd "read" [("X", VT)] [DTTy "Ref" [VArg (TVar "X" b) b] b]
                                                               (TVar "X" b) b] b]
-  where b = Refined BuiltIn
+  where b = Raw BuiltIn
 
 builtinItfAliases :: [ItfAlias Raw]
 builtinItfAliases = []
@@ -577,12 +556,9 @@ caseDef = Def
             (Peg (Ab (AbVar "£" b) (ItfMap M.empty b) b) (TVar "Y" b) b) b)
           [Cls
             [VPat (VarPat "x" b) b, VPat (VarPat "f" b) b]
-            (Use (App (Op (Mono "f" b) b) [Use (Op (Mono "x" b) b) b] b) b) b] b
+            (Use (App (Op (VarId "f" b) b)
+                  [Use (Op (VarId "x" b) b) b] b) b) b] b
   where b = Refined BuiltIn
-
-builtinMHs :: [IPair]
-builtinMHs = map add builtinMHDefs
-  where add (Def x (CType ps _ a) _ _) = (x,length ps)
 
 builtinDTs :: DTMap
 builtinDTs = foldl add M.empty builtinDataTs
@@ -596,49 +572,37 @@ builtinIFAliases :: IFAliasesMap
 builtinIFAliases = foldl add M.empty builtinItfAliases
   where add m (ItfAlias id ps itfMap a) = M.insert id (ps, itfMap) m
 
-builtinCtrs :: [IPair]
+builtinCtrs :: [Id]
 builtinCtrs = map add $ concatMap getCtrs builtinDataTs
-  where add (Ctr id ts a) = (id,length ts)
+  where add (Ctr id ts a) = id
 
-builtinCmds :: [IPair]
+builtinCmds :: [Id]
 builtinCmds = map add $ concatMap getCmds builtinItfs
-  where add (Cmd id _ ts _ a) = (id,length ts)
+  where add (Cmd id _ ts _ a) = id
 
 initRefine :: RState
-initRefine = MkRState builtinIFs builtinIFAliases builtinDTs builtinMHs builtinCtrs
+initRefine = MkRState builtinIFs builtinIFAliases builtinDTs builtinCtrs
              builtinCmds M.empty S.empty Nothing
 
 {- Helper functions -}
 
-mem :: Id -> [IPair] -> Bool
-mem x xs = x `elem` map fst xs
-
-findPair :: Id -> [IPair] -> Maybe Int
-findPair x ((y,n) : xs) = if x == y then Just n else findPair x xs
-findPair _ _ = Nothing
-
-collectCmds :: [Cmd a] -> [Id]
-collectCmds (Cmd cmd _ _ _ a : xs) = cmd : collectCmds xs
-collectCmds [] = []
-
-collectCtrs :: [Ctr a] -> [Id]
-collectCtrs (Ctr ctr _ a : xs) = ctr : collectCtrs xs
-collectCtrs [] = []
-
-collectMHNames :: [MHSig Raw] -> [Id]
-collectMHNames (Sig hdr _ a : xs) = hdr : collectMHNames xs
-collectMHNames [] = []
-
 -- Add the id if not already present
-addEntry :: [IPair] -> Id -> Int -> String -> Refine [IPair]
-addEntry xs x n prefix = if x `mem` xs then throwError (errorRefEntryAlreadyDefined prefix x)
-                         else return $ (x,n) : xs
+addEntry :: [Id] -> Id -> String -> Refine [Id]
+addEntry xs x prefix =
+  if x `elem` xs then throwError (errorRefEntryAlreadyDefined prefix x)
+  else return $ x : xs
 
 addItf :: IFMap -> Itf Raw -> Refine IFMap
-addItf m (Itf x ps _ a) = return $ M.insert x ps m
+addItf m (Itf x ps _ a) =
+  if M.member x m then
+    throwError $ errorRefDuplTopTm "interface" x (getSource a)
+  else return $ M.insert x ps m
 
 addItfAlias :: IFAliasesMap -> ItfAlias Raw -> Refine IFAliasesMap
-addItfAlias m (ItfAlias x ps itfMap a) = return $ M.insert x (ps, itfMap) m
+addItfAlias m (ItfAlias x ps itfMap a) =
+  if M.member x m then
+     throwError $ errorRefDuplTopTm "interface alias" x (getSource a)
+  else return $ M.insert x (ps, itfMap) m
 
 addDataT :: DTMap -> DataT Raw -> Refine DTMap
 addDataT m (DT x ps _ a) =
@@ -646,26 +610,16 @@ addDataT m (DT x ps _ a) =
     throwError $ errorRefDuplTopTm "datatype" x (getSource a)
   else return $ M.insert x ps m
 
-addCtr :: [IPair] -> Ctr a -> Refine [IPair]
-addCtr xs (Ctr x ts a) = addEntry xs x (length ts) "duplicate constructor: "
+addCtr :: [Id] -> Ctr a -> Refine [Id]
+addCtr xs (Ctr x _ _) = addEntry xs x "duplicate constructor:"
 
-addCmd :: [IPair] -> Cmd a -> Refine [IPair]
-addCmd xs (Cmd x _ ts _ a) = addEntry xs x (length ts) "duplicate command: "
-
--- takes map handler-id -> #-of-ports and adds another handler entry
-addMH :: [IPair] -> MHSig Raw -> Refine [IPair]
-addMH xs (Sig x (CType ps p _) _) =
-  addEntry xs x (length ps) "duplicate operator:"
+addCmd :: [Id] -> Cmd a -> Refine [Id]
+addCmd xs (Cmd x _ _ _ _) = addEntry xs x "duplicate command:"
 
 uniqueIds :: [Id] -> Bool
 uniqueIds xs = length xs == length (nub xs)
 
 -- Helpers
-
-checkArgs :: Id -> Int -> Int -> Raw -> Refine ()
-checkArgs x exp act a =
-  when (exp /= act) $
-    throwError $ errorRefNumberOfArguments x exp act a
 
 swap :: (a -> b -> c) -> b -> a -> c
 swap f b a = f a b

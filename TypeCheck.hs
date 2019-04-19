@@ -31,9 +31,9 @@ type EVMap a = M.Map Id (Ab a)
 --    - Add mark and add all type variables qs to context (-> qs')
 --    - Unify itf instantiation ps with qs'
 --    - Construct susp. comp. val. type whose containted tys are all in current locality
--- 2) x is monotypic (i.e., local variable) or
---         polytypic (i.e., multi-handler)
---    - It must have been assigned a type in the context, return it
+-- 2) x is value variable
+--    - It must have been assigned a kind (mono or poly) and a type in the
+--      context. If it is a poly, instantiate the type before returning it.
 find :: Operator Desugared -> Contextual (VType Desugared)
 find (CmdId x a) =
   do amb <- getAmbient
@@ -69,9 +69,11 @@ find (CmdId x a) =
                                  (Peg amb y' a) a) a
             logEndFindCmd x ty
             return ty
-find x = getContext >>= find'
-  where find' BEmp = throwError $ errorTCNotInScope x
-        find' (es :< TermVar y ty) | strip x == strip y = return ty
+find op@(VarId x _) = getContext >>= find'
+  where find' BEmp = throwError $ errorTCNotInScope op
+        find' (es :< TermVar (Poly y _) ty) | x == y =
+          addMark >> makeFlexible [] ty -- instantiate polymorphic operator
+        find' (es :< TermVar (Mono y _) ty) | x == y = return ty
         find' (es :< _) = find' es
 
 -- Find the first flexible type definition (as opposed to a hole) in ctx for x
@@ -85,7 +87,7 @@ findFTVar x = getContext >>= find'
 -- 1) Push [x:=ty] on context
 -- 2) Run computation m
 -- 3) Remove [x:=ty] from context
-inScope :: Operator Desugared -> VType Desugared -> Contextual a -> Contextual a
+inScope :: Operator Typed -> VType Desugared -> Contextual a -> Contextual a
 inScope x ty m = do modify (:< TermVar x ty)
                     a <- m
                     modify dropVar
@@ -120,17 +122,6 @@ lkpItfInAbMod itf n (AbFVar x _) = getContext >>= find'
         find' (es :< _) = find' es
 lkpItfInAbMod itf n v = return Nothing
 
--- The only operators that could potentially be polymorphic are
--- 1) polytypic operators and
--- 2) command operators
--- We only instantiate here in case 1) because command operators get already
--- instantiated in "find"
--- LC: TODO: remove this function and transfer its functionality to "find", too?
-instantiate :: Operator Desugared -> VType Desugared -> Contextual (VType Desugared)
-instantiate (Poly _ _) ty = addMark >> makeFlexible [] ty
-instantiate _ ty = return ty
--- TODO: change output of check to Maybe String?
-
 -- infer the type of a use w.r.t. the given program
 inferEvalUse :: Prog Desugared -> Use Desugared ->
                 Either String (Use Desugared, VType Desugared)
@@ -163,13 +154,12 @@ checkMHDef (Def id ty@(CType ps q _) cs a) = do
 -- 1st major TC function besides "check": Infer type of a "use"
 -- Functions below implement the typing rules described in the paper.
 -- 1) Var, PolyVar, Command rules
---    - Find operator x in context and retrieve its type
+--    - Find operator x in context and retrieve its (instantiated) type
 --    - Case distinction on x:
 --      1.1) x is monotypic (local var)
---           - Its type is exactly determined (instantiate does nothing)
+--           - find does no instantiation
 --      1.2) x is polytypic (multi-handler) or a command
---           - Its type (susp. comp. ty) possibly contains rigid ty vars
---           - Instantiate all of them (add to context), then return type
+--           - find instantiates any rigid type variables
 -- 2) App rule
 --    - Infer type of f
 --    - If this susp. comp. type is known, check the arguments are well-typed
@@ -183,9 +173,8 @@ inferUse :: Use Desugared -> Contextual (Use Desugared, VType Desugared)
 inferUse u@(Op x _) =                                                           -- Var, PolyVar, Command rules
   do logBeginInferUse u
      ty <- find x
-     res <- instantiate x ty
-     logEndInferUse u res
-     return (u, res)
+     logEndInferUse u ty
+     return (u, ty)
 inferUse app@(App f xs a) =                                                     -- App rule
   do logBeginInferUse app
      (f', ty) <- inferUse f
@@ -209,9 +198,15 @@ inferUse app@(App f xs a) =                                                     
           do amb <- getAmbient
              -- require ab = amb
              unifyAb ab amb
-             -- Check typings of x_i for port p_i
-             xs' <- zipWithM checkArg ps xs
-             return (xs', ty')
+             -- Check we have the expected number of arguments and the types
+             -- match.
+             if length xs /= length ps
+               then throwError $ (show $ ppUse f) ++ " expects " ++
+                    (show $ length ps) ++ " argument(s) but " ++
+                    (show $ length xs) ++ " given " ++
+                    "(" ++ (show $ ppSourceOf a) ++ ")"
+               else do xs' <- zipWithM checkArg ps xs
+                       return (xs', ty')
         discriminate ty@(FTVar y a) =
           do mty <- findFTVar y  -- find definition of y in context
              case mty of
@@ -380,14 +375,14 @@ checkPat (CmdPat cmd n xs g a) port@(Port adjs ty b) =                          
           -- type of continuation:  {y' -> [adj + currentAmb]ty}
           kty <- contType y' adjs ty a
           -- bindings: continuation + patterns
-          return ((Mono g a, kty) : bs)
+          return ((Mono g (refToTyped a), kty) : bs)
      else
        throwError $ errorTCCmdNotFoundInPort cmd n port
 checkPat (ThkPat x a) (Port adjs ty b) =                                         -- P-CatchAll rule
 -- pattern:  x
   do amb <- getAmbient
      (_, amb') <- applyAllAdjustments adjs amb
-     return [(Mono x a, SCTy (CType [] (Peg amb' ty b) b) b)]
+     return [(Mono x (refToTyped a), SCTy (CType [] (Peg amb' ty b) b) b)]
 
 -- continuation type
 contType :: VType Desugared -> [Adjustment Desugared] -> VType Desugared -> Desugared ->
@@ -400,7 +395,7 @@ contType x adjs y a =
 -- Check that a value pattern has a given type (corresponding to rules)
 -- Return its bindings (id -> value type)
 checkVPat :: ValuePat Desugared -> VType Desugared -> Contextual [TermBinding]
-checkVPat (VarPat x a) ty = return [(Mono x a, ty)]                             -- P-Var rule
+checkVPat (VarPat x a) ty = return [(Mono x (refToTyped a), ty)]                             -- P-Var rule
 --         x
 checkVPat (DataPat k ps a) ty =                                                 -- P-Data rule
 --         k p_1 .. p_n

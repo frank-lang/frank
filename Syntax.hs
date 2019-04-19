@@ -91,22 +91,24 @@ class NotRaw a where
 instance NotRaw () where idNotRaw = Prelude.id
 instance NotRaw (AnnotT a Identity ()) where idNotRaw = Prelude.id
 
+class NotRefined a where
+  idNotRefined :: a -> a
+
 class NotDesugared a where
   idNotDesugared :: a -> a
+instance NotDesugared (AnnotT a Identity ()) where idNotDesugared = id
 
 -- output from the parser
 newtype Raw = Raw Source
   deriving (Show, Eq)
 instance NotDesugared Raw where idNotDesugared = id
-instance NotDesugared (AnnotT Raw Identity ()) where idNotDesugared = id
-instance NotDesugared (AnnotT Refined Identity ()) where idNotDesugared = id
 instance HasSource Raw where getSource (Raw s) = s
 
 -- well-formed AST (after tidying up the output from the parser)
 newtype Refined = Refined Source
   deriving (Show, Eq)
-instance NotDesugared Refined where idNotDesugared = id
 instance NotRaw Refined where idNotRaw = id
+instance NotDesugared Refined where idNotDesugared = id
 instance HasSource Refined where getSource (Refined s) = s
 
 -- desugaring of types:
@@ -116,6 +118,13 @@ newtype Desugared = Desugared Source
   deriving (Show, Eq)
 instance NotRaw Desugared where idNotRaw = id
 instance HasSource Desugared where getSource (Desugared s) = s
+
+-- Typed kind for distinguishing monomorphic and polymorphic variables.
+newtype Typed = Typed Source
+              deriving (Show, Eq)
+instance NotRaw Typed where idNotRaw = id
+instance NotDesugared Typed where idNotDesugared = id
+instance HasSource Typed where getSource (Typed s) = s
 
 {- AST nodes -}
 
@@ -177,14 +186,16 @@ instance HasId (MHDef t) where getId (Def x _ _ _) = x
    in the paper. -}
 
 data OperatorF :: ((* -> *) -> (* -> *)) -> * -> * where
-  MkMono :: Id -> OperatorF t r                                             -- monotypic (just variable)
-  MkPoly :: Id -> OperatorF t r                                             -- polytypic  (handler expecting arguments, could also be 0 args (!))
+  MkMono :: Id -> OperatorF (AnnotT Typed) r         -- monotypic (just variable)
+  MkPoly :: Id -> OperatorF (AnnotT Typed) r         -- polytypic (handler expecting arguments, could also be 0 args (!))
+  MkVarId :: Id -> OperatorF t r
   MkCmdId :: Id -> OperatorF t r
 deriving instance (Show r, Show (TFix t OperatorF)) => Show (OperatorF t r)
 deriving instance (Eq r, Eq (TFix t OperatorF)) => Eq (OperatorF t r)
 type Operator a = AnnotTFix a OperatorF
 pattern Mono x a = Fx (AnnF (MkMono x, a))
 pattern Poly x a = Fx (AnnF (MkPoly x, a))
+pattern VarId x a = Fx (AnnF (MkVarId x, a))
 pattern CmdId x a = Fx (AnnF (MkCmdId x, a))
 
 data DataConF :: ((* -> *) -> (* -> *)) -> * -> * where
@@ -207,7 +218,7 @@ pattern DataCon x tms a = Fx (AnnF (MkDataCon x tms, a))
 data TopTmF :: ((* -> *) -> (* -> *)) -> * -> * where
   MkDataTm :: TFix t DataTF -> TopTmF t r
   MkItfTm :: TFix t ItfF -> TopTmF t r
-  MkItfAliasTm :: TFix t ItfAliasF -> TopTmF t r
+  MkItfAliasTm :: TFix (AnnotT Raw) ItfAliasF -> TopTmF (AnnotT Raw) r
   MkSigTm :: TFix (AnnotT Raw) MHSigF -> TopTmF (AnnotT Raw) r
   MkClsTm :: TFix (AnnotT Raw) MHClsF -> TopTmF (AnnotT Raw) r
   MkDefTm :: NotRaw (t Identity ()) => TFix t MHDefF -> TopTmF t r
@@ -599,6 +610,7 @@ substOpenAbPort ab (MkPort adj ty) =
 getOpName :: Operator t -> Id
 getOpName (Mono x _) = x
 getOpName (Poly x _) = x
+getOpName (VarId x _) = x
 getOpName (CmdId x _) = x
 
 -- transform type variable (+ its kind) to a raw tye variable argument

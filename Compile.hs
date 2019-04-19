@@ -194,14 +194,11 @@ compileSComp (SComp xs _) = S.EF <$> pure [([], [])] <*> mapM compileClause xs
 -- TODO: LC: Fix this!
 
 compileOp :: Operator Desugared -> Compile S.Exp
-compileOp (Mono id _) = case M.lookup id builtins of
+compileOp (VarId id _) = case M.lookup id builtins of
   Just v -> return $ S.EV v
   Nothing ->  do b <- isAtom id
                  return $ if b then S.EA id
                           else S.EV id
-compileOp (Poly id _) = case M.lookup id builtins of
-  Just v -> return $ S.EV v
-  Nothing -> return $ S.EV id
 compileOp (CmdId id _) = return $ S.EA id
 
 builtins :: M.Map String String

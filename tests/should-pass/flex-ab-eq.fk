@@ -8,7 +8,7 @@ foo : [Eff Bar]Unit
 foo! = unit
 
 boo : <Eff S>Unit -> Unit
-boo   <bang -> k> = boo k!
+boo   <bang -> k> = boo (k unit)
 boo   unit        = unit
 
 main : {Unit}

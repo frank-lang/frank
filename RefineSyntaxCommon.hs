@@ -18,8 +18,6 @@ type Refine = ExceptT String (State RState)
 type TVarMap = M.Map Id (VType Raw)
 type EVarSet = S.Set Id
 
--- generic object-int pair
-type IPair = (Id,Int)
 -- data type id is mapped to rigid data type (RDT) variables (for polymorphic data types)
 type DTMap = M.Map Id [(Id, Kind)]                      -- dt-id     -> [ty-vars]
 type IFMap = M.Map Id [(Id, Kind)]                      -- itf-id    -> [ty-vars]
@@ -31,9 +29,8 @@ data TopLevelCtxt = Interface | InterfaceAlias | Datatype | Handler
 data RState = MkRState { interfaces :: IFMap
                        , interfaceAliases :: IFAliasesMap
                        , datatypes :: DTMap
-                       , handlers :: [IPair]              -- handler Id -> # of arguments
-                       , ctrs :: [IPair]                  -- constructor Id -> # of arguments
-                       , cmds :: [IPair]                  -- command Id -> # of arguments
+                       , ctrs :: [Id]                  -- constructor ids
+                       , cmds :: [Id]                  -- command ids
                        , tmap :: TVarMap                  -- type var Id ->   VType Raw     val ty vars of current context
                        , evmap :: EVarSet                 -- effect var Id                  eff ty vars of current context
                        , tlctxt :: Maybe TopLevelCtxt }
@@ -69,29 +66,21 @@ getRDTs :: Refine DTMap
 getRDTs = do s <- getRState
              return $ datatypes s
 
-putRCtrs :: [IPair] -> Refine ()
+putRCtrs :: [Id] -> Refine ()
 putRCtrs xs = do s <- getRState
                  putRState $ s { ctrs = xs }
 
-getRCtrs :: Refine [IPair]
+getRCtrs :: Refine [Id]
 getRCtrs = do s <- getRState
               return $ ctrs s
 
-putRCmds :: [IPair] -> Refine ()
+putRCmds :: [Id] -> Refine ()
 putRCmds xs = do s <- getRState
                  putRState $ s { cmds = xs }
 
-getRCmds :: Refine [IPair]
+getRCmds :: Refine [Id]
 getRCmds = do s <- getRState
               return $ cmds s
-
-putRMHs :: [IPair] -> Refine ()
-putRMHs xs = do s <- getRState
-                putRState $ s { handlers = xs }
-
-getRMHs :: Refine [IPair]
-getRMHs = do s <- getRState
-             return $ handlers s
 
 putTMap :: TVarMap -> Refine ()
 putTMap m = do s <- getRState

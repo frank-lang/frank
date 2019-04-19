@@ -1,0 +1,16 @@
+-- #desc Regression for incorrect number of arguments supplied to a monomorphic varible (continuation). Based on flex-ab-eq.fk (contained bug identified by this regression).
+-- #return k expects 1 argument(s) but 0 given (line 12 , column 25)
+
+interface Eff X = bang : Unit
+
+data Bar = bar {Unit}
+
+foo : [Eff Bar]Unit
+foo! = unit
+
+boo : <Eff S>Unit -> Unit
+boo   <bang -> k> = boo k! -- Line in question
+boo   unit        = unit
+
+main : {Unit}
+main! = boo foo!

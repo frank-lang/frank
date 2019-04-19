@@ -116,10 +116,3 @@ substitInAdj subst (ConsAdj x ts a) = do
 
 substitInItfMap :: Subst -> ItfMap Raw -> Refine (ItfMap Raw)
 substitInItfMap subst (ItfMap m a) = ItfMap <$> mapM (mapM (mapM (substitInTyArg subst))) m <*> pure a
-
--- helpers
-
-checkArgs :: Id -> Int -> Int -> Raw -> Refine ()
-checkArgs x exp act a =
-  when (exp /= act) $
-    throwError $ errorRefNumberOfArguments x exp act a

@@ -254,11 +254,10 @@ desugarUse (Adapted rs t a) = Adapted <$> (mapM desugarAdaptor rs)
 -- explicit refinements:
 -- + Rem, Copy and Swap gets desugared to GeneralAdaptor
 desugarAdaptor :: Adaptor Refined -> Desugar (Adaptor Desugared)
-desugarAdaptor (Adp x ns k a) = return $ Adp x ns k (refToDesug a)                                                     
+desugarAdaptor (Adp x ns k a) = return $ Adp x ns k (refToDesug a)
 
 desugarOperator :: Operator Refined -> Desugar (Operator Desugared)
-desugarOperator (Mono x a) = return $ Mono x (refToDesug a)
-desugarOperator (Poly x a) = return $ Poly x (refToDesug a)
+desugarOperator (VarId x a) = return $ VarId x (refToDesug a)
 desugarOperator (CmdId x a) = return $ CmdId x (refToDesug a)
 
 desugarDCon :: DataCon Refined -> Desugar (DataCon Desugared)

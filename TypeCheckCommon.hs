@@ -48,7 +48,7 @@ deriving instance MonadError String Contextual
 deriving instance GenFresh Contextual
 
 data Entry = FlexMVar Id Decl
-           | TermVar (Operator Desugared) (VType Desugared)
+           | TermVar (Operator Typed) (VType Desugared)
            | Mark
            deriving (Show)
 data Decl = Hole
@@ -56,7 +56,7 @@ data Decl = Hole
           | AbDefn (Ab Desugared)
           deriving (Show)
 type Context = Bwd Entry
-type TermBinding = (Operator Desugared, VType Desugared)
+type TermBinding = (Operator Typed, VType Desugared)
 type Suffix = [(Id, Decl)]
 
 -- push fresh meta variable on context (corresponds to "freshMeta" in Gundry's thesis)
@@ -201,7 +201,8 @@ initContextual (MkProg ttms) =
 
         -- init context for each handler id of type ty with "id := ty"
         h :: MHDef Desugared -> Contextual ()
-        h (Def id ty _ a) = modify (:< TermVar (Poly id a) (SCTy ty a))
+        h (Def id ty _ a) = modify (:< TermVar (Poly id a') (SCTy ty a))
+          where a' = refToTyped a
 
 initTCState :: TCState
 initTCState = MkTCState BEmp (Ab (EmpAb a) (ItfMap M.empty a) a) M.empty M.empty []
@@ -244,3 +245,6 @@ expandAb (Ab v m a) =  do
   case ab of
     Just (Ab v' m' a') -> expandAb $ Ab v' (m' `plusItfMap` m) a
     Nothing ->            return $ Ab v m a
+
+refToTyped :: Desugared -> Typed
+refToTyped (Desugared loc) = Typed loc

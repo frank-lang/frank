@@ -9,6 +9,7 @@ import RefineSyntaxCommon
 import TypeCheckCommon
 
 import Control.Monad
+import Control.Monad.Except
 import qualified Data.Map.Strict as M
 import qualified Data.Set as S
 import Data.List
@@ -89,8 +90,10 @@ errorRefEntryAlreadyDefined sort x = sort ++ " " ++ x ++ " already defined"
 errorRefDuplTopTm :: String -> Id -> Source -> String
 errorRefDuplTopTm sort x a = "duplicate " ++ sort ++ ": " ++ x ++ " already defined (" ++ show a ++ ")"
 
-errorRefNumberOfArguments :: Id -> Int -> Int -> Raw -> String
-errorRefNumberOfArguments x exp act a = x ++ " expects " ++ show exp ++ " argument(s) but " ++ show act ++ " given (" ++ (show $ ppSourceOf a) ++ ")"
+errorNumberOfArguments :: HasSource a => Id -> Int -> Int -> a -> String
+errorNumberOfArguments x exp act a =
+  x ++ " expects " ++ show exp ++ " argument(s) but " ++ show act ++
+  " given (" ++ (show $ ppSourceOf a) ++ ")"
 
 errorRefItfAlCycle :: Id -> String
 errorRefItfAlCycle x = "interface alias " ++ show x ++ " is defined in terms of itself (cycle)"
@@ -243,6 +246,11 @@ debugParserM = traceM
 
 debugRefineM :: String -> Refine ()
 debugRefineM = traceM
+
+checkArgs :: Id -> Int -> Int -> Raw -> Refine ()
+checkArgs x exp act a =
+  when (exp /= act) $
+    throwError $ errorNumberOfArguments x exp act a
 
 debugRefine :: String -> a -> a
 debugRefine = trace
@@ -441,6 +449,7 @@ ppArgs args = sep (map ppTm args)
 ppOperator :: (Show a, HasSource a) => Operator a -> PP.Doc
 ppOperator (Mono x _) = text x
 ppOperator (Poly x _) = text x
+ppOperator (VarId x _) = text x
 ppOperator (CmdId x _) = text x
 
 ppDataCon :: (Show a, HasSource a) => DataCon a -> PP.Doc
