@@ -1,5 +1,5 @@
 -- Specifies communication with user: Debugging, Error reporting, ...
-{-# LANGUAGE GADTs #-}
+{-# LANGUAGE GADTs,FlexibleContexts #-}
 module Debug where
 
 import Prelude hiding ((<>))
@@ -249,7 +249,8 @@ debugParserM = traceM
 debugRefineM :: String -> Refine ()
 debugRefineM = traceM
 
-checkArgs :: Id -> Int -> Int -> Raw -> Refine ()
+checkArgs :: (HasSource a, MonadError String m) =>
+             Id -> Int -> Int -> a -> m ()
 checkArgs x exp act a =
   when (exp /= act) $
     throwError $ errorNumberOfArguments x exp act a

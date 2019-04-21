@@ -268,6 +268,7 @@ checkTm (Use u a) t = do (u', s) <- inferUse u
 checkTm (DCon (DataCon k xs a') a) ty =
   do (dt, args, ts) <- getCtr k
 --    data dt arg_1 ... arg_m = k t_1 ... t_n | ...
+     checkArgs k (length ts) (length xs) a
      addMark
      -- prepare flexible ty vars and ty args
      args' <- mapM (makeFlexibleTyArg []) args

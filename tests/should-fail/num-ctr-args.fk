@@ -1,0 +1,8 @@
+-- #desc Report error if constructor receives more arguments than expected
+-- #return meow expects 2 argument(s) but 3 given (line 8 , column 22)
+
+data Meow = empty | meow Char Meow
+
+oneMore : {Meow -> Meow}
+oneMore empty = meow 'm' empty
+oneMore (meow c m) = meow c m 'c'
