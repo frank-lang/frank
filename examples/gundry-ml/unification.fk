@@ -1,0 +1,79 @@
+-- The unification algorithm.
+
+include prelude
+include syntax
+
+data Extension = restore | replace (List (Pair Int (Decl Ty))) -- Suffix
+
+-- onTop : {{Name -> Decl Ty -> [Contextual]Extension} -> [Contextual]Unit}
+onTop : {{Int -> Decl Ty -> [Contextual]Extension} -> [Contextual]Unit}
+onTop f = case popL! { (bmv n d) -> case (f n d)
+                                    { (replace xs) ->
+                                       modify ({ctx -> fish ctx xs})
+                                    | restore ->
+                                       modify (<State> (bw (bmv n d)))}
+                     |     e     -> onTop f; modify (<State> (bw e))}
+
+unify : {Ty -> Ty -> [Contextual]Unit}
+unify   (arr t0 t1) (arr v0 v1) = unify t0 v0; unify t1 v1
+unify   (meta a) (meta b) =
+  onTop {y d -> case (pair (eqInt a y) (pair (eqInt b y) d))
+                { (pair true (pair true _)) -> restore
+                | (pair true (pair false hole)) ->
+                    replace [pair a (defn (meta b))]
+                | (pair false (pair true hole)) ->
+                    replace [pair b (defn (meta a))]
+                | (pair true (pair false (defn t))) ->
+                    unify (meta b) t; restore
+                | (pair false (pair true (defn t))) ->
+                    unify (meta a) t; restore
+                | (pair false (pair false _)) ->
+                    unify (meta a) (meta b); restore}}
+unify (meta a) t = solve a [] t
+unify t (meta a) = solve a [] t
+unify _ _ = raise "rigid-rigid mismatch"
+
+solve : {Int -> List (Pair Int (Decl Ty)) -> Ty -> [Contextual]Unit}
+solve a xs t =
+  onTop {y d -> case (pair (eqInt y a)
+                         (pair (findb {x -> eqInt x y} (fmvs t)) d))
+                {(pair _ (pair _ (defn v))) ->
+                   modify ({ctx -> fish ctx xs});
+                   unify (substMetaTy y v (meta a)) (substMetaTy y v t);
+                   restore
+                |(pair true (pair true hole)) -> raise "Occurrence detected"
+                |(pair true (pair false hole)) ->
+                   replace (append xs [pair a (defn t)])
+                |(pair false (pair true hole)) ->
+                   solve a ((pair y hole) :: xs) t; replace []
+                |(pair false (pair false hole)) -> solve a xs t; restore}}
+
+-- Substitution for de Bruijn indices
+
+-- Variables
+substVarTy : {Int -> Ty -> Ty -> Ty}
+substVarTy y t (meta x) = meta x
+substVarTy y t (arr v0 v1) = arr (substVarTy y t v0) (substVarTy y t v1)
+substVarTy y t (var x) = if (eqInt x y) {t} {var x}
+
+shiftVar : {Ty -> Ty}
+shiftVar (meta x) = meta x
+shiftVar (arr v0 v1) = arr (shiftVar v0) (shiftVar v1)
+shiftVar (var x) = var (x+1)
+
+substVarSch : {Int -> Ty -> Sch -> Sch}
+substVarSch y t (mono v) = mono (substVarTy y t v)
+substVarSch y t (poly s) = poly (substVarSch (y+1) (shiftVar t) s)
+
+-- Metavariables
+-- They are not bound by the forall quantifier and so their substitution is
+-- not capture-avoiding but they still shift any "var"s in t.
+substMetaTy : {Int -> Ty -> Ty -> Ty}
+substMetaTy    y     t    (meta x) = if (eqInt x y) {t} {meta x}
+substMetaTy    y     t    (arr v0 v1) =
+  arr (substMetaTy y t v0) (substMetaTy y t v1)
+substMetaTy    y     t    (var x) = var x
+
+substMetaSch : {Int -> Ty -> Sch -> Sch}
+substMetaSch y t (mono v) = mono (substMetaTy y t v)
+substMetaSch y t (poly s) = poly (substMetaSch y (shiftVar t) s)

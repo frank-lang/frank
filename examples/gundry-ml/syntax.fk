@@ -1,14 +1,96 @@
-{-- Syntax for an algebraic effects and handler implementation of Gundry
-    et. al's Hindley-Milner type inference algorithm. --}
+{-- Syntax for an effects and handler implementation of Gundry et. al's
+    Hindley-Milner type inference algorithm. --}
 
 include prelude
 
-data Ty = base Nat | arr Ty Ty
+-- type Name = Int
+
+data Ty = meta Int | var Int | arr Ty Ty
 
 data Sch = mono Ty | poly Sch
 
-data Tm = var String | lam Tm | app Tm Tm | bnd String Tm Tm
+data Tm = varx Int | lam Tm | app Tm Tm | seq Tm Tm
 
-data Ctx = emp | buv Ctx Nat | bdv Ctx Nat Ty | btv Ctx Nat Sch | mrk Ctx
+data Bwd X = bemp | bcons (Bwd X) X
 
-data Suffix = nuffin | hole Suffix Nat | defn Suffix Nat Ty
+data Decl X = hole | defn X
+
+data Entry = bmv Int (Decl Ty) | btv Sch | mrk
+
+-- type Ctx = Bwd Entry
+
+-- type Suffix = List (Pair Int (Decl Ty))
+
+-- The effects needed for unification and type inference.
+
+interface Names = fresh : Int -- generate a fresh name starting from 0.
+
+interface TypeError = raise X : String -> X
+
+interface Contextual = [Abort,State (Bwd Entry),Names,TypeError]
+
+fmvs : {Ty -> List Int}
+fmvs (meta x)  = [x]
+fmvs (var x)   = []
+fmvs (arr s t) = append (fmvs s) (fmvs t)
+
+fish : Bwd Entry -> List (Pair Int (Decl Ty)) -> Bwd Entry
+-- fish : Ctx -> Suffix -> Ctx
+fish ctx ((pair n d) :: es) = fish (bcons ctx (bmv n d)) es
+fish ctx          []        = ctx
+
+popL : {[Contextual]Entry}
+popL! = case get! { bemp -> raise "nae mere"
+                  | (bcons ctx e) -> put ctx; e}
+
+-- A workaround since Frank does not allow partially applied data
+-- constructors.
+bw : {X -> {Bwd X -> Bwd X}}
+bw x = {sx -> bcons sx x}
+
+freshMeta : {[Contextual]Int}
+freshMeta! = let x = fresh! in modify (<State> (bw (bmv x hole))); x
+
+{-- Find the type scheme of the provided term variable 'x'. --}
+help : Int -> Bwd Entry -> [TypeError]Sch
+help    x       bemp     = raise "Out of scope"
+help    0 (bcons ctx (btv t)) = t
+help    x (bcons ctx (btv t)) = help (x-1) ctx
+help    x  (bcons ctx _) = help x ctx
+
+findSch : {Int -> [Contextual]Sch}
+findSch x = help x get!
+
+-- drop the nearest term variable
+dropVar : {Bwd Entry -> [Abort]Bwd Entry}
+dropVar      bemp    = abort!
+dropVar  (bcons ctx (btv t)) =  ctx
+dropVar  (bcons ctx e) = bcons (dropVar ctx) e
+
+{-- extend the context with an additional variable, run the given computation
+ -- in this extended scope then remove the binding afterwards. --}
+
+-- inScope : {Name -> Sch -> {[Contextual]X} -> [Contextual]X}
+extend : {Sch -> {[Contextual]X} -> [Contextual]X}
+extend     t           m         = modify (<State> (bw (btv t)));
+                                   let res = m! in
+                                   modify ({xs -> dropVar xs});
+                                   res
+
+{-- Some tests of the above functions. --}
+
+id : {Sch}
+id! = poly (mono (arr (var 0) (var 0)))
+
+kk : {Sch}
+kk! = poly (poly (mono (arr (var 1) (arr (var 0) (var 1)))))
+
+prefix : {Bwd Entry}
+prefix! = bcons bemp (btv id!)
+
+bait : {Bwd Entry}
+bait! = fish prefix! [pair 0 hole, pair 1 (defn (meta 0)), pair 2 hole,
+                      pair 3 (defn (arr (var 0) (var 1)))]
+
+scope : {[Abort,TypeError,Names]List Sch}
+scope! = evalState bait! (popL; findSch 0 :: extend kk! {findSch 0} :: [])

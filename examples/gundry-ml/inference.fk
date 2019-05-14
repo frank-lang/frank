@@ -1,0 +1,65 @@
+
+include prelude
+include syntax
+include unification
+
+-- Instantiate a scheme introducing metavariables for all the bound variables.
+inst : {Sch -> [Contextual]Sch}
+inst (mono t) = mono t
+inst (poly b) = poly (substVarSch 0 (meta freshMeta!) (inst b))
+
+open : {Sch -> [Contextual]Ty}
+open (mono t) = t
+open (poly b) = open b
+
+specialise : {Sch -> [Contextual]Ty}
+specialise s = open (inst s)
+
+names : {Int -> <Names>X -> X}
+names n <fresh -> k> = names (n+1) (k n)
+names n       x      = x
+
+generaliseOver : {{[Contextual]Ty} -> [Contextual]Sch}
+generaliseOver m = modify (<State> (bw mrk));
+                   let t = m! in
+                   let suffix = skimCtx [] in
+                   up suffix t
+
+-- Helper for generaliseOver; relies on locality marker ; being present
+skimCtx : {List (Pair Int (Decl Ty)) -> [Contextual]List (Pair Int (Decl Ty))}
+skimCtx xs = case popL! {(bmv n d) -> skimCtx ((pair n d) :: xs)
+                        | mrk -> xs}
+
+infer : {Tm -> [Contextual]Ty}
+infer (varx x) = specialise (findSch x)
+infer (lam b) = let t = meta freshMeta! in
+                let v = extend (mono t) {infer b} in
+                arr t v
+infer (app f s) = let t = infer f in
+                  let a = infer s in
+                  let b = meta freshMeta! in
+                  unify t (arr a b); b
+infer (seq m n) = let s = generaliseOver {infer m} in
+                  extend s {infer n}
+
+up : {List (Pair Int (Decl Ty)) -> Ty -> Sch}
+up  [] t = mono t
+up ((pair n hole) :: xs) t = poly (substMetaSch n (var 0) (up xs t))
+up ((pair n (defn v)) :: xs) t = substMetaSch n v (up xs t)
+
+kks : {List (Pair Int (Decl Ty))}
+kks! = [pair 2 hole,pair 3 hole]
+
+-- Instantiation followed by generalisation test.
+igtest : {[Abort,TypeError]Pair (Bwd Entry) Sch}
+igtest! = names 0 (runState bemp (up kks! (specialise kk!;specialise kk!)))
+
+prog : {Tm}
+prog! = seq (lam (lam (varx 1)))
+            (app (varx 0) (varx 0))
+
+main : {[Contextual]Pair (Bwd Entry) Ty}
+main! = names 0 (runState bemp (infer prog!))
+
+
+

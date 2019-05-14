@@ -69,6 +69,15 @@ head : {List X -> [Abort]X}
 head []        = abort!
 head (x :: xs) = x
 
+nth : {Int -> List X -> [Abort]X}
+nth 0 (x :: xs) = x
+nth n (x :: xs) = nth (n-1) xs
+nth _    _      = abort!
+
+findb : {{X -> Bool} -> List X -> Bool}
+findb _ []      = false
+findb p (x::xs) = if (p x) {true} {findb p xs}
+
 find : {{X -> Bool} -> List X -> Maybe X}
 find _ []      = nothing
 find p (x::xs) = if (p x) {just x} {find p xs}
@@ -102,6 +111,11 @@ execState : {X -> <State X>Y -> X}
 execState x <put x' -> k>  = execState x' (k unit)
 execState x <get    -> k>  = execState x (k x)
 execState x y              = x
+
+{-- Alter the existing state by supplying it to the provided operator,
+ -- setting the state to the result returned. --}
+modify : {{X -> X} -> [State X]Unit}
+modify f = let x = get! in put (<State> (f x))
 
 {-- Character-based predicates --}
 
