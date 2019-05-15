@@ -4,29 +4,30 @@ include syntax
 include unification
 
 -- Instantiate a scheme introducing metavariables for all the bound variables.
-inst : {Sch -> [Contextual]Sch}
+inst : {Sch -> [NmSt]Sch}
 inst (mono t) = mono t
 inst (poly b) = poly (substVarSch 0 (meta freshMeta!) (inst b))
 
-open : {Sch -> [Contextual]Ty}
+open : {Sch -> Ty}
 open (mono t) = t
 open (poly b) = open b
 
-specialise : {Sch -> [Contextual]Ty}
+specialise : {Sch -> [NmSt]Ty}
 specialise s = open (inst s)
 
 names : {Int -> <Names>X -> X}
 names n <fresh -> k> = names (n+1) (k n)
 names n       x      = x
 
-generaliseOver : {{[Contextual]Ty} -> [Contextual]Sch}
+generaliseOver : {{[CtxState,TypeError]Ty} -> [CtxState,TypeError]Sch}
 generaliseOver m = modify (<State> (bw mrk));
                    let t = m! in
                    let suffix = skimCtx [] in
                    up suffix t
 
 -- Helper for generaliseOver; relies on locality marker ; being present
-skimCtx : {List (Pair Int (Decl Ty)) -> [Contextual]List (Pair Int (Decl Ty))}
+skimCtx : {List (Pair Int (Decl Ty)) ->
+           [CtxState,TypeError]List (Pair Int (Decl Ty))}
 skimCtx xs = case popL! {(bmv n d) -> skimCtx ((pair n d) :: xs)
                         | mrk -> xs}
 
@@ -58,8 +59,11 @@ prog : {Tm}
 prog! = seq (lam (lam (varx 1)))
             (app (varx 0) (varx 0))
 
-main : {[Contextual]Pair (Bwd Entry) Ty}
-main! = names 0 (runState bemp (infer prog!))
+--t2 : {Tm}
+--t2! = lam (lam (app (varx 1) (varx 0)))
+
+--main : {[Contextual]Pair (Bwd Entry) Ty}
+--main! = names 0 (runState bemp (infer t2!))
 
 
 

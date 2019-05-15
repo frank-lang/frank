@@ -27,19 +27,23 @@ interface Names = fresh : Int -- generate a fresh name starting from 0.
 
 interface TypeError = raise X : String -> X
 
-interface Contextual = [Abort,State (Bwd Entry),Names,TypeError]
+interface CtxState = [State (Bwd Entry)]
+
+interface NmSt = [CtxState,Names]
+
+interface Contextual = [Abort,NmSt,TypeError]
 
 fmvs : {Ty -> List Int}
 fmvs (meta x)  = [x]
 fmvs (var x)   = []
 fmvs (arr s t) = append (fmvs s) (fmvs t)
 
-fish : Bwd Entry -> List (Pair Int (Decl Ty)) -> Bwd Entry
+fish : {Bwd Entry -> List (Pair Int (Decl Ty)) -> Bwd Entry}
 -- fish : Ctx -> Suffix -> Ctx
 fish ctx ((pair n d) :: es) = fish (bcons ctx (bmv n d)) es
 fish ctx          []        = ctx
 
-popL : {[Contextual]Entry}
+popL : {[CtxState,TypeError]Entry}
 popL! = case get! { bemp -> raise "nae mere"
                   | (bcons ctx e) -> put ctx; e}
 
@@ -48,7 +52,7 @@ popL! = case get! { bemp -> raise "nae mere"
 bw : {X -> {Bwd X -> Bwd X}}
 bw x = {sx -> bcons sx x}
 
-freshMeta : {[Contextual]Int}
+freshMeta : {[NmSt]Int}
 freshMeta! = let x = fresh! in modify (<State> (bw (bmv x hole))); x
 
 {-- Find the type scheme of the provided term variable 'x'. --}
@@ -58,7 +62,7 @@ help    0 (bcons ctx (btv t)) = t
 help    x (bcons ctx (btv t)) = help (x-1) ctx
 help    x  (bcons ctx _) = help x ctx
 
-findSch : {Int -> [Contextual]Sch}
+findSch : {Int -> [CtxState,TypeError]Sch}
 findSch x = help x get!
 
 -- drop the nearest term variable
@@ -70,8 +74,8 @@ dropVar  (bcons ctx e) = bcons (dropVar ctx) e
 {-- extend the context with an additional variable, run the given computation
  -- in this extended scope then remove the binding afterwards. --}
 
--- inScope : {Name -> Sch -> {[Contextual]X} -> [Contextual]X}
-extend : {Sch -> {[Contextual]X} -> [Contextual]X}
+-- {Name -> Sch -> {[Abort,CtxState]X} -> [Abort,CtxState]X}
+extend : {Sch -> {[Abort,CtxState]X} -> [Abort,CtxState]X}
 extend     t           m         = modify (<State> (bw (btv t)));
                                    let res = m! in
                                    modify ({xs -> dropVar xs});
