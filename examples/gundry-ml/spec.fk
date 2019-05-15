@@ -1,0 +1,43 @@
+-- A specification for Hindley-Milner type inference inspired by Bob Atkey's
+-- "An Algebraic Approach to Typechecking and Elaboration"
+
+include prelude
+include syntax
+include inference
+include unification
+
+-- Type inference as an effect/algebra.
+interface TC X =
+    assumption : Int -> X
+  | intro : {[TC X]X} -> X
+  | apply : {[TC X]X} -> {[TC X]X} -> X
+  | lett  : {[TC X]X} -> {[TC X]X} -> X
+  | fail Y : Y
+
+eval : {Tm -> [TC Ty]Ty}
+eval (varx x) = assumption x
+eval (lam b) = intro {eval b}
+eval (app f s) = apply {eval f} {eval s}
+eval (seq m n) = lett {eval m} {eval n}
+
+-- Gundry et al.'s algorithm via the TC algebra/effect.
+gundry : {<TC Ty [Contextual]>Ty     -> [Contextual]Ty}
+gundry    <assumption x -> k>   = gundry (k (specialise (findSch x)))
+gundry    <intro b -> k>        = let t = meta freshMeta! in
+                                  let v = extend (mono t) {gundry b!} in
+                                  gundry (k (arr t v))
+gundry    <apply f s -> k>      = let t = gundry f! in
+                                  let a = gundry s! in
+                                  let b = meta freshMeta! in
+                                  unify t (arr a b); gundry (k b)
+gundry     <lett m n -> k>      = let s = generaliseOver {gundry m!} in
+                                  let t = extend s {gundry n!} in
+                                  gundry (k t)
+gundry      <fail -> _>         = abort!
+gundry           x              = x
+
+tm1 : {Tm}
+tm1! = lam (lam (app (varx 1) (varx 0)))
+
+p1 : {[Abort,TypeError]Pair (Bwd Entry) Ty}
+p1! = names 0 (runState bemp (gundry (eval prog!)))
