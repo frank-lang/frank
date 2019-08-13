@@ -1,30 +1,24 @@
---- start of standard stuff ---
-data Maybe X = nothing | just X
-data Pair X Y = pair X Y
-
-reverse' : {List X -> List X -> List X}
-reverse' []        ys = ys
-reverse' (x :: xs) ys = reverse' xs (x :: ys)
-
-reverse : {List X -> List X}
-reverse xs = reverse' xs []
-
-map : {{X -> Y} -> List X -> List Y}
-map f []        = []
-map f (x :: xs) = f x :: map f xs
-
-print : {String -> [Console]Unit}
-print s = map ouch s; unit
---- end of standard stuff ---
+include prelude
 
 ------------------------------------------------------------------------------
--- Queue interface and FIFO implementation using a zipper
+-- Interfaces for actors, cooperative concurrency, and queues
 ------------------------------------------------------------------------------
+
+interface Actor X = self    : Pid X
+                  | spawn Y : {[Actor Y]Unit} -> Pid Y
+                  | recv    : X
+                  | send Y  : Y -> Pid Y -> Unit
+
+interface Co = fork  : {[Co]Unit} -> Unit
+             | yield : Unit
 
 interface Queue S = enqueue : S -> Unit
                   | dequeue : Maybe S
 
--- zipper queue
+------------------------------------------------------------------------------
+-- FIFO queue implementation using a zipper
+------------------------------------------------------------------------------
+
 data ZipQ S = zipq (List S) (List S)
 
 emptyZipQ : {ZipQ S}
@@ -33,119 +27,19 @@ emptyZipQ! = zipq [] []
 -- FIFO queue implementation using a zipper
 -- (returns the remaining queue alongside the final value)
 runFifo : {ZipQ S -> <Queue S>X -> Pair X (ZipQ S)}
-runFifo (zipq front back)        <enqueue x -> k> = runFifo (zipq front (x :: back)) (k unit)
-runFifo (zipq []      [])        <dequeue -> k>   = runFifo emptyZipQ! (k nothing)
-runFifo (zipq []      back)      <dequeue -> k>   = runFifo (zipq (reverse back) []) (k dequeue!)
-runFifo (zipq (x :: front) back) <dequeue -> k>   = runFifo (zipq front back) (k (just x))
-runFifo queue                    x                = pair x queue
-
--- discard the queue
-evalFifo : {<Queue S>X -> ZipQ S -> X}
-evalFifo <t> q = case (runFifo q t!) { (pair x _) -> x }
-
--- start with an empty queue
-fifo : {<Queue S>X -> X}
-fifo <m> = evalFifo m! (emptyZipQ!)
-
--- discard the value
-execFifo: {<Queue S>X -> ZipQ S -> ZipQ S}
-execFifo <t> q = case (runFifo q t!) { (pair _ q) -> q }
-
---------------------------------------------------------------------------------
--- Definitions of interfaces, data types
---------------------------------------------------------------------------------
-
-interface Co = fork  : {[Co]Unit} -> Unit
-             | yield : Unit
-
-data Mailbox X = mbox (Ref (ZipQ X))
-
-interface Actor X = self    : Mailbox X
-                  | spawn Y : {[Actor Y]Unit} -> Mailbox Y
-                  | recv    : X
-                  | send Y  : Mailbox Y -> Y -> Unit
-
-data WithSender X Y = withSender (Mailbox X) Y
-
---------------------------------------------------------------------------------
--- Example actors
---------------------------------------------------------------------------------
-
--- rubbish examples
--- TODO: come up with some non-rubbish examples
-
-doubleActor: {[Actor (WithSender Int Int)]Unit}
-doubleActor! = case recv! { (withSender sender n) -> send sender (n + n) }
-
-divConqActor: {[Actor Int [Console], Console]Unit}
-divConqActor! = let childA = spawn doubleActor in
-                let childB = spawn doubleActor in
-                send childA (withSender self! 1);
-                send childB (withSender self! 2);
-                print "calculating (1+1) + (2+2)... ";
-                case (recv! + recv!) { 6 -> print "6 "
-                                     | _ -> print "not 6 " }
-
-doubleSpawningActor: {[Actor Int [Console], Console]Unit}
-doubleSpawningActor! = let doubler = spawn doubleActor in
-                       send doubler (withSender self! 3);
-                       case recv! { 6 -> print "you truly know how to double"
-                                  | _ -> print "naw" }
-
-soliloquistActor: {[Actor Int [Console], Console]Unit}
-soliloquistActor! = send self! 42;
-                    case recv! { 42 -> print "oh how unexpected"
-                               | _  -> print "what did I send again?" }
-
-nicePrintActor: {[Actor String [Console], Console]Unit}
-nicePrintActor! = let msg = recv! in
-                  print "Hey, a message came in: "; print msg
-
-writingActor: {[Actor Int [Console], Console]Unit}
-writingActor! = let you = spawn nicePrintActor in
-                send you "important msg"
+runFifo (zipq front back)        <enqueue x -> k> =
+  runFifo (zipq front (x :: back)) (k unit)
+runFifo (zipq [] [])             <dequeue -> k> =
+  runFifo emptyZipQ! (k nothing)
+runFifo (zipq [] back)           <dequeue -> k> =
+  runFifo (zipq (rev back) []) (k dequeue!)
+runFifo (zipq (x :: front) back) <dequeue -> k> =
+  runFifo (zipq front back) (k (just x))
+runFifo queue                    x =
+  pair x queue
 
 ------------------------------------------------------------------------------
--- Implement an actor computation as a stateful concurrent computation
-------------------------------------------------------------------------------
-
--- liftBody : {{[E|Actor X [E|]]Unit} ->
---             [F|]{[E|Actor X [E|], Co [E|RefState], RefState]Unit}}
--- liftBody m = {<-RefState, -Co> m!}
-
--- Our syntactic sugar assumes that all instances of the implicit
--- effect variable are instantiated to be the same but they needn't be
--- the same as the ambient effects.
---
--- For liftBody we need exactly that all but the ambient effects be
--- the same.
-liftBody : {{[Actor X]Unit} -> [E |]{[Actor X, Co [RefState], RefState]Unit}}
-liftBody m = {<RefState, Co> m!}
-
-
-act : {Mailbox X -> <Actor X>Unit -> [Co [RefState], RefState]Unit}
-act mine     <self -> k> = act mine (k mine)
-act mine     <spawn you -> k> = let yours = mbox (new (emptyZipQ!)) in
-                                    fork {act yours (liftBody you)!};
-                                    act mine (k yours)
-act (mbox m) <recv -> k> = case (runFifo (read m) dequeue!)
-                                { (pair nothing _)  -> yield!;
-                                                       act (mbox m) (k recv!)
-                                | (pair (just x) q) -> write m q;
-                                                       act (mbox m) (k x) }
-act mine     <send (mbox m) x -> k> = let q = execFifo (enqueue x) (read m) in
-                                      write m q;
-                                      act mine (k unit)
-act mine     unit = unit
-
-runActor : {<Actor X>Unit -> [RefState]Unit}
-runActor <m> = bfFifo (act (mbox (new (emptyZipQ!))) (<Co> m!))
-
-bfFifo : {<Co>Unit -> Unit}
-bfFifo <m> = fifo (scheduleBF (<Queue> m!))
-
-------------------------------------------------------------------------------
--- Scheduling as in coop.fk
+-- Concurrent scheduler implementation
 ------------------------------------------------------------------------------
 
 data Proc = proc {[Queue Proc]Unit}
@@ -153,33 +47,90 @@ data Proc = proc {[Queue Proc]Unit}
 enqProc : {[Queue Proc]Unit} -> [Queue Proc]Unit
 enqProc p = enqueue (proc p)
 
-runNext : {[Queue Proc]Unit}
-runNext! = case dequeue! { (just (proc x)) -> x!
-                         | nothing         -> unit }
+wakeProc : {[Queue Proc]Unit}
+wakeProc! = case dequeue! { (just (proc x)) -> x!
+                          | nothing         -> unit }
 
--- defer forked processes (without effect pollution)
-scheduleBF : {<Co>Unit -> [Queue Proc]Unit}
-scheduleBF <yield -> k>  = enqProc {scheduleBF (k unit)};
-                           runNext!
-scheduleBF <fork p -> k> = enqProc {scheduleBF (<Queue> p!)};
-                           scheduleBF (k unit)
-scheduleBF unit          = runNext!
+-- lazily run forked processes
+runBF : {<Co>Unit -> [Queue Proc]Unit}
+runBF <yield -> k>  = enqProc {runBF (k unit)};
+                      wakeProc!
+runBF <fork p -> k> = enqProc {runBF (<Queue> p!)};
+                      runBF (k unit)
+runBF unit          = wakeProc!
 
--- eagerly run forked processes
-scheduleDF : {<Co>Unit -> [Queue Proc]Unit}
-scheduleDF <yield -> k>  = enqProc {scheduleDF (k unit)};
-                           runNext!
-scheduleDF <fork p -> k> = enqProc {scheduleDF (k unit)};
-                           scheduleDF (<Queue> p!)
-scheduleDF unit          = runNext!
+------------------------------------------------------------------------------
+-- Actor implementation
+------------------------------------------------------------------------------
 
------------------------------------------------------------------------------
--- Test an example actor
------------------------------------------------------------------------------
+data Pid X = pid (Ref (ZipQ X))
 
--- Dont delete these lines, they make this program into a unit test.
--- #desc   examples/actor.fk
--- #return calculating (1+1) + (2+2)... 6 unit
+runActor : {Pid X -> <Actor X>Unit ->
+             [Co [RefState], RefState]Unit}
+runActor mine    <self -> k> = runActor mine (k mine)
+runActor mine    <spawn you -> k> =
+  let yours = pid (new (emptyZipQ!)) in
+  fork {runActor yours (<RefState, Co> you!)};
+  runActor mine (k yours)
+runActor (pid m) <recv -> k> =
+  case (runFifo (read m) dequeue!)
+    { (pair nothing _)  -> yield!;
+                           runActor (pid m) (k recv!)
+    | (pair (just x) q) -> write m q;
+                           runActor (pid m) (k x) }
+runActor mine    <send x (pid m) -> k> =
+  case (runFifo (read m) (enqueue x))
+        { (pair _ q) -> write m q;
+                        runActor mine (k unit) }
+runActor mine    unit = unit
 
-main: {[Console, RefState]Unit}
-main! = runActor (<RefState> divConqActor!)
+act : {<Actor X>Unit -> [RefState]Unit}
+act <m> = case (runFifo emptyZipQ!
+               (runBF (<Queue>
+               (runActor (pid (new (emptyZipQ!)))
+                         (<Co> m!)))))
+               { (pair x _) -> x }
+
+--------------------------------------------------------------------------------
+-- Example actors
+--------------------------------------------------------------------------------
+
+spawnMany : {Pid String -> Int ->
+               [Actor String [Console], Console]Unit}
+spawnMany p 0 = send "do be do be do" p
+spawnMany p n = spawnMany (spawn {let x = recv! in
+                                  print ".";
+                                  send x p}) (n-1)
+
+chain : {[Actor String [Console], Console]Unit}
+chain! = spawnMany self! 640; let msg = recv! in
+         print "\n"; print msg; print "\n"
+
+
+spawnMany' : {Pid String -> Ref Int ->
+               [Actor String [Console, RefState], Console, RefState]Unit}
+spawnMany' p r = let n = read r in
+                 write r (n-1);
+                 case n { 0 -> send "do be do be do" p
+                        | _ -> spawnMany' (spawn {let x = recv! in
+                                                  print ".";
+                                                  send x p}) r }
+
+chain' : {[Actor String [Console, RefState], Console, RefState]Unit}
+chain'! = spawnMany' self! (new 640); let msg = recv! in
+          print "\n"; print msg; print "\n"
+
+-- pass a message along a chain of actors
+ex1 : {[Console, RefState]Unit}
+ex1! = act (<RefState> chain!)
+
+-- stateful actors
+ex2 : {[Console, RefState]Unit}
+ex2! = <RefState(s x -> s x x)> (act (<RefState> chain'!))
+
+------------------------------------------------------------------------------
+-- Main
+------------------------------------------------------------------------------
+
+main : {[Console, RefState]Unit}
+main! = ex1!

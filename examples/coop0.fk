@@ -88,7 +88,7 @@ runWith : {{<Yield>Unit -> [Queue Proc]Unit} -> List {[Yield]Unit} ->
            [Queue Proc]Unit}
 runWith scheduler []      = runNext!
 runWith scheduler (p::ps) =
-  enqProc {scheduler (lift <Queue> p!)}; runWith scheduler ps
+  enqProc {scheduler (<Queue> p!)}; runWith scheduler ps
 
 main : {[Console]Unit}
 main! = print "FIFO EDR: "; fifo (runWith scheduleEDR [testA, testB, testC]);
