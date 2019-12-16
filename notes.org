@@ -1,0 +1,9 @@
+#+TITLE: Notes on the structure of Frank
+
+* Overall Structure
+- Syntax.hs contains the syntactic constructors of Frank
+
+- RefineSyntaxConcretiseEps makes the implicit epsilon - that is, the effect
+  parameter - explicit in the type. We can imagine the refining as elaborating
+  these?
+* Syntax.hs

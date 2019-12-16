@@ -567,8 +567,8 @@ getCtrs (DT _ _ xs _) = xs
 collectDTNames :: [DataT t] -> [Id]
 collectDTNames = map (\case (DT dt _ _ _) -> dt)
 
--- Convert ability to a list of interface names and effect variables
 {-
+-- Convert ability to a list of interface names and effect variables
 abToList :: Ab a -> [Id]
 abToList MkEmpAb = []
 abToList (MkAbVar id) = [id]
@@ -620,7 +620,7 @@ tyVar2rawTyVarArg (id, VT) = VArg (TVar id (Raw Generated)) (Raw Generated)
 tyVar2rawTyVarArg (id, ET) = EArg (liftAbMod (AbVar id (Raw Generated)))
                                   (Raw Generated)
 
--- transform type variable (+ its kind) to a rigid tye variable argument
+-- transform type variable (+ its kind) to a rigid type variable argument
 -- (prepare for later unification)
 tyVar2rigTyVarArg :: (Id, Kind) -> TyArg Desugared
 tyVar2rigTyVarArg (id, VT) = VArg (RTVar id (Desugared Generated))

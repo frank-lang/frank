@@ -129,6 +129,7 @@ refineCmd c@(Cmd id ps xs y a) =
     do tmap <- getTMap
        evset <- getEVSet
        -- TODO: LC: Shadowing should be allowed, fix this in future
+       -- TODO: LP: Fix shadowing?
        -- check that none of this cmd's ty vars coincide with the itf's ones
        if uniqueIds (map fst ps ++ map fst (M.toList tmap) ++ S.toList evset) then
          do let tvs = [x | (x, VT) <- ps] -- val ty vars
@@ -167,7 +168,7 @@ refinePeg (Peg ab ty a) = do ab' <- refineAb ab
                              return $ Peg ab' ty' (rawToRef a)
 
 refineAb :: Ab Raw -> Refine (Ab Refined)
-refineAb ab@(Ab v mp@(ItfMap m _) a) =
+refineAb (Ab v mp@(ItfMap m _) a) =
 --       [v | itf_1 x_11 ... x_1k, ..., itf_l x_l1 ... x_ln]
   do -- Check that v has been introduced before or is now implicitly introduced
      evset <- getEVSet
