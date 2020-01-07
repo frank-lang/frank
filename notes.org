@@ -3,7 +3,46 @@
 * Overall Structure
 - Syntax.hs contains the syntactic constructors of Frank
 
-- RefineSyntaxConcretiseEps makes the implicit epsilon - that is, the effect
-  parameter - explicit in the type. We can imagine the refining as elaborating
-  these?
+* BwdFwd.hs
+This just holds the datatype =Bwd a= that does something...
+* TypeCheckCommon
+This notably holds the Contextual monad, which represents computations that can
+- Mutate state
+- Generate fresh names
+- Produce exceptions
+
+These are the effects that are required to implement unification and type
+inference.
 * Syntax.hs
+Here we have the abstract syntax of Frank. This is quite a complicated section.
+
+AST nodes are given by fixpoints. E.g. DataT is given by the fixpoint of another
+datatype, DataTF, which actually contains the rules for a datatype (e.g that it
+takes a name, a list of type parameters and a list of constructors). The same
+goes for other things, e.g. Constructors, blah blah blah.
+
+This approach lets the AST be 'annotated' with something. I guess that this is
+the fact that they are either refined or raw?
+** On Ports and Pegs
+Ports and Pegs have just been renamed to argument types and return types in the
+newer paper.
+* RefineSyntax
+RefineSyntax in general does;
+  - Concrete epsilons in top level definitions (i.e. in ConcretiseEps)
+  - Adds built-in DTs, interfaces, operators.
+
+In several different functions it refines data types, interfaces, interface
+aliases commands and other stuff.
+
+** RefineSyntaxConcretiseEps
+RefineSyntaxConcretiseEps makes the implicit epsilon - that is, the effect
+parameter - explicit in the type. We can imagine the refining as elaborating
+these?
+
+** RefineSyntaxSubstitItfAliases
+What does this do? It substitutes an interface alias by its definition. I guess
+these are just for easily combining interfaces.
+** RefineSyntaxCommon
+Just common functions used across the different (sub)files
+* TODO
+** Ask Sam about pegs and ports - not present in paper but are in the compiler
