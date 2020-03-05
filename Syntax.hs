@@ -284,6 +284,7 @@ data TmF :: ((* -> *) -> (* -> *)) -> * -> * where
   MkStr :: String -> TmF t r
   MkInt :: Int -> TmF t r
   MkChar :: Char -> TmF t r
+  MkFloat :: Double -> TmF t r           -- Frank floats are provisionally Haskell doubles.
   MkList :: [r] -> TmF (AnnotT Raw) r
   MkTmSeq :: r -> r -> TmF t r
   MkUse :: TFix t UseF -> TmF t r
@@ -302,6 +303,7 @@ pattern Let x tm1 tm2 a = Fx (AnnF (MkLet x tm1 tm2, a))
 pattern StrTm str a = Fx (AnnF (MkStr str, a))
 pattern IntTm n a = Fx (AnnF (MkInt n, a))
 pattern CharTm c a = Fx (AnnF (MkChar c, a))
+pattern FloatTm f a = Fx (AnnF (MkFloat f, a))
 pattern ListTm xs a = Fx (AnnF (MkList xs, a))
 pattern TmSeq tm1 tm2 a = Fx (AnnF (MkTmSeq tm1 tm2, a))
 pattern Use u a = Fx (AnnF (MkUse u, a))
@@ -403,6 +405,7 @@ data ValuePatF :: ((* -> *) -> (* -> *)) -> * -> * where
   MkDataPat :: Id -> [r] -> ValuePatF t r
   MkIntPat :: Int -> ValuePatF t r
   MkCharPat :: Char -> ValuePatF t r
+  MkFloatPat :: Double -> ValuePatF t r
   MkStrPat :: String -> ValuePatF t r
   MkConsPat :: r -> r -> ValuePatF (AnnotT Raw) r
   MkListPat :: [r] -> ValuePatF (AnnotT Raw) r
@@ -413,6 +416,7 @@ pattern VarPat x a = Fx (AnnF (MkVarPat x, a))
 pattern DataPat x vps a = Fx (AnnF (MkDataPat x vps, a))
 pattern IntPat n a = Fx (AnnF (MkIntPat n, a))
 pattern CharPat c a = Fx (AnnF (MkCharPat c, a))
+pattern FloatPat d a = Fx (AnnF (MkFloatPat d, a))
 pattern StrPat str a = Fx (AnnF (MkStrPat str, a))
 pattern ConsPat p1 p2 a = Fx (AnnF (MkConsPat p1 p2, a))
 pattern ListPat ps a = Fx (AnnF (MkListPat ps, a))
@@ -460,6 +464,7 @@ data VTypeF :: ((* -> *) -> (* -> *)) -> * -> * where                       -- v
   MkStringTy :: NotDesugared (t Identity ()) => VTypeF t r                  --   string type
   MkIntTy :: VTypeF t r                                                     --   int type
   MkCharTy :: VTypeF t r                                                    --   char type
+  MkFloatTy :: VTypeF t r                                                   --   float type
 deriving instance (Show (TFix t TyArgF),
                    Show (TFix t CTypeF),
                    Show r, Show (TFix t VTypeF)) => Show (VTypeF t r)
@@ -475,6 +480,7 @@ pattern FTVar x a = Fx (AnnF (MkFTVar x, a))
 pattern StringTy a = Fx (AnnF (MkStringTy, a))
 pattern IntTy a = Fx (AnnF (MkIntTy, a))
 pattern CharTy a = Fx (AnnF (MkCharTy, a))
+pattern FloatTy a = Fx (AnnF (MkFloatTy, a))
 
 -- Interface-id -> list of bwd-list of ty arg's (each entry an instantiation)
 data ItfMapF :: ((* -> *) -> (* -> *)) -> * -> * where
