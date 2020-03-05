@@ -465,6 +465,7 @@ refineVPat (DataPat x xs a) =
 refineVPat (IntPat i a) = return $ IntPat i (rawToRef a)
 refineVPat (CharPat c a) = return $ CharPat c (rawToRef a)
 refineVPat (StrPat s a) = return $ StrPat s (rawToRef a)
+refineVPat (FloatPat f a) = return $ FloatPat f (rawToRef a)
 refineVPat (ConsPat x xs a) =
   do x' <- refineVPat x
      xs' <- refineVPat xs
