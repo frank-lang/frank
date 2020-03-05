@@ -321,6 +321,7 @@ refineVType (TVar x a) =
 refineVType (StringTy a) = return $ StringTy (rawToRef a)
 refineVType (IntTy a) = return $ IntTy (rawToRef a)
 refineVType (CharTy a) = return $ CharTy (rawToRef a)
+refineVType (FloatTy a) = return $ FloatTy (rawToRef a)
 
 refineTyArg :: TyArg Raw -> Refine (TyArg Refined)
 refineTyArg (VArg t a) = VArg <$> refineVType t <*> pure (rawToRef a)
@@ -407,6 +408,7 @@ refineTm (SC x a) = do x' <- refineSComp x
 refineTm (StrTm x a) = return $ StrTm x (rawToRef a)
 refineTm (IntTm x a) = return $ IntTm x (rawToRef a)
 refineTm (CharTm x a) = return $ CharTm x (rawToRef a)
+refineTm (FloatTm x a) = return $ FloatTm x (rawToRef a)
 refineTm (ListTm ts a) =
   do ts' <- mapM refineTm ts
      return $
