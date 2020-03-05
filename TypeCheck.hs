@@ -252,10 +252,11 @@ inferUse adpd@(Adapted adps t a) =
 -- 2nd major TC function besides "check": Check that term (construction) has
 -- given type
 checkTm :: Tm Desugared -> VType Desugared -> Contextual (Tm Desugared)
-checkTm (SC sc a) ty = SC <$> (checkSComp sc ty) <*> (pure a)
+checkTm (SC sc a) ty = SC <$> checkSComp sc ty <*> pure a
 checkTm tm@(StrTm _ a) ty = unify (desugaredStrTy a) ty >> return tm
 checkTm tm@(IntTm _ a) ty = unify (IntTy a) ty >> return tm
 checkTm tm@(CharTm _ a) ty = unify (CharTy a) ty >> return tm
+checkTm tm@(FloatTm _ a) ty = unify (FloatTy a) ty >> return tm
 checkTm tm@(TmSeq tm1 tm2 a) ty =
   -- create dummy mvar s.t. any type of tm1 can be unified with it
   do ftvar <- freshMVar "seq"

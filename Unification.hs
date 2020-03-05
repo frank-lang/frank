@@ -48,6 +48,7 @@ unify t0 t1 = do logBeginUnify t0 t1
   unify' (RTVar a _)     (RTVar b _) | a == b = return ()
   unify' (IntTy _)       (IntTy _)            = return ()
   unify' (CharTy _)      (CharTy _)           = return ()
+  unify' (FloatTy _)     (FloatTy _)          = return ()
   unify' fta@(FTVar a _) ftb@(FTVar b _)      = onTop $ \c d ->
     cmp (a == c) (b == c) d
     where cmp :: Bool -> Bool -> Decl -> Contextual Extension

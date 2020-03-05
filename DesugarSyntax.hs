@@ -162,6 +162,7 @@ desugarVType (SCTy ty a) = do ty' <- desugarCType ty
 desugarVType (StringTy a) = return $ desugaredStrTy (refToDesug a)
 desugarVType (IntTy a) = return $ IntTy (refToDesug a)
 desugarVType (CharTy a) = return $ CharTy (refToDesug a)
+desugarVType (FloatTy a) = return $ FloatTy (refToDesug a)
 
 -- nothing happens on this level
 desugarTyArg :: TyArg Refined -> Desugar (TyArg Desugared)
