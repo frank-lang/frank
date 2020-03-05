@@ -1,0 +1,12 @@
+
+if : Bool -> {X} -> {X} -> X
+if b t e = case b { true  -> t!
+                  | false -> e! }
+
+
+threeConst : {X -> Int}
+threeConst x = 3
+
+piConst : {X -> Float}
+piConst x = 3.14
+

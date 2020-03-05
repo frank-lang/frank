@@ -278,6 +278,7 @@ vtype' :: MonadicParsing m => m (VType Raw)
 vtype' = parens vtype <|>
               (attachLoc $ SCTy <$> try ctype) <|>
               (attachLoc $ StringTy <$ reserved "String") <|>
+              (attachLoc $ FloatTy <$ reserved "Float") <|>
               (attachLoc $ IntTy <$ reserved "Int") <|>
               (attachLoc $ CharTy <$ reserved "Char") <|>
               -- could possibly also be a MkDTTy (determined during refinement)
@@ -351,12 +352,13 @@ usetm = (attachLoc $ Use <$> (try $ use nctm)) <|>    -- use
 
 -- atomic term
 atm :: MonadicParsing m => m (Tm Raw)
-atm = (attachLoc $ SC <$> suspComp) <|>               -- { p_1 -> t_1 | ... }
-      (attachLoc $ StrTm <$> stringLiteral) <|>       -- "string"
+atm = (attachLoc $ SC <$> suspComp) <|>                       -- { p_1 -> t_1 | ... }
+      (attachLoc $ StrTm <$> stringLiteral) <|>               -- "string"
+      (attachLoc $ FloatTm <$> try double) <|>                    -- 3.14
       (attachLoc $ (IntTm . fromIntegral) <$> natural) <|>    -- 42
-      (attachLoc $ CharTm <$> charLiteral) <|>        -- 'c'
-      (attachLoc $ ListTm <$> listTm) <|>             -- [t_1, ..., t_n]
-      parens tm                                       -- (ltm ; ... ; ltm)
+      (attachLoc $ CharTm <$> charLiteral) <|>                -- 'c'
+      (attachLoc $ ListTm <$> listTm) <|>                     -- [t_1, ..., t_n]
+      parens tm                                               -- (ltm ; ... ; ltm)
 
 letTm :: MonadicParsing m => m (Tm Raw) -> m (Tm Raw) -> m (Tm Raw)
 letTm p p' = attachLoc $ do reserved "let"
@@ -494,6 +496,7 @@ valPat :: MonadicParsing m => m (ValuePat Raw)
 valPat = dataPat <|>
          (attachLoc $ do x <- identifier
                          return $ VarPat x) <|>
+         (attachLoc $ FloatPat <$> try double) <|>
          (attachLoc $ IntPat <$> try parseInt) <|> -- try block for unary minus
          (attachLoc $ CharPat <$> charLiteral) <|>
          (attachLoc $ StrPat <$> stringLiteral) <|>
