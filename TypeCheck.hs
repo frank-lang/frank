@@ -411,6 +411,7 @@ checkVPat (DataPat k ps a) ty =                                                 
 checkVPat (CharPat _ a) ty = unify ty (CharTy a) >> return []
 checkVPat (StrPat _ a) ty = unify ty (desugaredStrTy a) >> return []
 checkVPat (IntPat _ a) ty = unify ty (IntTy a) >> return []
+checkVPat (FloatPat _ a) ty = unify ty (FloatTy a) >> return []
 -- checkVPat p ty = throwError $ "failed to match value pattern " ++
 --                  (show p) ++ " with type " ++ (show ty)
 

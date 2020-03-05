@@ -241,6 +241,7 @@ desugarVPat (DataPat x xs a) =
 desugarVPat (IntPat i a) = return $ IntPat i (refToDesug a)
 desugarVPat (CharPat c a) = return $ CharPat c (refToDesug a)
 desugarVPat (StrPat s a) = return $ StrPat s (refToDesug a)
+desugarVPat (FloatPat s a) = return $ FloatPat s (refToDesug a)
 
 desugarSComp :: SComp Refined -> Desugar (SComp Desugared)
 desugarSComp (SComp xs a) =
