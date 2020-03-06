@@ -129,7 +129,6 @@ refineCmd c@(Cmd id ps xs y a) =
     do tmap <- getTMap
        evset <- getEVSet
        -- TODO: LC: Shadowing should be allowed, fix this in future
-       -- TODO: LP: Fix shadowing?
        -- check that none of this cmd's ty vars coincide with the itf's ones
        if uniqueIds (map fst ps ++ map fst (M.toList tmap) ++ S.toList evset) then
          do let tvs = [x | (x, VT) <- ps] -- val ty vars
@@ -503,6 +502,18 @@ makeIntBinCmp a c = Def [c] (CType [Port [] (IntTy a) a
                              (Peg (Ab (AbVar "£" a) (ItfMap M.empty a) a)
                               (DTTy "Bool" [] a) a) a) [] a
 
+-- as above, but we now use Flaot instead.
+makeFloatBinOp :: Refined -> Char -> MHDef Refined
+makeFloatBinOp a c = Def ("`" ++ [c]) (CType [Port [] (FloatTy a) a
+                                         ,Port [] (FloatTy a) a]
+                                         (Peg (Ab (AbVar "£" a) (ItfMap M.empty a) a) (FloatTy a) a) a) [] a
+
+makeFloatBinCmp :: Refined -> Char -> MHDef Refined
+makeFloatBinCmp a c = Def ("`" ++ [c]) (CType [Port [] (FloatTy a) a
+                                          ,Port [] (FloatTy a) a]
+                                          (Peg (Ab (AbVar "£" a) (ItfMap M.empty a) a)
+                                               (DTTy "Bool" [] a) a) a) [] a
+
 {-- The initial state for the refinement pass. -}
 
 builtinDataTs :: [DataT Refined]
@@ -533,8 +544,10 @@ builtinItfAliases :: [ItfAlias Raw]
 builtinItfAliases = []
 
 builtinMHDefs :: [MHDef Refined]
-builtinMHDefs = map (makeIntBinOp (Refined BuiltIn)) "+-" ++
+builtinMHDefs = -- map (makeIntBinOp (Refined BuiltIn)) "+-" ++
                 map (makeIntBinCmp (Refined BuiltIn)) "><" ++
+                map (makeFloatBinOp (Refined BuiltIn)) "+-" ++
+                map (makeFloatBinCmp (Refined BuiltIn)) "><" ++
                 [caseDef, charEq, alphaNumPred]
 
 charEq :: MHDef Refined
