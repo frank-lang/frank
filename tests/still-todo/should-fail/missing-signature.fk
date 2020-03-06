@@ -1,5 +1,7 @@
--- #desc operator definitions should be accompanied by a type signature
--- #return missing type signature for operator "foo"
+
+-- tests disabled for now
+-- desc operator definitions should be accompanied by a type signature
+-- return missing type signature for operator "foo"
 
 foo! = 42
 

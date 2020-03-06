@@ -1,5 +1,6 @@
--- #desc   Bug: ItfMaps are not correctly scanned for whether they demand implicit epsilon
--- #return unit
+-- turned off
+-- desc   Bug: ItfMaps are not correctly scanned for whether they demand implicit epsilon
+-- return unit
 
 data ChoiceBoxA Y = boxA {[MonoChoiceA Y]Y}
 interface MonoChoiceA X = chooseA : {[MonoChoiceA X]X} -> {[MonoChoiceA X]X} -> X

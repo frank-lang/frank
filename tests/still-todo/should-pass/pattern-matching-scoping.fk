@@ -1,5 +1,6 @@
--- #desc The `f` in `if` does not shadow the global `f`.
--- #return unit
+-- test turned off
+-- desc The `f` in `if` does not shadow the global `f`.
+-- return unit
 
 if : {Bool -> {X} -> {X} -> X}
 if true  t f = t!
