@@ -491,12 +491,7 @@ txt (u :&& v)  = txt u ++ txt v
 
 -- TODO: Generate this from `builtins`.
 envBuiltins :: Env
-envBuiltins = Empty :/ [DF "plus" [] []
-                       ,DF "plusF" [] []
-                       ,DF "minus" [] []
-                       ,DF "eqc"   [] []
-                       ,DF "gt"    [] []
-                       ,DF "lt"    [] []]
+envBuiltins = Empty :/ map (\x -> DF x [] []) (M.keys builtins)
 
 prog :: Env -> [Def Exp] -> Env
 prog g ds = g' where
