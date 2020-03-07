@@ -14,7 +14,7 @@ import qualified Data.Map.Strict as M
 import Shonky.Syntax
 import Shonky.Renaming
 
-import Debug.Trace
+-- import Debug.Trace (trace)
 import Debug
 
 -- There is no predefined Show instance
@@ -90,6 +90,8 @@ envToList g = envToList' g []
 ppVal :: Val -> Doc
 ppVal (VA s)  = text $ "'" ++ s   -- TODO: error message here?
 ppVal (VI n)  = int n
+ppVal (VD f)  = text $ show f     -- TODO: replace with something else; couldn't
+                                  -- find a suitable builtin function
 ppVal v@(VA "cons" :&& (VX [_] :&& _)) = doubleQuotes (ppStringVal v)
 ppVal (VA "cons"   :&& (v :&& w))      = ppBrackets $ ppVal v <> ppListVal w
 ppVal (VA "nil"    :&& _)              = ppBrackets empty
@@ -250,7 +252,7 @@ compute :: Env -> Exp -> Agenda -> Comp
 compute g (EV x)       ls   = consume (fetch g x) ls                        -- 1) look-up value
 compute g (EA a)       ls   = consume (VA a) ls                             -- 1) feed atom
 compute g (EI n)       ls   = consume (VI n) ls                             -- 1) feed int
-compute g (ED f)       ls   = trace ("consuming float" ++ show f ++ ".\n") consume (VD f) ls                             -- 1) feed double
+compute g (ED f)       ls   = consume (VD f) ls                             -- 1) feed double
 compute g (a :& d)     ls   = compute g a (Car g d : ls)                    -- 2) compute head. save tail for later.
 compute g (f :$ as)    ls   = compute g f (Fun g as : ls)                   -- 2) Application. Compute function. Save args for later.
 compute g (e :! f)     ls   = compute g e (Seq g f : ls)                    -- 2) Sequence.    Compute 1st exp.  Save 2nd for later.
