@@ -156,6 +156,7 @@ compileVPat ((StrPat s a) :: ValuePat Desugared) = compileVPat (compileStrPat s)
   compileStrPat []     = DataPat "nil" [] a
   compileStrPat (c:cs) = DataPat "cons" [CharPat c a, compileStrPat cs] a
 compileVPat (CharPat c _) = return $ S.VPX [Left c]
+compileVPat (FloatPat f _) = return $ S.VPD f
 
 compileTm :: Tm Desugared -> Compile S.Exp
 compileTm (SC sc _) = compileSComp sc
@@ -165,6 +166,7 @@ compileTm (StrTm s a) = compileDataCon (f s) where
   f [] = DataCon "nil" [] a
   f (c:cs) = DataCon "cons" [CharTm c a, DCon (f cs) a] a
 compileTm (IntTm n _) = return $ S.EI n
+compileTm (FloatTm f _) = return $ S.ED f
 compileTm (CharTm c _) = return $ S.EX [Left c]
 compileTm (TmSeq t1 t2 _) = (S.:!) <$> compileTm t1 <*> compileTm t2
 compileTm (Use u _) = compileUse u
@@ -194,8 +196,8 @@ compileSComp (SComp xs _) = S.EF <$> pure [([], [])] <*> mapM compileClause xs
 -- TODO: LC: Fix this!
 
 compileOp :: Operator Desugared -> Compile S.Exp
-compileOp (VarId id _) = case M.lookup id builtins of
-  Just v -> return $ S.EV v
+compileOp (VarId id _) = trace ("Compiling " ++ id) $ case M.lookup id builtins of
+  Just v -> trace ("Returning " ++ show v) return $ S.EV v
   Nothing ->  do b <- isAtom id
                  return $ if b then S.EA id
                           else S.EV id
@@ -204,6 +206,7 @@ compileOp (CmdId id _) = return $ S.EA id
 builtins :: M.Map String String
 builtins = M.fromList [("+", "plus")
                       ,("-", "minus")
+                      ,("+~", "plusF")
                       ,("eqc" , "eqc")
                       ,(">", "gt")
                       ,("<", "lt")]

@@ -14,3 +14,9 @@ fib j   = fib j +~ fib j
 -- fibInt 1 = 1
 -- fibInt 2 = 2
 -- fibInt n = fibInt (n - 1) + fibInt (n - 2)
+
+const : Int -> Float -> Float
+const n f = f
+
+main : {Float}
+main! = const (3 + 3) (3.0 +~ 4.1)

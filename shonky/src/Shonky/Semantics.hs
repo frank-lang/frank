@@ -24,6 +24,7 @@ instance Show (IORef a) where
 data Val
   = VA String                                                               -- atom
   | VI Int                                                                  -- int
+  | VD Double                                                               -- float (double)
   | Val :&& Val                                                             -- cons
   | VX String                                                               -- string
   | VF Env [([Adap], [String])] [([Pat], Exp)]                              -- function (anonymous), has environment, for each port: list of adaptors + list of commands to be captured, list of patterns + handling expressions
@@ -167,6 +168,13 @@ plus g [a1,a2] = VI (f a1 + f a2)
           _ -> error "plus: argument not an int"
 plus g _ = error "plus: incorrect number of arguments, expected 2."
 
+plusF :: Env -> [Comp] -> Val
+plusF g [a1, a2] = VD (f a1 + f a2)
+  where f x = case x of
+          Ret (VD n) -> n
+          _ -> error "float plus: argument not a float"
+plusF g _ = error "plusF: incorrect number of arguments, expected 2."
+
 minus :: Env -> [Comp] -> Val
 minus g [a1,a2] = VI (f a1 - f a2)
   where f x = case x of
@@ -212,6 +220,7 @@ alphaNumPred g _ =
 builtins :: M.Map String (Env -> [Comp] -> Val)
 builtins = M.fromList [("plus", plus), ("minus", minus), ("eqc", eqc)
                       ,("lt", lt), ("gt", gt)
+                      ,("plusF", plusF)
                       ,("isAlphaNum", alphaNumPred)]
 
 -- Look-up a definition
@@ -241,6 +250,7 @@ compute :: Env -> Exp -> Agenda -> Comp
 compute g (EV x)       ls   = consume (fetch g x) ls                        -- 1) look-up value
 compute g (EA a)       ls   = consume (VA a) ls                             -- 1) feed atom
 compute g (EI n)       ls   = consume (VI n) ls                             -- 1) feed int
+compute g (ED f)       ls   = trace ("consuming float" ++ show f ++ ".\n") consume (VD f) ls                             -- 1) feed double
 compute g (a :& d)     ls   = compute g a (Car g d : ls)                    -- 2) compute head. save tail for later.
 compute g (f :$ as)    ls   = compute g f (Fun g as : ls)                   -- 2) Application. Compute function. Save args for later.
 compute g (e :! f)     ls   = compute g e (Seq g f : ls)                    -- 2) Sequence.    Compute 1st exp.  Save 2nd for later.
@@ -477,8 +487,10 @@ txt (VA a)     = a
 txt (VX a)     = a
 txt (u :&& v)  = txt u ++ txt v
 
+-- TODO: Generate this from `builtins`.
 envBuiltins :: Env
 envBuiltins = Empty :/ [DF "plus" [] []
+                       ,DF "plusF" [] []
                        ,DF "minus" [] []
                        ,DF "eqc"   [] []
                        ,DF "gt"    [] []
