@@ -4,7 +4,7 @@ fib : Float -> Float
 fib 0.0 = 0.0
 fib 1.0 = 1.0
 fib 2.0 = 2.0
-fib j   = fib j `+ fib j
+fib j   = fib j +~ fib j
 
 -- fib2 : Float -> Int
 -- fib2 3.14 = 3 + 1 + 4
