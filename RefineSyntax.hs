@@ -504,12 +504,12 @@ makeIntBinCmp a c = Def [c] (CType [Port [] (IntTy a) a
 
 -- as above, but we now use Flaot instead.
 makeFloatBinOp :: Refined -> Char -> MHDef Refined
-makeFloatBinOp a c = Def ([c] ++ "~") (CType [Port [] (FloatTy a) a
+makeFloatBinOp a c = Def (c : "~") (CType [Port [] (FloatTy a) a
                                          ,Port [] (FloatTy a) a]
                                          (Peg (Ab (AbVar "£" a) (ItfMap M.empty a) a) (FloatTy a) a) a) [] a
 
 makeFloatBinCmp :: Refined -> Char -> MHDef Refined
-makeFloatBinCmp a c = Def ([c] ++ "~") (CType [Port [] (FloatTy a) a
+makeFloatBinCmp a c = Def (c : "~") (CType [Port [] (FloatTy a) a
                                           ,Port [] (FloatTy a) a]
                                           (Peg (Ab (AbVar "£" a) (ItfMap M.empty a) a)
                                                (DTTy "Bool" [] a) a) a) [] a
@@ -546,9 +546,16 @@ builtinItfAliases = []
 builtinMHDefs :: [MHDef Refined]
 builtinMHDefs = map (makeIntBinOp (Refined BuiltIn)) "+-" ++
                 map (makeIntBinCmp (Refined BuiltIn)) "><" ++
-                map (makeFloatBinOp (Refined BuiltIn)) "+-" ++
+                map (makeFloatBinOp (Refined BuiltIn)) "+-*/" ++
                 map (makeFloatBinCmp (Refined BuiltIn)) "><" ++
-                [caseDef, charEq, alphaNumPred]
+                [caseDef, charEq, alphaNumPred, floatEq]
+
+floatEq :: MHDef Refined
+floatEq = Def "eq~" (CType [Port [] (FloatTy a) a
+                          ,Port [] (FloatTy a) a]
+                          (Peg (Ab (AbVar "£" a) (ItfMap M.empty a) a)
+                               (DTTy "Bool" [] a) a) a) [] a
+  where a = Refined BuiltIn
 
 charEq :: MHDef Refined
 charEq = Def "eqc" (CType [Port [] (CharTy a) a

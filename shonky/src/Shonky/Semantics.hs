@@ -174,7 +174,7 @@ plusF :: Env -> [Comp] -> Val
 plusF g [a1, a2] = VD (f a1 + f a2)
   where f x = case x of
           Ret (VD n) -> n
-          _ -> error "float plus: argument not a float"
+          _ -> error "plusF: argument not a float"
 plusF g _ = error "plusF: incorrect number of arguments, expected 2."
 
 minus :: Env -> [Comp] -> Val
@@ -183,6 +183,14 @@ minus g [a1,a2] = VI (f a1 - f a2)
           Ret (VI n) -> n
           _ -> error "minus: argument not an int"
 minus g _ = error "minus: incorrect number of arguments, expected 2."
+
+minusF :: Env -> [Comp] -> Val
+minusF g [a1,a2] = VD (f a1 - f a2)
+  where f x = case x of
+          Ret (VD n) -> n
+          _ -> error "minusF: argument not an int"
+minusF g _ = error "minusF: incorrect number of arguments, expected 2."
+
 
 builtinPred :: Bool -> Val
 builtinPred b = (if b then VA "true" else VA "false") :&& VA ""
@@ -222,8 +230,12 @@ alphaNumPred g _ =
 builtins :: M.Map String (Env -> [Comp] -> Val)
 builtins = M.fromList [("plus", plus), ("minus", minus), ("eqc", eqc)
                       ,("lt", lt), ("gt", gt)
-                      ,("plusF", plusF)
+                      ,("plusF", plusF), ("minusF", minusF)
                       ,("isAlphaNum", alphaNumPred)]
+
+-- TODO: Generate this from `builtins`.
+envBuiltins :: Env
+envBuiltins = Empty :/ map (\x -> DF x [] []) (M.keys builtins)
 
 -- Look-up a definition
 fetch :: Env -> String -> Val
@@ -489,9 +501,6 @@ txt (VA a)     = a
 txt (VX a)     = a
 txt (u :&& v)  = txt u ++ txt v
 
--- TODO: Generate this from `builtins`.
-envBuiltins :: Env
-envBuiltins = Empty :/ map (\x -> DF x [] []) (M.keys builtins)
 
 prog :: Env -> [Def Exp] -> Env
 prog g ds = g' where

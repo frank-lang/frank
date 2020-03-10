@@ -207,6 +207,7 @@ builtins :: M.Map String String
 builtins = M.fromList [("+", "plus")
                       ,("-", "minus")
                       ,("+~", "plusF")
+                      ,("-~", "minusF")
                       ,("eqc" , "eqc")
                       ,(">", "gt")
                       ,("<", "lt")]
