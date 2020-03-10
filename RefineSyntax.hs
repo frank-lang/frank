@@ -551,7 +551,7 @@ builtinMHDefs = map (makeIntBinOp (Refined BuiltIn)) "+-" ++
                 [caseDef, charEq, alphaNumPred, floatEq]
 
 floatEq :: MHDef Refined
-floatEq = Def "eq~" (CType [Port [] (FloatTy a) a
+floatEq = Def "==~" (CType [Port [] (FloatTy a) a
                           ,Port [] (FloatTy a) a]
                           (Peg (Ab (AbVar "£" a) (ItfMap M.empty a) a)
                                (DTTy "Bool" [] a) a) a) [] a

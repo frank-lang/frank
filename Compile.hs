@@ -216,6 +216,7 @@ builtins = M.fromList [("+", "plus")
                       ,("-~", "minusF")
                       ,("*~", "multF")
                       ,("/~", "divF")
+                      ,("==~", "eqF")
                       ]
 
 isBuiltin :: String -> Bool

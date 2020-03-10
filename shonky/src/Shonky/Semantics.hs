@@ -243,6 +243,13 @@ eqc g [a1,a2] = builtinPred ((f a1) == (f a2))
           _ -> error "eqc: argument not a character"
 eqc g _ = error "eqc: incorrect number of arguments, expected 2."
 
+eqF :: Env -> [Comp] -> Val
+eqF g [a1,a2] = builtinPred ((f a1) == (f a2))
+  where f x = case x of
+          Ret (VD n) -> n
+          _ -> error "eqF: argument not a character"
+eqF g _ = error "eqF: incorrect number of arguments, expected 2."
+
 alphaNumPred :: Env -> [Comp] -> Val
 alphaNumPred g [a] =
   (if isAlphaNum (f a) then VA "true" else VA "false") :&& VA ""
@@ -258,6 +265,7 @@ builtins = M.fromList [("plus", plus), ("minus", minus), ("eqc", eqc)
                       ,("lt", lt), ("gt", gt)
                       ,("plusF", plusF), ("minusF", minusF), ("multF", multF), ("divF", divF)
                       ,("ltF", ltF), ("gtF", gtF)
+                      ,("eqF", eqF)
                       ,("isAlphaNum", alphaNumPred)]
 
 -- TODO: Generate this from `builtins`.
