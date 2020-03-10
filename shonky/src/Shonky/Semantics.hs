@@ -559,6 +559,19 @@ alphaNumPred g [a] =
 alphaNumPred g _ =
   error "alphaNumPred: incorrect number of arguments, expected 2."
 
+roundF :: Env -> [Comp] -> Val
+roundF g [a] = VI (round (f a))
+  where f x = case x of
+          Ret (VD n) -> n
+          _ -> error "round: argument not a float"
+roundF g _ = error "round: incorrect number of arguments, expected 1."
+
+toFloat :: Env -> [Comp] -> Val
+toFloat g [a] = VD (fromIntegral (f a))
+  where f x = case x of
+          Ret (VI n) -> n
+          _ -> error "toFloat: argument not a float"
+toFloat g _ = error "toFloat: incorrect number of arguments, expected 1."
 
 builtins :: M.Map String (Env -> [Comp] -> Val)
 builtins = M.fromList [("plus", plus), ("minus", minus), ("eqc", eqc)
@@ -566,7 +579,9 @@ builtins = M.fromList [("plus", plus), ("minus", minus), ("eqc", eqc)
                       ,("plusF", plusF), ("minusF", minusF), ("multF", multF), ("divF", divF)
                       ,("ltF", ltF), ("gtF", gtF)
                       ,("eqF", eqF), ("eqN", eqN)
-                      ,("isAlphaNum", alphaNumPred)]
+                      ,("isAlphaNum", alphaNumPred)
+                      ,("roundF", roundF), ("toFloat", toFloat)
+                      ]
 
 -- TODO: Generate this from `builtins`.
 envBuiltins :: Env

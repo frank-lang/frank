@@ -218,6 +218,8 @@ builtins = M.fromList [("+", "plus")
                       ,("*~", "multF")
                       ,("/~", "divF")
                       ,("==~", "eqF")
+                      ,("round", "roundF")
+                      ,("toFloat", "toFloat")
                       ]
 
 isBuiltin :: String -> Bool

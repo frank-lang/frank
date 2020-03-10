@@ -491,28 +491,6 @@ initialiseRState dts itfs itfAls =
      putRCmds       cmds'
      putRCtrs       ctrs'
 
-makeIntBinOp :: Refined -> Char -> MHDef Refined
-makeIntBinOp a c = Def [c] (CType [Port [] (IntTy a) a
-                                  ,Port [] (IntTy a) a]
-                                  (Peg (Ab (AbVar "£" a) (ItfMap M.empty a) a) (IntTy a) a) a) [] a
-
-makeIntBinCmp :: Refined -> Char -> MHDef Refined
-makeIntBinCmp a c = Def [c] (CType [Port [] (IntTy a) a
-                                   ,Port [] (IntTy a) a]
-                             (Peg (Ab (AbVar "£" a) (ItfMap M.empty a) a)
-                              (DTTy "Bool" [] a) a) a) [] a
-
--- as above, but we now use Flaot instead.
-makeFloatBinOp :: Refined -> Char -> MHDef Refined
-makeFloatBinOp a c = Def (c : "~") (CType [Port [] (FloatTy a) a
-                                         ,Port [] (FloatTy a) a]
-                                         (Peg (Ab (AbVar "£" a) (ItfMap M.empty a) a) (FloatTy a) a) a) [] a
-
-makeFloatBinCmp :: Refined -> Char -> MHDef Refined
-makeFloatBinCmp a c = Def (c : "~") (CType [Port [] (FloatTy a) a
-                                          ,Port [] (FloatTy a) a]
-                                          (Peg (Ab (AbVar "£" a) (ItfMap M.empty a) a)
-                                               (DTTy "Bool" [] a) a) a) [] a
 
 {-- The initial state for the refinement pass. -}
 
@@ -543,12 +521,29 @@ builtinItfs = [Itf "Console" [] [Cmd "inch" [] [] (CharTy b) b
 builtinItfAliases :: [ItfAlias Raw]
 builtinItfAliases = []
 
-builtinMHDefs :: [MHDef Refined]
-builtinMHDefs = map (makeIntBinOp (Refined BuiltIn)) "+-" ++
-                map (makeIntBinCmp (Refined BuiltIn)) "><" ++
-                map (makeFloatBinOp (Refined BuiltIn)) "+-*/" ++
-                map (makeFloatBinCmp (Refined BuiltIn)) "><" ++
-                [caseDef, charEq, alphaNumPred, floatEq, intEq]
+
+makeIntBinOp :: Refined -> Char -> MHDef Refined
+makeIntBinOp a c = Def [c] (CType [Port [] (IntTy a) a
+                                  ,Port [] (IntTy a) a]
+                                  (Peg (Ab (AbVar "£" a) (ItfMap M.empty a) a) (IntTy a) a) a) [] a
+
+makeIntBinCmp :: Refined -> Char -> MHDef Refined
+makeIntBinCmp a c = Def [c] (CType [Port [] (IntTy a) a
+                                   ,Port [] (IntTy a) a]
+                             (Peg (Ab (AbVar "£" a) (ItfMap M.empty a) a)
+                              (DTTy "Bool" [] a) a) a) [] a
+
+-- as above, but we now use Flaot instead.
+makeFloatBinOp :: Refined -> Char -> MHDef Refined
+makeFloatBinOp a c = Def (c : "~") (CType [Port [] (FloatTy a) a
+                                         ,Port [] (FloatTy a) a]
+                                         (Peg (Ab (AbVar "£" a) (ItfMap M.empty a) a) (FloatTy a) a) a) [] a
+
+makeFloatBinCmp :: Refined -> Char -> MHDef Refined
+makeFloatBinCmp a c = Def (c : "~") (CType [Port [] (FloatTy a) a
+                                          ,Port [] (FloatTy a) a]
+                                          (Peg (Ab (AbVar "£" a) (ItfMap M.empty a) a)
+                                               (DTTy "Bool" [] a) a) a) [] a
 
 intEq :: MHDef Refined
 intEq = Def "==" (CType [Port [] (IntTy a) a
@@ -578,6 +573,17 @@ alphaNumPred = Def "isAlphaNum"
                                (DTTy "Bool" [] a) a) a) [] a
   where a = Refined BuiltIn
 
+roundMH :: MHDef Refined
+roundMH = Def "round" (CType [Port [] (FloatTy a) a]
+                           (Peg (Ab (AbVar "£" a) (ItfMap M.empty a) a) (IntTy a) a) a) [] a
+  where a = Refined BuiltIn
+
+
+toFloat :: MHDef Refined
+toFloat = Def "toFloat" (CType [Port [] (IntTy a) a]
+                           (Peg (Ab (AbVar "£" a) (ItfMap M.empty a) a) (FloatTy a) a) a) [] a
+  where a = Refined BuiltIn
+
 caseDef :: MHDef Refined
 caseDef = Def
           "case"
@@ -592,6 +598,14 @@ caseDef = Def
             (Use (App (Op (VarId "f" b) b)
                   [Use (Op (VarId "x" b) b) b] b) b) b] b
   where b = Refined BuiltIn
+
+
+builtinMHDefs :: [MHDef Refined]
+builtinMHDefs = map (makeIntBinOp (Refined BuiltIn)) "+-" ++
+                map (makeIntBinCmp (Refined BuiltIn)) "><" ++
+                map (makeFloatBinOp (Refined BuiltIn)) "+-*/" ++
+                map (makeFloatBinCmp (Refined BuiltIn)) "><" ++
+                [caseDef, charEq, alphaNumPred, floatEq, intEq, roundMH, toFloat]
 
 builtinDTs :: DTMap
 builtinDTs = foldl add M.empty builtinDataTs
