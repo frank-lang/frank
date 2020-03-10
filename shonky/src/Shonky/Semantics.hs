@@ -212,16 +212,29 @@ lt :: Env -> [Comp] -> Val
 lt g [a1,a2] = builtinPred ((f a1) < (f a2))
   where f x = case x of
           Ret (VI n) -> n
-          _ -> error "plus: argument not an int"
-lt g _ = error "plus: incorrect number of arguments, expected 2."
+          _ -> error "lt: argument not an int"
+lt g _ = error "lt: incorrect number of arguments, expected 2."
+
+ltF :: Env -> [Comp] -> Val
+ltF g [a1,a2] = builtinPred ((f a1) < (f a2))
+  where f x = case x of
+          Ret (VD n) -> n
+          _ -> error "ltF: argument not an int"
+ltF g _ = error "ltF: incorrect number of arguments, expected 2."
 
 gt :: Env -> [Comp] -> Val
 gt g [a1,a2] = builtinPred ((f a1) > (f a2))
   where f x = case x of
           Ret (VI n) -> n
-          _ -> error "plus: argument not an int"
-gt g _ = error "plus: incorrect number of arguments, expected 2."
+          _ -> error "gt: argument not an int"
+gt g _ = error "gt: incorrect number of arguments, expected 2."
 
+gtF :: Env -> [Comp] -> Val
+gtF g [a1,a2] = builtinPred ((f a1) > (f a2))
+  where f x = case x of
+          Ret (VD n) -> n
+          _ -> error "gtF: argument not an int"
+gtF g _ = error "gtF: incorrect number of arguments, expected 2."
 
 eqc :: Env -> [Comp] -> Val
 eqc g [a1,a2] = builtinPred ((f a1) == (f a2))
@@ -244,6 +257,7 @@ builtins :: M.Map String (Env -> [Comp] -> Val)
 builtins = M.fromList [("plus", plus), ("minus", minus), ("eqc", eqc)
                       ,("lt", lt), ("gt", gt)
                       ,("plusF", plusF), ("minusF", minusF), ("multF", multF), ("divF", divF)
+                      ,("ltF", ltF), ("gtF", gtF)
                       ,("isAlphaNum", alphaNumPred)]
 
 -- TODO: Generate this from `builtins`.

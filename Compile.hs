@@ -206,13 +206,17 @@ compileOp (CmdId id _) = return $ S.EA id
 builtins :: M.Map String String
 builtins = M.fromList [("+", "plus")
                       ,("-", "minus")
+                      ,("eqc" , "eqc")
+                      ,(">", "gt")
+                      ,("<", "lt")
+                      -- floats
+                      ,(">~", "gtF")
+                      ,("<~", "ltF")
                       ,("+~", "plusF")
                       ,("-~", "minusF")
                       ,("*~", "multF")
                       ,("/~", "divF")
-                      ,("eqc" , "eqc")
-                      ,(">", "gt")
-                      ,("<", "lt")]
+                      ]
 
 isBuiltin :: String -> Bool
 isBuiltin x = M.member x builtins
