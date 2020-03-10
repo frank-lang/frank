@@ -162,115 +162,6 @@ sepBy s ds = vcat $ punctuate s ds
 bracketed :: Doc -> [Doc] -> Doc
 bracketed s ds = lbrack <+> (sepBy s ds <+> rbrack)
 
--- Given env and 2 operands (that are values), compute result
-plus :: Env -> [Comp] -> Val
-plus g [a1,a2] = VI (f a1 + f a2)
-  where f x = case x of
-          Ret (VI n) -> n
-          _ -> error "plus: argument not an int"
-plus g _ = error "plus: incorrect number of arguments, expected 2."
-
-plusF :: Env -> [Comp] -> Val
-plusF g [a1, a2] = VD (f a1 + f a2)
-  where f x = case x of
-          Ret (VD n) -> n
-          _ -> error "plusF: argument not a float"
-plusF g _ = error "plusF: incorrect number of arguments, expected 2."
-
-minus :: Env -> [Comp] -> Val
-minus g [a1,a2] = VI (f a1 - f a2)
-  where f x = case x of
-          Ret (VI n) -> n
-          _ -> error "minus: argument not an int"
-minus g _ = error "minus: incorrect number of arguments, expected 2."
-
-minusF :: Env -> [Comp] -> Val
-minusF g [a1,a2] = VD (f a1 - f a2)
-  where f x = case x of
-          Ret (VD n) -> n
-          _ -> error "minusF: argument not an int"
-minusF g _ = error "minusF: incorrect number of arguments, expected 2."
-
-multF :: Env -> [Comp] -> Val
-multF g [a1,a2] = VD (f a1 * f a2)
-  where f x = case x of
-          Ret (VD n) -> n
-          _ -> error "multF: argument not an int"
-multF g _ = error "multF: incorrect number of arguments, expected 2."
-
-divF :: Env -> [Comp] -> Val
-divF g [a1,a2] = VD (f a1 / f a2)
-  where f x = case x of
-          Ret (VD n) -> n
-          _ -> error "multF: argument not an int"
-divF g _ = error "multF: incorrect number of arguments, expected 2."
-
-builtinPred :: Bool -> Val
-builtinPred b = (if b then VA "true" else VA "false") :&& VA ""
-
-lt :: Env -> [Comp] -> Val
-lt g [a1,a2] = builtinPred ((f a1) < (f a2))
-  where f x = case x of
-          Ret (VI n) -> n
-          _ -> error "lt: argument not an int"
-lt g _ = error "lt: incorrect number of arguments, expected 2."
-
-ltF :: Env -> [Comp] -> Val
-ltF g [a1,a2] = builtinPred ((f a1) < (f a2))
-  where f x = case x of
-          Ret (VD n) -> n
-          _ -> error "ltF: argument not an int"
-ltF g _ = error "ltF: incorrect number of arguments, expected 2."
-
-gt :: Env -> [Comp] -> Val
-gt g [a1,a2] = builtinPred ((f a1) > (f a2))
-  where f x = case x of
-          Ret (VI n) -> n
-          _ -> error "gt: argument not an int"
-gt g _ = error "gt: incorrect number of arguments, expected 2."
-
-gtF :: Env -> [Comp] -> Val
-gtF g [a1,a2] = builtinPred ((f a1) > (f a2))
-  where f x = case x of
-          Ret (VD n) -> n
-          _ -> error "gtF: argument not an int"
-gtF g _ = error "gtF: incorrect number of arguments, expected 2."
-
-eqc :: Env -> [Comp] -> Val
-eqc g [a1,a2] = builtinPred ((f a1) == (f a2))
-  where f x = case x of
-          Ret (VX [c]) -> c
-          _ -> error "eqc: argument not a character"
-eqc g _ = error "eqc: incorrect number of arguments, expected 2."
-
-eqF :: Env -> [Comp] -> Val
-eqF g [a1,a2] = builtinPred ((f a1) == (f a2))
-  where f x = case x of
-          Ret (VD n) -> n
-          _ -> error "eqF: argument not a character"
-eqF g _ = error "eqF: incorrect number of arguments, expected 2."
-
-alphaNumPred :: Env -> [Comp] -> Val
-alphaNumPred g [a] =
-  (if isAlphaNum (f a) then VA "true" else VA "false") :&& VA ""
-  where f x = case x of
-          Ret (VX [c]) -> c
-          _ -> error "alphaNumPred: argument not a character"
-alphaNumPred g _ =
-  error "alphaNumPred: incorrect number of arguments, expected 2."
-
-
-builtins :: M.Map String (Env -> [Comp] -> Val)
-builtins = M.fromList [("plus", plus), ("minus", minus), ("eqc", eqc)
-                      ,("lt", lt), ("gt", gt)
-                      ,("plusF", plusF), ("minusF", minusF), ("multF", multF), ("divF", divF)
-                      ,("ltF", ltF), ("gtF", gtF)
-                      ,("eqF", eqF)
-                      ,("isAlphaNum", alphaNumPred)]
-
--- TODO: Generate this from `builtins`.
-envBuiltins :: Env
-envBuiltins = Empty :/ map (\x -> DF x [] []) (M.keys builtins)
 
 -- Look-up a definition
 fetch :: Env -> String -> Val
@@ -559,3 +450,124 @@ loadFile x = do
 try :: Env -> String -> Comp
 try g s = compute g e [] where
   Just (e, "") = parse pExp s
+
+--
+-- Builtins
+--
+
+-- Given env and 2 operands (that are values), compute result
+plus :: Env -> [Comp] -> Val
+plus g [a1,a2] = VI (f a1 + f a2)
+  where f x = case x of
+          Ret (VI n) -> n
+          _ -> error "plus: argument not an int"
+plus g _ = error "plus: incorrect number of arguments, expected 2."
+
+plusF :: Env -> [Comp] -> Val
+plusF g [a1, a2] = VD (f a1 + f a2)
+  where f x = case x of
+          Ret (VD n) -> n
+          _ -> error "plusF: argument not a float"
+plusF g _ = error "plusF: incorrect number of arguments, expected 2."
+
+minus :: Env -> [Comp] -> Val
+minus g [a1,a2] = VI (f a1 - f a2)
+  where f x = case x of
+          Ret (VI n) -> n
+          _ -> error "minus: argument not an int"
+minus g _ = error "minus: incorrect number of arguments, expected 2."
+
+minusF :: Env -> [Comp] -> Val
+minusF g [a1,a2] = VD (f a1 - f a2)
+  where f x = case x of
+          Ret (VD n) -> n
+          _ -> error "minusF: argument not an int"
+minusF g _ = error "minusF: incorrect number of arguments, expected 2."
+
+multF :: Env -> [Comp] -> Val
+multF g [a1,a2] = VD (f a1 * f a2)
+  where f x = case x of
+          Ret (VD n) -> n
+          _ -> error "multF: argument not an int"
+multF g _ = error "multF: incorrect number of arguments, expected 2."
+
+divF :: Env -> [Comp] -> Val
+divF g [a1,a2] = VD (f a1 / f a2)
+  where f x = case x of
+          Ret (VD n) -> n
+          _ -> error "multF: argument not an int"
+divF g _ = error "multF: incorrect number of arguments, expected 2."
+
+builtinPred :: Bool -> Val
+builtinPred b = (if b then VA "true" else VA "false") :&& VA ""
+
+lt :: Env -> [Comp] -> Val
+lt g [a1,a2] = builtinPred ((f a1) < (f a2))
+  where f x = case x of
+          Ret (VI n) -> n
+          _ -> error "lt: argument not an int"
+lt g _ = error "lt: incorrect number of arguments, expected 2."
+
+ltF :: Env -> [Comp] -> Val
+ltF g [a1,a2] = builtinPred ((f a1) < (f a2))
+  where f x = case x of
+          Ret (VD n) -> n
+          _ -> error "ltF: argument not an int"
+ltF g _ = error "ltF: incorrect number of arguments, expected 2."
+
+gt :: Env -> [Comp] -> Val
+gt g [a1,a2] = builtinPred ((f a1) > (f a2))
+  where f x = case x of
+          Ret (VI n) -> n
+          _ -> error "gt: argument not an int"
+gt g _ = error "gt: incorrect number of arguments, expected 2."
+
+gtF :: Env -> [Comp] -> Val
+gtF g [a1,a2] = builtinPred ((f a1) > (f a2))
+  where f x = case x of
+          Ret (VD n) -> n
+          _ -> error "gtF: argument not an int"
+gtF g _ = error "gtF: incorrect number of arguments, expected 2."
+
+eqc :: Env -> [Comp] -> Val
+eqc g [a1,a2] = builtinPred ((f a1) == (f a2))
+  where f x = case x of
+          Ret (VX [c]) -> c
+          _ -> error "eqc: argument not a character"
+eqc g _ = error "eqc: incorrect number of arguments, expected 2."
+
+eqN :: Env -> [Comp] -> Val
+eqN g [a1,a2] = builtinPred ((f a1) == (f a2))
+  where f x = case x of
+          Ret (VI n) -> n
+          _ -> error "eqN: argument not an int"
+eqN g _ = error "eqN: incorrect number of arguments, expected 2."
+
+eqF :: Env -> [Comp] -> Val
+eqF g [a1,a2] = builtinPred ((f a1) == (f a2))
+  where f x = case x of
+          Ret (VD n) -> n
+          _ -> error "eqF: argument not a float"
+eqF g _ = error "eqF: incorrect number of arguments, expected 2."
+
+alphaNumPred :: Env -> [Comp] -> Val
+alphaNumPred g [a] =
+  (if isAlphaNum (f a) then VA "true" else VA "false") :&& VA ""
+  where f x = case x of
+          Ret (VX [c]) -> c
+          _ -> error "alphaNumPred: argument not a character"
+alphaNumPred g _ =
+  error "alphaNumPred: incorrect number of arguments, expected 2."
+
+
+builtins :: M.Map String (Env -> [Comp] -> Val)
+builtins = M.fromList [("plus", plus), ("minus", minus), ("eqc", eqc)
+                      ,("lt", lt), ("gt", gt)
+                      ,("plusF", plusF), ("minusF", minusF), ("multF", multF), ("divF", divF)
+                      ,("ltF", ltF), ("gtF", gtF)
+                      ,("eqF", eqF), ("eqN", eqN)
+                      ,("isAlphaNum", alphaNumPred)]
+
+-- TODO: Generate this from `builtins`.
+envBuiltins :: Env
+envBuiltins = Empty :/ map (\x -> DF x [] []) (M.keys builtins)

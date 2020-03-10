@@ -548,7 +548,14 @@ builtinMHDefs = map (makeIntBinOp (Refined BuiltIn)) "+-" ++
                 map (makeIntBinCmp (Refined BuiltIn)) "><" ++
                 map (makeFloatBinOp (Refined BuiltIn)) "+-*/" ++
                 map (makeFloatBinCmp (Refined BuiltIn)) "><" ++
-                [caseDef, charEq, alphaNumPred, floatEq]
+                [caseDef, charEq, alphaNumPred, floatEq, intEq]
+
+intEq :: MHDef Refined
+intEq = Def "==" (CType [Port [] (IntTy a) a
+                          ,Port [] (IntTy a) a]
+                          (Peg (Ab (AbVar "£" a) (ItfMap M.empty a) a)
+                               (DTTy "Bool" [] a) a) a) [] a
+  where a = Refined BuiltIn
 
 floatEq :: MHDef Refined
 floatEq = Def "==~" (CType [Port [] (FloatTy a) a

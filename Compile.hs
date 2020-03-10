@@ -209,6 +209,7 @@ builtins = M.fromList [("+", "plus")
                       ,("eqc" , "eqc")
                       ,(">", "gt")
                       ,("<", "lt")
+                      ,("==", "eqN")
                       -- floats
                       ,(">~", "gtF")
                       ,("<~", "ltF")
