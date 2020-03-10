@@ -382,10 +382,20 @@ binOpRight = attachLoc $ do op <- choice $ map symbol ["::"]
 
 -- unary operation
 unOperation :: (MonadicParsing m) => m (Tm Raw)
-unOperation = provideLoc $ \a -> do
+unOperation = try negInt <|>
+              negFloat
+
+negInt :: (MonadicParsing m) => m (Tm Raw)
+negInt = provideLoc $ \a -> do
                 symbol "-"
                 t <- untm
                 return $ Use (RawComb (RawId "-" a) [IntTm 0 a, t] a) a
+
+negFloat :: (MonadicParsing m) => m (Tm Raw)
+negFloat = provideLoc $ \a -> do
+                symbol "-~"
+                t <- untm
+                return $ Use (RawComb (RawId "-~" a) [FloatTm 0.0 a, t] a) a
 
 -- use
 use :: MonadicParsing m => m (Tm Raw) -> m (Use Raw)
