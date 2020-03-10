@@ -208,6 +208,8 @@ builtins = M.fromList [("+", "plus")
                       ,("-", "minus")
                       ,("+~", "plusF")
                       ,("-~", "minusF")
+                      ,("*~", "multF")
+                      ,("/~", "divF")
                       ,("eqc" , "eqc")
                       ,(">", "gt")
                       ,("<", "lt")]

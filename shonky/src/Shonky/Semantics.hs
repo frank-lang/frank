@@ -191,6 +191,19 @@ minusF g [a1,a2] = VD (f a1 - f a2)
           _ -> error "minusF: argument not an int"
 minusF g _ = error "minusF: incorrect number of arguments, expected 2."
 
+multF :: Env -> [Comp] -> Val
+multF g [a1,a2] = VD (f a1 * f a2)
+  where f x = case x of
+          Ret (VD n) -> n
+          _ -> error "multF: argument not an int"
+multF g _ = error "multF: incorrect number of arguments, expected 2."
+
+divF :: Env -> [Comp] -> Val
+divF g [a1,a2] = VD (f a1 / f a2)
+  where f x = case x of
+          Ret (VD n) -> n
+          _ -> error "multF: argument not an int"
+divF g _ = error "multF: incorrect number of arguments, expected 2."
 
 builtinPred :: Bool -> Val
 builtinPred b = (if b then VA "true" else VA "false") :&& VA ""
@@ -230,7 +243,7 @@ alphaNumPred g _ =
 builtins :: M.Map String (Env -> [Comp] -> Val)
 builtins = M.fromList [("plus", plus), ("minus", minus), ("eqc", eqc)
                       ,("lt", lt), ("gt", gt)
-                      ,("plusF", plusF), ("minusF", minusF)
+                      ,("plusF", plusF), ("minusF", minusF), ("multF", multF), ("divF", divF)
                       ,("isAlphaNum", alphaNumPred)]
 
 -- TODO: Generate this from `builtins`.
