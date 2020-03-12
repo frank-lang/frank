@@ -54,14 +54,11 @@ class TestHarnessLogger:
 
     def show(self):
         ## Decorations
-        prebanner = ("N.B: Some tests turned off\n"
-                 "(those in still-todo/, r.itfMaps.fk) \n")
-        banner =  "----Test Harness Result Summary----\n"
+        banner = "----Test Harness Result Summary----\n"
         end = "".rjust(len(banner)-1,'#')
         verbose_summary = '\n' + self.show_regressions() + end
         ## Display the summary information for failures/passes.
-        return (prebanner +
-                end + '\n' +
+        return (end + '\n' +
                 banner +
                 self.show_desc(self.descf) +
                 '\n' +
