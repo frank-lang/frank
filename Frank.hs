@@ -27,7 +27,7 @@ type Args = [(String,[String])]
 
 type PMap = M.Map FilePath (Prog Raw)
 
--- Function checks whether or not a main function exists in the progra
+-- Function checks whether or not a main function exists in the program
 existsMain :: Prog t -> Bool
 existsMain (MkProg xs) = any (== "main") [id | DefTm (Def id _ _ _) _ <- xs]
 
