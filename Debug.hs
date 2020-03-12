@@ -370,6 +370,7 @@ ppVType (FTVar x _) = if isDebugVerboseOn () then text x else text $ trimVar x
 ppVType (StringTy _) = text "String"
 ppVType (IntTy _) = text "Int"
 ppVType (CharTy _) = text "Char"
+ppVType (FloatTy _) = text "Float"
 
 ppTyArg :: (Show a, HasSource a) => TyArg a -> PP.Doc
 ppTyArg (VArg t _) = ppParenVType t

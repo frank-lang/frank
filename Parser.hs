@@ -278,6 +278,7 @@ vtype' :: MonadicParsing m => m (VType Raw)
 vtype' = parens vtype <|>
               (attachLoc $ SCTy <$> try ctype) <|>
               (attachLoc $ StringTy <$ reserved "String") <|>
+              (attachLoc $ FloatTy <$ reserved "Float") <|>
               (attachLoc $ IntTy <$ reserved "Int") <|>
               (attachLoc $ CharTy <$ reserved "Char") <|>
               -- could possibly also be a MkDTTy (determined during refinement)
@@ -351,12 +352,13 @@ usetm = (attachLoc $ Use <$> (try $ use nctm)) <|>    -- use
 
 -- atomic term
 atm :: MonadicParsing m => m (Tm Raw)
-atm = (attachLoc $ SC <$> suspComp) <|>               -- { p_1 -> t_1 | ... }
-      (attachLoc $ StrTm <$> stringLiteral) <|>       -- "string"
+atm = (attachLoc $ SC <$> suspComp) <|>                       -- { p_1 -> t_1 | ... }
+      (attachLoc $ StrTm <$> stringLiteral) <|>               -- "string"
+      (attachLoc $ FloatTm <$> try double) <|>                    -- 3.14
       (attachLoc $ (IntTm . fromIntegral) <$> natural) <|>    -- 42
-      (attachLoc $ CharTm <$> charLiteral) <|>        -- 'c'
-      (attachLoc $ ListTm <$> listTm) <|>             -- [t_1, ..., t_n]
-      parens tm                                       -- (ltm ; ... ; ltm)
+      (attachLoc $ CharTm <$> charLiteral) <|>                -- 'c'
+      (attachLoc $ ListTm <$> listTm) <|>                     -- [t_1, ..., t_n]
+      parens tm                                               -- (ltm ; ... ; ltm)
 
 letTm :: MonadicParsing m => m (Tm Raw) -> m (Tm Raw) -> m (Tm Raw)
 letTm p p' = attachLoc $ do reserved "let"
@@ -368,8 +370,10 @@ letTm p p' = attachLoc $ do reserved "let"
                             return $ Let x t t'
 
 binOpLeft :: MonadicParsing m => m (Use Raw)
-binOpLeft = attachLoc $ do op <- choice $ map symbol ["+","-","*","/",">","<"]
+binOpLeft = attachLoc $ do op <- choice $ map symbol ((map (\x -> x ++ "~")) arithOps ++ arithOps)
                            return $ RawId op
+  where
+    arithOps = ["+","-","*","/",">","<", "=="]
 
 binOpRight :: MonadicParsing m => m (Use Raw)
 binOpRight = attachLoc $ do op <- choice $ map symbol ["::"]
@@ -378,10 +382,20 @@ binOpRight = attachLoc $ do op <- choice $ map symbol ["::"]
 
 -- unary operation
 unOperation :: (MonadicParsing m) => m (Tm Raw)
-unOperation = provideLoc $ \a -> do
+unOperation = try negInt <|>
+              negFloat
+
+negInt :: (MonadicParsing m) => m (Tm Raw)
+negInt = provideLoc $ \a -> do
                 symbol "-"
                 t <- untm
                 return $ Use (RawComb (RawId "-" a) [IntTm 0 a, t] a) a
+
+negFloat :: (MonadicParsing m) => m (Tm Raw)
+negFloat = provideLoc $ \a -> do
+                symbol "-~"
+                t <- untm
+                return $ Use (RawComb (RawId "-~" a) [FloatTm 0.0 a, t] a) a
 
 -- use
 use :: MonadicParsing m => m (Tm Raw) -> m (Use Raw)
@@ -494,6 +508,7 @@ valPat :: MonadicParsing m => m (ValuePat Raw)
 valPat = dataPat <|>
          (attachLoc $ do x <- identifier
                          return $ VarPat x) <|>
+         (attachLoc $ FloatPat <$> try double) <|>
          (attachLoc $ IntPat <$> try parseInt) <|> -- try block for unary minus
          (attachLoc $ CharPat <$> charLiteral) <|>
          (attachLoc $ StrPat <$> stringLiteral) <|>

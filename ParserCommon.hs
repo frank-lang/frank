@@ -46,7 +46,7 @@ frankStyle = IdentifierStyle {
   , _styleLetter = satisfy (\c -> isAlphaNum c || c == '_' || c == '\'')
   , _styleReserved = HashSet.fromList [ "data", "interface"
                                       , "let", "in"
-                                      , "String", "Int", "Char"]
+                                      , "String", "Int", "Char", "Float"]
   , _styleHighlight = Hi.Identifier
   , _styleReservedHighlight = Hi.ReservedIdentifier }
 

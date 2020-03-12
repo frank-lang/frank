@@ -1,0 +1,4 @@
+-- #desc Can't perform a float operation on a float and int
+-- #return failed to unify Int (line 4 , column 9) with Float (built-in)
+main : {Float}
+main! = 3 +~ 3.0

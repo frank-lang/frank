@@ -156,6 +156,7 @@ compileVPat ((StrPat s a) :: ValuePat Desugared) = compileVPat (compileStrPat s)
   compileStrPat []     = DataPat "nil" [] a
   compileStrPat (c:cs) = DataPat "cons" [CharPat c a, compileStrPat cs] a
 compileVPat (CharPat c _) = return $ S.VPX [Left c]
+compileVPat (FloatPat f _) = return $ S.VPD f
 
 compileTm :: Tm Desugared -> Compile S.Exp
 compileTm (SC sc _) = compileSComp sc
@@ -165,6 +166,7 @@ compileTm (StrTm s a) = compileDataCon (f s) where
   f [] = DataCon "nil" [] a
   f (c:cs) = DataCon "cons" [CharTm c a, DCon (f cs) a] a
 compileTm (IntTm n _) = return $ S.EI n
+compileTm (FloatTm f _) = return $ S.ED f
 compileTm (CharTm c _) = return $ S.EX [Left c]
 compileTm (TmSeq t1 t2 _) = (S.:!) <$> compileTm t1 <*> compileTm t2
 compileTm (Use u _) = compileUse u
@@ -206,7 +208,19 @@ builtins = M.fromList [("+", "plus")
                       ,("-", "minus")
                       ,("eqc" , "eqc")
                       ,(">", "gt")
-                      ,("<", "lt")]
+                      ,("<", "lt")
+                      ,("==", "eqN")
+                      -- floats
+                      ,(">~", "gtF")
+                      ,("<~", "ltF")
+                      ,("+~", "plusF")
+                      ,("-~", "minusF")
+                      ,("*~", "multF")
+                      ,("/~", "divF")
+                      ,("==~", "eqF")
+                      ,("round", "roundF")
+                      ,("toFloat", "toFloat")
+                      ]
 
 isBuiltin :: String -> Bool
 isBuiltin x = M.member x builtins
