@@ -1,0 +1,391 @@
+#+TITLE: Async Notes
+
+* Examples
+Here we consider interesting examples of asynchronous effects working in the
+prescense, and absence, of other effects.
+** Interrupts
+One simple example is just to have computations that can be interrupted by some
+system-level interrupt (e.g. C-c). This would be an interrupt that is just an
+interrupt without an accompanying signal.
+
+In Frank, we can handle a computation that possibly fails - being the first
+argument - like this;
+
+#+BEGIN_SRC
+try : {<Exception> X -> Maybe X}
+try <raise -> _> = Nothing
+try x            = Just x
+#+END_SRC
+
+Note, however, that this is the computation that fails. We want to think about
+computations that can be forced to fail. The type signature of an exception
+interrupt handler could be;
+
+#+BEGIN_SRC
+try' : {{X} -> ? -> Maybe X}
+
+try'' : {(Exception) X -> Maybe X}
+try'' (exc -> _) = Nothing
+try'' x            = Just x
+
+comp : {X -> Maybe X}
+comp x = try'' x
+#+END_SRC
+
+where the ? is something that says "this could possibly be interrupted by an
+interrupt". Round brackets denote that it's not the fact that the computation
+can fail /intrinsically/, but rather that it gets an interrupt from outside that
+causes it to fail.
+
+How does this fit into the theory from Ahman's paper? We know that an interrupt
+propagates down through the computation until it finds a promise to handle it
+(as we see here), which then acts upon it. This is fine; if try'' is a function
+called in a program, we just propagate it down through the computation tree
+until we find the handler for it.
+
+We should determine if this behaves differently to normal Frank commands.
+
+*** Typing
+How do we type this properly? We want to express that the computation /can/
+recieve an exception. So everything could look like this;
+
+#+BEGIN_SRC
+try'' : {(Exception) X -> Maybe X} ! (. , Exception)
+try'' (exc -> _)   = Nothing
+try'' x            = Just x
+
+comp : {X -> Maybe X} ! (. , Exception)
+comp x = try'' x
+#+END_SRC
+
+Here we have that comp uses try''. It would be good if we could keep this so
+that the detail that try'' handles Exception out of the type? I'm not sure if
+this is actually possible though.
+
+We could do something like this;
+
+#+BEGIN_SRC
+try'' : {X -> Maybe X} ! (. , Exception)
+try'' (exc -> _)   = Nothing
+try'' x            = Just x
+
+y : {Int} (. , .)
+y = 1 + 2 + 3 + 4 + 5 + ...
+
+comp : {Maybe Int} ! (. , Exception)
+comp = try'' y
+#+END_SRC
+
+Here we say that the computation can receive interrupts of the Exception kind.
+Then, if an interrupt is received to =comp=, we propagate it down into the two
+components.
+
+Ideally, we want to say that =y= does not handle any interrupts. The fact
+that try'' can be interrupted should not leak into this. Can we do this?
+
+What is try'' in their calculus?
+
+=promise (exc _ -> return Nothing) as p in (\p -> return (Just p))=
+
+then b/c we can evaluate under the promise, if the code there evaluates before
+we receive a promise then we are done? Starting to think this is a little bit
+too basic; maybe need to think of this w.r.t await?
+
+
+
+** Pre-emptive Concurrency
+How can this be done in Frank? We basically need a way of /waiting/ for an
+interrupt.
+
+
+#+BEGIN_SRC
+interface Stop = stop : unit
+interface Go = go : unit
+
+waitS : {(Stop) Zero -> {(Go) Zero -> Done Unit}}
+waitS <stop -> _> = waitG
+
+waitG : {(Go) Zero -> Done Unit}
+waitG <go -> _> = Done unit
+
+wait : Unit
+wait = await waitS <_> unit
+
+preempt : Unit
+preempt = wait; f
+#+END_SRC
+
+This is what the wait function would look like. We wait for waitS to finish,
+which happens exactly when we receive a stop then a go interrupt. How do we make
+it reinstall itself? This is unclear.
+
+** Async Communication
+
+#+BEGIN_SRC
+hook Answer X = ans X
+hook Question F = question F
+
+recv_handler : {<<Answer Int>> -> Int}
+recv_handler <<ans x>> = x
+
+get_answer : {{Int} -> [+ Question {Int}, - Answer Int] Int}
+get_answer f = (question f) ; await (promise recv_handler)
+
+response : {<<Question {Int}>> -> [+ Answer Int] Unit}
+response <<question f>> = answer (f!)
+
+main : {Int}
+main = fst ((get_answer {3 + 3}) `par` (promise response))
+#+END_SRC
+
+- Need a way to show that get_answer can /create/ signals of Questions
+-
+
+** Guarded Handlers
+Are these not just handlers equipped with an if statement?
+** List of examples to consider
+*** Interrupts
+*** Pre-emptive conc
+*** Actor-based?
+*** Guards
+** Notes from meeting w/ Sam 26/3
+- Use double chevrons for the new type of effect
+- Use `await`, `promise` as ways to await for a result and install (?) a
+  promise.
+- Hook do not keep a continuation; they are just signals.
+** Scheduling and Pre-emptive concurrency.
+Let us first imagine that we have two threads; one tells the other when to stop
+/ go and the other just computes.
+
+What is happening in pre-emptive concurrency? We want the computing thread to,
+when it receives a stop message, wait for a go signal. This is a blocking wait;
+we will not let any other computation happen.
+
+#+BEGIN_SRC
+hook Go   = go
+hook Stop = stop
+
+stopper : {<<Stop, Go>> -> {Unit} -> {Unit}}
+stopper <<stop>> m = m
+stopper <<go>>   m = m!
+
+goer : <<Go>> -> [-Stop]{Unit}
+goer <<go>> = ?
+
+stopper2 : {<<Stop>> -> [-Go]{Unit}}
+stopper2 <<stop>> = await (promise goer)
+
+schedule : {<<+ Stop, + Go>>Unit -> (<<Stop, Go>> -> {Unit} -> {Unit}) -> Unit}
+schedule <<stop>> _ =
+schedule <<go>>   _ =
+schedule unit     <m> = m
+
+schedule2 : {<<+ Stop>> Unit -> <<- Stop>>{Unit} -> Unit}
+schedule2 <<stop>> m =
+
+runner : {[+Stop, +Go]Unit}
+runner = stop; wait 1000; go
+
+main : {Unit}
+main! = schedule runner (promise stopper2)
+#+END_SRC
+
+Second attempt. Stopper and goer are mutually recursive... Need a way of exiting
+once the computation is finished?
+
+The essence of installing a promise is that we let the computation underneath
+execute, until we get an interrupt of the required kind.
+
+- What goes in the question marks? Do we need a continuation?
+- The last case is OK ish as it pattern matches a value, meaning it knows the
+  computation is finished so we just return it, i think?
+- How do we evaluate the comp - e.g. in goer - underneath the promise?
+
+#+BEGIN_SRC
+hook Go   = go
+hook Stop = stop
+
+stoppable : {{Int} -> [- Go, - Stop] Int}
+stoppable comp = stopper! ; comp!
+
+stopper : {<<Stop>> -> [- Go, - Stop]Int}
+stopper <<stop>> = await (promise (goer!));
+
+goer : {<<Go>> -> [- Stop, - Go]Int}
+goer <<go>> = promise (stopper!)
+
+schedule : {<+ Stop, + Go> Unit -> <- Stop, - Go> Int -> Int}
+schedule <stop> <comp> = schedule ? (send <stop> comp)
+schedule <go>   <comp> = schedule ? (send <go> comp)
+schedule _        comp = comp
+
+timer : {[+Stop, +Go] Unit}
+timer = stop; wait 1000; go; wait 1000; timer
+
+long_comp : {Int}
+long_comp = 1 + 1; 1 + 1; 1 + 1; 1 + 1
+
+main : {Int}
+main! = schedule timer (stoppable long_comp)
+#+END_SRC
+
+This feels better. This basically relies on promise being a primitive that lets
+us evaluate the computation whilst waiting for the interrupt. After each
+evaluation step (?) it checks to see if it has received an interrupt of the
+required type. If this happens we perform the corresponding computation. If we
+prepend this with await, we simply block the computation from being able to
+execute.
+
+The details of this are unclear to me. For instance, how does promise know what
+the computation is? How does it only "incrementally" perform the computation?
+One way we could do this is by converting a computation to a series of thunked
+computations. Then we continually check to see if a stop interrupt has been
+received; if it has, we stop; if not, we just evaluate the thunk and wait with
+the result of that.
+
+*** Using regular effects for the scheduler
+We could get around the problem of needing to have the continuation of the
+timing thread like this;
+
+#+BEGIN_SRC
+interface Go = go : Unit
+interface Stop = stop : Unit
+
+hook Go   = go
+hook Stop = stop
+
+stopper : {{Int} -> <<Stop>> -> [- Go, - Stop]{Int}}
+stopper comp <<stop>> = await (promise (goer comp))
+
+goer : {{Int} -> <<Go>> -> [- Stop, - Go]{Int}}
+goer comp <<go>> = promise (stopper comp!)
+
+schedule : {<Stop, Go> Unit -> <<- Stop, - Go>> {Int} -> Int}
+schedule <stop -> k> comp = schedule (k unit) (send <<stop>> comp)
+schedule <go -> k>   comp = schedule (k unit) (send <<go>> comp)
+schedule unit     comp = comp!
+
+timer : {[Stop, Go] Unit}
+timer = stop; wait 1000; go
+
+long_comp : {Int}
+long_comp = 1 + 1; 1 + 1; 1 + 1; 1 + 1
+
+main : {Int}
+main! = schedule timer (stopper long_comp)
+#+END_SRC
+
+This still doesn't solve the problem of how we send the interrupt to the other
+thread but means we don't need to think about continuing.
+** Bouncing Signals; repeated Signals
+Trying to do a more complicated example using signals and interrupts.
+
+A few questions arising here:
+- How do we fill the question marks? Surely we need to use a continuation or
+  something here?
+- The bottom case of schedule is not ideal; we want a way to pattern match
+  basically if that is a completed computation. Currently, we could only finish
+  once all of the signals in sender have finished but this is not really what we
+  want.
+- How does promise work?
+
+- We have two interrupt handlers handling the same thing here, how do we make
+  sure that they don't overlap each other? In aeff they do this by using guarded
+  handlers and checking that the call ID is the right one. Can we do something
+  else like not propagating the signal all the way down? Or is this not a good
+  idea.
+
+#+BEGIN_SRC
+hook Ask = ask
+hook Answer Y = answer Y
+
+schedule : {<<+ Ask, - Answer Int>> {Int} -> <<+ Answer Int , - Ask>> Unit -> Int}
+
+schedule <<ask>> <answerer> = schedule ? (send <<ask>> answerer)
+schedule <computer> <<ans x>> = schedule (send <<ans x>> computer) ?
+schedule comp _ = comp!
+schedule comp unit = comp
+
+long_comp : {Int -> Int}
+long_comp x = x * x
+
+receiver : {<<Answer Int>> -> Int}
+received <<ans x>> = x
+
+adder : {[+ Ask, - Answer Int] Int}
+adder = let a = ask; (promise receiver) in
+        let b = ask; (promise receiver) in
+            (long_comp 10) + a + b
+
+adder2 : {[+ Ask, - Answer Int] Int}
+adder2 = let a = ask; (promise receiver) in
+            adder3 a
+
+adder3 : {[+ Ask, - Answer Int] Int}
+adder3 = let b = ask; (promise receiver) in
+            (long_comp 10) = a + b
+
+responder : {Int -> <<Ask>> -> [+Answer Int] Int}
+responder x <<ask>> = ans x
+
+sender : {[- Ask, + Answer Int] Unit}
+sender = promise (responder 20); promise (responder 30)
+
+main : {Int}
+main! = schedule adder sender
+#+END_SRC
+** Promise
+What does the promise keyword do? So far it seems to have this type
+
+=promise : {{<<X>> -> {Y}} -> [- X] {Y}}=
+
+That is, it takes an interrupt handler which acts upon an interrupt and makes
+it wait for an interrupt to come in. Also, it lets us still continue to perform
+the underlying computation. This is weird? How does this work? Is this even what
+we want?
+
+Promises should probably just map an interrupt to a value, and then also take a
+computation underneath?
+
+=promise : {{<<X>> -> Y} -> {Z} -> [- X] {Z}=
+
+then we need to ensure that {Z} has a free var of type Y somewhere?
+
+We also need promise to, once the computation underneath has finished, return
+the value and exit around the promise? Unless the value returned by the promise
+IS the thing to be returned from the comp?
+
+E.g if we just have `promise handler (return Z)` this should just become return
+Z?
+** Sending interrupts
+E.g. in the scheduler example, we need a way to send an interrupt down onto
+another fiber. The send keyworld could do this?
+
+=send : <<X>> -> <<- X>> {Y} -> {Y}=
+
+Send then has to perform the action of the interrupt; that is, the corresponding
+computation in the interrupt handler and the substitution of this result into
+the corresponding location.
+** Remote Calls
+** Ticking Scheduling
+
+#+BEGIN_SRC
+
+hook Stop = stop Int
+hook Go = go Int
+
+stoppable : {{Int} -> [- Go, - Stop] Int}
+stoppable comp = stopper! ; comp!
+
+stopper : {<<Stop>> -> [- Go, - Stop]Int}
+stopper <<stop>> = await (promise (goer!));
+
+goer : {<<Go>> -> [- Stop, - Go]Int}
+goer <<go>> = promise (stopper!)
+
+stopper_sourced : {<Stop, Go> Unit -> }
+
+ticker : {<<Tick>> -> Int -> [Stop, Go]Unit}
+ticker <<tick>> n = stop n; go (n + 1); ticker (n + 1)
+
+#+END_SRC
