@@ -1,0 +1,74 @@
+--- start of standard stuff ---
+map : {{X -> Y} -> List X -> List Y}
+map f []        = []
+map f (x :: xs) = f x :: map f xs
+
+print : {String -> [Console]Unit}
+print s = map ouch s; unit
+
+-- lazy conditional
+if : {Bool -> {X} -> {X} -> X}
+if true  t f = t!
+if false t f = f!
+--- end of standard stuff ---
+
+
+interface Next = next : Unit
+
+interface Idle = idle : Unit
+
+interface IdleServer = idleServer : ServerAction
+
+data ServerAction = nothing | dataReq
+
+interface Item = item : String -> Unit
+
+interface NewData = newData : List String -> Unit
+
+interface Request = request : Response (List String)
+
+data Response X = notyet | resp X
+
+words : {List String}
+words! = ["one", "two", "three", "four", "five", "six"]
+
+nth : {Int -> List X -> X}
+nth 0 (cons s _)  = s
+nth k (cons _ xs) = nth (k - 1) xs
+
+len : {List X -> Int}
+len nil = 0
+len (cons _ xs) = 1 + len xs
+
+concat : {List X -> List X -> List X}
+concat nil ys = ys
+concat (cons x xs) ys = cons x (concat xs ys)
+
+user : {[Console, Next]Unit}
+user! = inch!; next!; user!
+
+repeatReq : {[Request]List String}
+repeatReq! = case (request!) { (resp x) -> x
+                             | notyet -> repeatReq!}
+
+-- blocking
+client : Int -> List String -> [Console, Idle, Request]Unit
+client currItem strs = (if (len (strs) - 3 < currItem)
+           {print (" getting more data"); client (currItem) (concat strs (repeatReq!))}
+           {idle!; print (nth currItem strs); client (currItem + 1) strs})
+
+server : {[NewData, IdleServer]Unit}
+server! = case (idleServer!) { nothing -> server!
+                             | dataReq -> newData (words!); server! }
+
+schedule : {<Next>Unit -> <Idle, Request>Unit -> <NewData, IdleServer> Unit -> [Console]Unit}
+schedule <next -> user> <idle -> client>    <server> =
+         schedule (user unit) (client unit) server!
+schedule <user>         <request -> client> <idleServer -> server> =
+         schedule user! (client notyet) (server dataReq)
+schedule <user>         <request -> client> <newData sts -> server> =
+         schedule user! (client (resp sts)) (server unit)
+
+
+main : {[Console]Unit}
+main! = (schedule user! (client 0 words!) server!)

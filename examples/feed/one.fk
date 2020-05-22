@@ -1,0 +1,32 @@
+--- start of standard stuff ---
+map : {{X -> Y} -> List X -> List Y}
+map f []        = []
+map f (x :: xs) = f x :: map f xs
+
+print : {String -> [Console]Unit}
+print s = map ouch s; unit
+--- end of standard stuff ---
+
+interface Next = next : String
+
+interface Wait = wait : Unit
+
+interface Item = item : String -> Unit
+
+user : {[Console, Next]Unit}
+user! = inch!; print (next!); user!
+
+client : {[Item, Wait]Unit}
+client!  = item "one"; wait!;
+           item "two"; wait!; wait!;
+           item "three";
+           item "four";
+           item "five"
+
+schedule : {<Next>Unit -> <Item, Wait>Unit -> [Console]Unit}
+schedule <next -> user> <item str -> client> = schedule (user str) (client unit)
+schedule <m> <wait -> client> = schedule m! (client unit)
+schedule <next -> user> unit = print "No more data left\n"; unit
+
+main : {[Console]Unit}
+main! = (schedule user! client!)

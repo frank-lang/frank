@@ -1,0 +1,24 @@
+#+TITLE: Notes
+
+- What if, in one.fk, the e.g. client is busy doing something else?
+
+
+- Problem; in two.fk so far the e.g. server has to basically just idle waiting
+  for the newData message to be received.
+
+  Need to set it up so that the offering of newData gets triggered by a request
+  and isn't just permeanantly there
+
+- In three, when a thread 'idles' we inform it with with what kind of operation
+  to perform when it restarts.
+
+  This is pretty inconvenient as it means that for any new thing it wants to do,
+  we have to add a new item in the "action" datatype, etc
+
+- so three basically is just blocking; the server has to give the new data at
+  the same time as the client requests. this means the client can't continue to
+  display new information
+
+
+- four.fk idea; when the server responds, take the data and store it in
+  refState, then give it to the server later
