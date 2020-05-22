@@ -82,16 +82,19 @@ client reqInProg currItem strs =
 
 server : {List String -> [NewData, IdleServer]Unit}
 server ws = case (idleServer!) { noAction -> server ws
-                                | dataReq -> newData (take 4 ws); server (drop 4 ws) }
+                               | dataReq -> newData (take 4 ws); server (drop 4 ws) }
 
 schedule : {Maybe (List String) -> <Next>Unit -> <Idle, Collect, Request>Unit -> <NewData, IdleServer> Unit -> [Console]Unit}
 schedule d <next -> user> <idle -> client>    <server> =
          schedule d (user unit) (client unit) server!
 schedule d <user>         <request -> client> <idleServer -> server> =
          schedule d user! (client unit) (server dataReq)
+
+-- taking data from server and storing temporarily
 schedule d <user>         <client> <newData strs -> server> =
          schedule (just strs) user! client! (server unit)
 
+-- picking up data from the store
 schedule nothing <user>   <collect -> client> <server> =
          schedule nothing user! (client nothing) server!
 schedule (just d) <user>  <collect -> client> <server> =
