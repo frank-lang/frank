@@ -69,16 +69,20 @@ repeatCollect : {[Collect] List String}
 repeatCollect! = case (collect!) { (just x) -> x
                                  | nothing -> repeatCollect!}
 
+
 -- awaiting
 client : Bool -> Int -> List String -> [Console, Idle, Collect, Request]Unit
 client reqInProg currItem strs =
-     (if (and (len (strs) - 3 < currItem) (not reqInProg))
-       {print (" requesting more data"); request!; client true currItem strs}
+    idle! ; (if (and (len (strs) - 3 < currItem) (not reqInProg))
+       {print ("*- requesting more data"); request!; client true currItem strs}
 
-       {if ((len (strs))  == currItem)
-           {print (" trying to collect"); client false currItem (concat strs repeatCollect!)}
-           {idle!; print (nth currItem strs); client reqInProg (currItem + 1) strs}
+       {if (currItem == len strs)
+           {print ("*- trying to collect") ;
+            case (collect!) { nothing -> print ("*- please wait and try again."); client reqInProg currItem strs
+                            | (just strs2) -> client false currItem (concat strs strs2) } }
+           {print (nth currItem strs); client reqInProg (currItem + 1) strs}
        })
+
 
 server : {List String -> [NewData, IdleServer]Unit}
 server ws = case (idleServer!) { noAction -> server ws
@@ -102,4 +106,4 @@ schedule (just d) <user>  <collect -> client> <server> =
 
 
 main : {[Console]Unit}
-main! = schedule nothing user! (client false 0 (take 4 words!)) (server words!)
+main! = schedule nothing user! (client false 0 nil) (server words!)
