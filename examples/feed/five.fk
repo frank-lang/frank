@@ -1,0 +1,110 @@
+include printint
+
+--- start of standard stuff ---
+map : {{X -> Y} -> List X -> List Y}
+map f []        = []
+map f (x :: xs) = f x :: map f xs
+
+print : {String -> [Console]Unit}
+print s = map ouch s; unit
+
+-- lazy conditional
+if : {Bool -> {X} -> {X} -> X}
+if true  t f = t!
+if false t f = f!
+
+and : {Bool -> Bool -> Bool}
+and true  y = y
+and false _ = false
+
+not : Bool -> Bool
+not true = false
+not false = true
+
+take : {Int -> List X -> List X}
+take 0 _ = nil
+take k (cons x xs) = cons x (take (k - 1) xs)
+
+drop : {Int -> List X -> List X}
+drop 0 xs = xs
+drop k nil = nil
+drop k (cons x xs) = drop (k - 1) xs
+
+range : Int -> Int -> List Int
+range from to = if (from == to)
+                   {nil}
+                   {cons from (range (from + 1) to)}
+
+
+nth : {Int -> List X -> X}
+nth 0 (cons s _)  = s
+nth k (cons _ xs) = nth (k - 1) xs
+
+len : {List X -> Int}
+len nil = 0
+len (cons _ xs) = 1 + len xs
+
+concat : {List X -> List X -> List X}
+concat nil ys = ys
+concat (cons x xs) ys = cons x (concat xs ys)
+--- end of standard stuff ---
+
+--- Interfaces
+
+interface Next = next : Unit
+
+interface Idle = idle : Unit
+
+interface IdleServer = idleServer : ServerAction
+
+data ServerAction = noAction | dataReq Int
+
+interface NewData = newData : List Int -> Unit
+
+interface Request = request : Int -> Unit
+
+interface Collect = collect : Maybe (List Int)
+
+data Maybe X = nothing | just X
+
+
+user : {[Console, Next]Unit}
+user! = inch!; next!; user!
+
+-- awaiting
+client : Bool -> Int -> List Int -> [Console, Idle, Collect, Request]Unit
+client reqInProg currItem strs =
+    idle! ; (if (and (len (strs) - 3 < currItem) (not reqInProg))
+       {print ("*- requesting more data"); request (currItem + 1); client true currItem strs}
+
+       {if (currItem == len strs)
+           {print ("*- trying to collect") ;
+            case (collect!) { nothing -> print ("*- please wait and try again."); client reqInProg currItem strs
+                            | (just strs2) -> client false currItem (concat strs strs2) } }
+           {print (toString (nth currItem strs)); client reqInProg (currItem + 1) strs}
+       })
+
+
+server : {[NewData, IdleServer]Unit}
+server! = case (idleServer!) { noAction -> server!
+                             | (dataReq x) -> newData (range x (x + 10)); server! }
+
+schedule : {Maybe (List Int) -> <Next>Unit -> <Idle, Collect, Request>Unit -> <NewData, IdleServer> Unit -> [Console]Unit}
+schedule d <next -> user> <idle -> client>    <server> =
+         schedule d (user unit) (client unit) server!
+schedule d <user>         <request n -> client> <idleServer -> server> =
+         schedule d user! (client unit) (server (dataReq n))
+
+-- taking data from server and storing temporarily
+schedule d <user>         <client> <newData strs -> server> =
+         schedule (just strs) user! client! (server unit)
+
+-- picking up data from the store
+schedule nothing <user>   <collect -> client> <server> =
+         schedule nothing user! (client nothing) server!
+schedule (just d) <user>  <collect -> client> <server> =
+         schedule nothing user! (client (just d)) server!
+
+
+main : {[Console]Unit}
+main! = schedule nothing user! (client false 0 nil) (server!)

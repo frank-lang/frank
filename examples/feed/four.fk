@@ -1,5 +1,3 @@
-include printint
-
 --- start of standard stuff ---
 map : {{X -> Y} -> List X -> List Y}
 map f []        = []
@@ -29,12 +27,28 @@ drop : {Int -> List X -> List X}
 drop 0 xs = xs
 drop k nil = nil
 drop k (cons x xs) = drop (k - 1) xs
+--- end of standard stuff ---
 
-range : Int -> Int -> List Int
-range from to = if (from == to)
-                   {nil}
-                   {cons from (range (from + 1) to)}
+--- Interfaces
 
+interface Next = next : Unit
+
+interface Idle = idle : Unit
+
+interface IdleServer = idleServer : ServerAction
+
+data ServerAction = noAction | dataReq
+
+interface NewData = newData : List String -> Unit
+
+interface Request = request : Unit
+
+interface Collect = collect : Maybe (List String)
+
+data Maybe X = nothing | just X
+
+words : {List String}
+words! = ["one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten", "11", "12", "13", "14", "15", "16", "17", "18"]
 
 nth : {Int -> List X -> X}
 nth 0 (cons s _)  = s
@@ -47,53 +61,34 @@ len (cons _ xs) = 1 + len xs
 concat : {List X -> List X -> List X}
 concat nil ys = ys
 concat (cons x xs) ys = cons x (concat xs ys)
---- end of standard stuff ---
-
---- Interfaces
-
-interface Next = next : Unit
-
-interface Idle = idle : Unit
-
-interface IdleServer = idleServer : ServerAction
-
-data ServerAction = noAction | dataReq Int
-
-interface NewData = newData : List Int -> Unit
-
-interface Request = request : Int -> Unit
-
-interface Collect = collect : Maybe (List Int)
-
-data Maybe X = nothing | just X
-
 
 user : {[Console, Next]Unit}
 user! = inch!; next!; user!
 
--- awaiting
-client : Bool -> Int -> List Int -> [Console, Idle, Collect, Request]Unit
-client reqInProg currItem strs =
-    idle! ; (if (and (len (strs) - 3 < currItem) (not reqInProg))
-       {print ("*- requesting more data"); request (currItem + 1); client true currItem strs}
+repeatCollect : {[Collect] List String}
+repeatCollect! = case (collect!) { (just x) -> x
+                                 | nothing -> repeatCollect!}
 
-       {if (currItem == len strs)
-           {print ("*- trying to collect") ;
-            case (collect!) { nothing -> print ("*- please wait and try again."); client reqInProg currItem strs
-                            | (just strs2) -> client false currItem (concat strs strs2) } }
-           {print (toString (nth currItem strs)); client reqInProg (currItem + 1) strs}
+-- awaiting
+client : Bool -> Int -> List String -> [Console, Idle, Collect, Request]Unit
+client reqInProg currItem strs =
+     (if (and (len (strs) - 3 < currItem) (not reqInProg))
+       {print (" requesting more data"); request!; client true currItem strs}
+
+       {if ((len (strs))  == currItem)
+           {print (" trying to collect"); client false currItem (concat strs repeatCollect!)}
+           {idle!; print (nth currItem strs); client reqInProg (currItem + 1) strs}
        })
 
+server : {List String -> [NewData, IdleServer]Unit}
+server ws = case (idleServer!) { noAction -> server ws
+                               | dataReq -> newData (take 4 ws); server (drop 4 ws) }
 
-server : {[NewData, IdleServer]Unit}
-server! = case (idleServer!) { noAction -> server!
-                             | (dataReq x) -> newData (range x (x + 10)); server! }
-
-schedule : {Maybe (List Int) -> <Next>Unit -> <Idle, Collect, Request>Unit -> <NewData, IdleServer> Unit -> [Console]Unit}
+schedule : {Maybe (List String) -> <Next>Unit -> <Idle, Collect, Request>Unit -> <NewData, IdleServer> Unit -> [Console]Unit}
 schedule d <next -> user> <idle -> client>    <server> =
          schedule d (user unit) (client unit) server!
-schedule d <user>         <request n -> client> <idleServer -> server> =
-         schedule d user! (client unit) (server (dataReq n))
+schedule d <user>         <request -> client> <idleServer -> server> =
+         schedule d user! (client unit) (server dataReq)
 
 -- taking data from server and storing temporarily
 schedule d <user>         <client> <newData strs -> server> =
@@ -107,4 +102,4 @@ schedule (just d) <user>  <collect -> client> <server> =
 
 
 main : {[Console]Unit}
-main! = schedule nothing user! (client false 0 nil) (server!)
+main! = schedule nothing user! (client false 0 (take 4 words!)) (server words!)
