@@ -1,0 +1,52 @@
+-------------------------------------
+-- Frank code for printing integers.
+-------------------------------------
+
+---- standard stuff
+ifp : {Bool -> {X} -> {X} -> X}
+ifp true  t f = t!
+ifp false t f = f!
+
+rev' : {List X -> List X -> List X}
+rev' []        ys = ys
+rev' (x :: xs) ys = rev' xs (x :: ys)
+
+reverse : {List X -> List X}
+reverse xs = rev' xs []
+----- end of std
+
+
+mod : Int -> Int -> Int
+mod a m = ifp (m < a)
+             {mod (a - m) m}
+             {a}
+
+div : Int -> Int -> Int
+div a d = ifp (d < a)
+             {1 + div (a - d) d}
+             {0}
+
+toc : Int -> Char
+toc 0 = '0'
+toc 1 = '1'
+toc 2 = '2'
+toc 3 = '3'
+toc 4 = '4'
+toc 5 = '5'
+toc 6 = '6'
+toc 7 = '7'
+toc 8 = '8'
+toc 9 = '9'
+toc _ = 'x' -- oops!
+
+
+-- needs fixing
+toStringAux : Int -> String
+toStringAux 0 = nil
+toStringAux x = let digit = mod x 10 in
+             let rest = div x 10 in
+             cons (toc digit) (toStringAux rest)
+
+toString : Int -> String
+toString x = reverse (toStringAux x)
+
