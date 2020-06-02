@@ -1,8 +1,11 @@
--- include printint
+include printint
 
-include async-lib
+-- include asynclib
 
 --- start of standard stuff ---
+
+data Pair X Y = pair X Y
+
 map : {{X -> Y} -> List X -> List Y}
 map f []        = []
 map f (x :: xs) = f x :: map f xs
@@ -70,7 +73,7 @@ interface BatchSizeResponse = batchSizeResponse : Int -> Unit
 
 interface NewData = newData : List Int -> Unit
 
-interface Request = request : Int -> Unit
+interface Request = request : Pair Int {List Int -> [Console, RefState]Unit} -> Unit
 
 interface Collect = collect : Maybe (List Int)
 
@@ -94,12 +97,15 @@ clientLoop bs =
         -- check if we need to make a request for extra data
         (if (and ((len (read cachedData) - (div (read batchSize) 2)) < read currItem) (not (read reqInProg)))
           {print ("\n*- requesting more data\n");
-           request (len (read cachedData));
+           request (pair (len (read cachedData))
+                         -- thunk of the "receiving" process
+                         ({newdata -> write cachedData (concat (read cachedData) newdata);
+                                      write reqInProg false}));
            write reqInProg true}
 
            -- if we're at the end, try and collect the rest of the data
            {if (read currItem == len (read cachedData))
-               {print ("\n*- trying to collect\n");
+               { print ("\n*- trying to collect\n");
                 case (collect!) { nothing  -> print ("*- please wait and try again.\n")
                                 | (just d) -> write cachedData (concat (read cachedData) d) ;
                                               write reqInProg false } }
@@ -117,9 +123,10 @@ awaitBSR : {[Console, BatchSizeRequest]Int}
 awaitBSR! = case (batchSizeRequest!) { (just x) -> x
                                      | nothing -> awaitBSR!}
 
-clientInit : [Console, Idle, Collect, Request, BatchSizeRequest, RefState] Unit
-clientInit! = let batchsize = awaitBSR! in
-              clientLoop batchsize
+clientInit : [Console, Idle, Collect, Request, RefState] Unit
+clientInit! = --let batchsize = awaitBSR! in
+              -- clientLoop batchsize
+              clientLoop 10
 
 
 server : {[NewData, BatchSizeResponse, IdleServer]Unit}
@@ -130,42 +137,48 @@ server! = case (idleServer!) { (dataReq x) -> newData (range x (x + 10)); server
 --- Scheduler
 --------------
 schedule : {Maybe (List Int) ->                              -- Data from Server -> Client
+           (Maybe {List Int -> [Console, RefState]Unit}) -> -- thunk for writing new data to client
            <Next>Unit ->                                     -- User
-           <Idle, Collect, Request,
-            BatchSizeRequest>Unit ->               -- Client
+           <Idle, Collect, Request>Unit ->               -- Client
            <NewData, IdleServer, BatchSizeResponse> Unit ->  -- Server
-           [Console]Unit}
+           [Console, RefState]Unit}
 
 -- user requesting more data to be displayed
-schedule d <next -> user> <idle -> client>    <server> =
-         schedule d (user unit) (client unit) server!
+schedule d th <next -> user> <idle -> client>    <server> =
+         schedule d th (user unit) (client unit) server!
 
 -- client requesting more data
-schedule d <user>         <request n -> client> <idleServer -> server> =
-         schedule d user! (client unit) (server (dataReq n))
+schedule d _ <user>         <request (pair n thunk) -> client> <idleServer -> server> =
+         schedule d (just thunk) user! (client unit) (server (dataReq n))
 
 -- taking data from server and storing temporarily
-schedule d <user>         <client> <newData strs -> server> =
-         schedule (just strs) user! client! (server unit)
+schedule d (just updateThunk) <user>         <client> <newData strs -> server> =
+         updateThunk strs;
+         schedule nothing nothing user! client! (server unit)
+
+
+-- picking up data from the store
+schedule nothing th <user>   <collect -> client> <server> =
+         schedule nothing th user! (client nothing) server!
+
+-- so here, the thunk gets executed?
+-- schedule (just d) (just th) <user>  <collect -> client> <server> =
+         -- th d;
+         -- schedule nothing nothing user! (client (just d)) server!
 
 -- client makes batch size req, need to tell server. the client awaits the
 -- result of this, hence we return nothing until a suitable response exists.
-schedule d <user> <batchSizeRequest -> client> <idleServer -> server> =
-         schedule d user! (client nothing) (server batchReq)
-schedule d <user> <batchSizeRequest -> client> <batchSizeResponse x -> server> =
-         schedule d user! (client (just x)) (server unit)
-
--- picking up data from the store
-schedule nothing <user>   <collect -> client> <server> =
-         schedule nothing user! (client nothing) server!
-schedule (just d) <user>  <collect -> client> <server> =
-         schedule nothing user! (client (just d)) server!
+--
+-- schedule d <user> <batchSizeRequest -> client> <idleServer -> server> =
+--          schedule d user! (client nothing) (server batchReq)
+-- schedule d <user> <batchSizeRequest -> client> <batchSizeResponse x -> server> =
+--          schedule d user! (client (just x)) (server unit)
 
 -- exiting.
-schedule _ unit _ _ = print "\n*-User exits.\n"
-schedule _ _ unit _ = print "\n*-Client exits.\n"
-schedule _ _ _ unit = print "\n*-Server exits.\n"
+schedule _ _ unit _ _ = print "\n*-User exits.\n"
+schedule _ _ _ unit _ = print "\n*-Client exits.\n"
+schedule _ _ _ _ unit = print "\n*-Server exits.\n"
 
 
-main : {[Console, RefState]Unit}
-main! = schedule nothing user! (clientInit!) (server!)
+main : {[E | Console, RefState]Unit}
+main! = schedule nothing nothing user! (clientInit!) (server!)
