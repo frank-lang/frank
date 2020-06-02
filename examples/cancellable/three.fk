@@ -28,9 +28,6 @@ while cond body = if cond! { body!; while cond body }
 ------ map stuff
 data Map K V = mentry K V (Map K V) | mnil
 
--- unmap : Map K V -> List (Pair K V)
--- unmap (map l) = l
-
 lookup : {{K -> K -> Bool} -> K -> Map K V -> Maybe V}
 lookup _ _ mnil = nothing
 lookup eq k (mentry k' v rest) = if (eq k k') {just v} {lookup eq k rest}
@@ -68,8 +65,8 @@ interface Wait = waitRemote : RemoteSignal
 data RemoteSignal = call Int Int (Ref (Promise Int)) | cancel Int | result Int
 
 
-longF : {Int -> Int}
-longF x = 10 + 20 + 30 + x
+long_comp : {Int -> Int}
+long_comp x = 10 + 20 + 30 + x
 
 modify : {Ref X -> {X -> [RefState]X} -> [RefState]Unit}
 modify ref f = write ref (f (read ref))
@@ -85,31 +82,19 @@ remote! =
         {
             case (waitRemote!)
                 { (call id arg callRef) -> -- make a new ref with these parameters.
-                                   --modify calls ({insert id (async {longF arg})})
-                                   print "\nwriting "; ouint id;
-                                   write callRef (async {longF arg})
-                                   -- write calls (insert id (async {longF arg}) (read calls))
-                 -- | (result id) -> -- take the result from the list, and await the
-                 --                  -- result (if it's not already done)
-                 --                  print "\nresulting "; ouint (await (lookupHard eqn id (read calls)))
+                                   print "\n writing "; ouint id;
+                                   write callRef (async {long_comp arg})
                 }
         }
-
-
 
 
 par : <Wait>Unit ->
       <Call, Result, Cancel>Unit ->
       [E | Console, RefState, Async] Unit
 
--- so here we have a function called with param arg with id id.
 par <waitRemote -> remote> <callF (pair id arg) -> k>  =
     let callRef = new (async {-1}) in
     par (remote (call id arg callRef)) (k callRef)
-
-
--- par <waitRemote -> remote> <res id -> k>  =
---     par (remote (result id)) (k unit)
 
 par <waitRemote -> k> unit = print "\n*- No more instructions. "
 
