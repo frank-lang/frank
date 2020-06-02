@@ -1,0 +1,58 @@
+operation call : int * int
+operation result : int * int
+operation cancel : int
+operation dummy : empty
+
+let callWith callCounter =
+    fun x |->
+        let callNo = !callCounter in
+        send call (x, callNo);
+        callCounter := callNo + 1;
+        let rec awaitLoop () =
+            promise (result (y, callNo') |->
+                if callNo = callNo' then
+                    <<y>>
+                else
+                    awaitLoop ()
+            ) as resultPromise in return resultPromise
+        in
+        let actualPromise = awaitLoop () in
+        let valueThunk () = awaitValue actualPromise in
+        let cancelThunk () = send cancel callNo in
+        let changeMind x = cancelThunk (); send call (x, callNo) in
+        return (valueThunk, cancelThunk, changeMind)
+
+let rec awaitCancel callNo runBeforeStall =
+    promise (cancel callNo' |->
+        if callNo = callNo' then
+            promise (dummy empty |-> return <<empty>>) as dummyPromise in
+            runBeforeStall ();
+            awaitValue dummyPromise;
+            awaitCancel callNo runBeforeStall
+        else
+            awaitCancel callNo runBeforeStall
+    ) as p in return p
+
+let remote f =
+    let rec loop () =
+        promise (call (x, callNo) |->
+            awaitCancel callNo loop;
+            let y = f x in
+            send result (y, callNo);
+            loop ()
+        ) as p in return p
+    in
+    loop ()
+
+run
+    let callCounter = ref 0 in
+    let result1, cancel1, changeMind1 = callWith callCounter 10 in
+    let result2, cancel2, changeMind2 = callWith callCounter 20 in
+    let result3, cancel3, changeMind3 = callWith callCounter 30 in
+    let a = result1 () in
+    cancel2 ();
+    changeMind3 a;
+    result3 ()
+
+run
+    remote (fun x |-> 10 * (20 * (30 * x)))

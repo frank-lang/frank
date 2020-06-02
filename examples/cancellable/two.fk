@@ -1,0 +1,125 @@
+include asynclib
+
+-------- standard stuff
+
+-- data Pair X Y = pair X Y
+
+-- lazy conditional
+if : {Bool -> {X} -> {X} -> X}
+if true  t f = t!
+if false t f = f!
+
+-- data Maybe X = nothing | just X
+
+
+mapF : {{X -> Y} -> List X -> List Y}
+mapF f []        = []
+mapF f (x :: xs) = f x :: mapF f xs
+
+-- print : {String -> [Console]Unit}
+-- print s = mapF ouch s; unit
+
+
+while : {Bool} -> {Unit} -> Unit
+while cond body = if cond! { body!; while cond body }
+                            { unit }
+----- end standard stuff
+
+------ map stuff
+data Map K V = mentry K V (Map K V) | mnil
+
+-- unmap : Map K V -> List (Pair K V)
+-- unmap (map l) = l
+
+lookup : {{K -> K -> Bool} -> K -> Map K V -> Maybe V}
+lookup _ _ mnil = nothing
+lookup eq k (mentry k' v rest) = if (eq k k') {just v} {lookup eq k rest}
+
+lookupHard : {{K -> K -> Bool} -> K -> Map K V -> V}
+-- lookupHard _ _ (map nil) = nothing
+lookupHard eq k (mentry k' v rest) = if (eq k k') {v} {lookupHard eq k rest}
+
+delete : {{K -> K -> Bool} -> K -> Map K V -> Map K V}
+delete _ _ mnil = mnil
+delete eq k (mentry k' v rest) = if (eq k k') {delete eq k rest} {mentry k' v (delete eq k rest)}
+
+insert : K -> V -> Map K V -> Map K V
+insert key value m = mentry key value m
+------ end map stuff
+
+
+
+eqn : {Int -> Int -> Bool}
+eqn x y = x == y
+
+
+interface Cancel = cancel : Int -> Unit
+
+interface TakeResult = take : Unit -> Int
+
+interface Done = done : Int
+
+interface Result = res : Int -> Unit
+
+interface Call = callF : (Pair Int Int) -> Unit
+
+interface Wait = waitRemote : RemoteSignal
+
+data RemoteSignal = call Int Int | cancel Int | result Int
+
+
+-- controller : {[Call, Result, Cancel] Unit}
+-- controller! = callF (pair 1 10); result 1; unit!
+-- -- controller! = callF (pair 1 10); result 1; callF (pair 2 20); callF (pair 3 30); cancel 3; unit
+
+longF : {Int -> Int}
+longF x = 10 + 20 + 30 + x
+
+-- remote : {Map Int Int -> <Call, Result, Cancel> Unit -> [Console]Unit}
+-- remote m <callF (pair value callNo) -> k> = remote (insert callNo (longF value) m) (k unit)
+-- remote m <result callNo -> k> = --{-- print (toString (lookupHard eqn callNo m)) ; --}
+--                                 remote (delete eqn callNo m) (k unit)
+-- remote m <cancel callNo -> k> = remote (delete eqn callNo m) (k unit)
+-- remote m unit = unit
+
+modify : {Ref X -> {X -> [RefState]X} -> [RefState]Unit}
+modify ref f = write ref (f (read ref))
+
+controller : {[Call, Result, Cancel] Unit}
+controller! = callF (pair 1 10); res 1; callF (pair 2 10); unit
+
+remote : {[E | Wait, RefState, Async, Console] Unit}
+remote! =
+        let calls = new mnil in
+        while {true}
+        {
+            case (waitRemote!)
+                { (call id arg) -> -- make a new ref with these parameters.
+                                   --modify calls ({insert id (async {longF arg})})
+                                   print "\nwriting "; ouint id;
+                                   write calls (insert id (async {longF arg}) (read calls))
+                 | (result id) -> -- take the result from the list, and await the
+                                  -- result (if it's not already done)
+                                  print "\nresulting "; ouint (await (lookupHard eqn id (read calls)))
+                }
+        }
+
+
+
+
+par : <Wait>Unit ->
+      <Call, Result, Cancel>Unit ->
+      [Console] Unit
+
+-- so here we have a function called with param arg with id id.
+par <waitRemote -> remote> <callF (pair id arg) -> k>  =
+    par (remote (call id arg)) (k unit)
+
+par <waitRemote -> remote> <res id -> k>  =
+    par (remote (result id)) (k unit)
+
+par <waitRemote -> k> unit = print "\n*- No more instructions. "
+
+
+main : {[Console, RefState]Unit}
+main! = runAsync (par remote! controller!)

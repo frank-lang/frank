@@ -15,14 +15,18 @@ reverse : {List X -> List X}
 reverse xs = rev' xs []
 ----- end of std
 
+leq : Int -> Int -> Bool
+leq x y = if (x == y)
+            {true}
+            {x < y}
 
 mod : Int -> Int -> Int
-mod a m = ifp (m < a)
+mod a m = ifp (leq m a)
              {mod (a - m) m}
              {a}
 
 div : Int -> Int -> Int
-div a d = ifp (d < a)
+div a d = ifp (leq d a)
              {1 + div (a - d) d}
              {0}
 
