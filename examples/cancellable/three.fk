@@ -56,13 +56,13 @@ interface TakeResult = take : Unit -> Int
 
 interface Done = done : Int
 
-interface Result = res : Int -> Unit
+interface Result = res : Ref (Promise Int) -> Int
 
 interface Call = callF : (Pair Int Int) -> Ref (Promise Int)
 
 interface Wait = waitRemote : RemoteSignal
 
-data RemoteSignal = call Int Int (Ref (Promise Int)) | cancel Int | result Int
+data RemoteSignal = call Int Int (Ref (Promise Int)) | cancel Int | result Int | pass
 
 
 long_comp : {Int -> Int}
@@ -73,7 +73,9 @@ modify ref f = write ref (f (read ref))
 
 controller : {[E | Call, Result, Cancel, Console, Async, RefState] Unit}
 controller! = let ref1 = callF (pair 1 10) in
-              print "\nReceiving "; ouint (await (read ref1))
+              let ref2 = callF (pair 2 20) in
+              print "\nReceiving "; ouint (res ref2);
+              print "\nReceiving "; ouint (res ref1)
 
 remote : {[E | Wait, RefState, Async, Console] Unit}
 remote! =
@@ -82,8 +84,9 @@ remote! =
         {
             case (waitRemote!)
                 { (call id arg callRef) -> -- make a new ref with these parameters.
-                                   print "\n writing "; ouint id;
+                                   print "\nWriting "; ouint id;
                                    write callRef (async {long_comp arg})
+                | pass -> unit
                 }
         }
 
@@ -95,6 +98,10 @@ par : <Wait>Unit ->
 par <waitRemote -> remote> <callF (pair id arg) -> k>  =
     let callRef = new (async {-1}) in
     par (remote (call id arg callRef)) (k callRef)
+
+par <waitRemote -> remote> <res callRef -> k> =
+    let callResult = await (read callRef) in
+    par (remote pass) (k callResult)
 
 par <waitRemote -> k> unit = print "\n*- No more instructions. "
 

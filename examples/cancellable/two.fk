@@ -53,7 +53,7 @@ eqn : {Int -> Int -> Bool}
 eqn x y = x == y
 
 
-interface Cancel = cancel : Int -> Unit
+interface Cancel = cancelOp : Int -> Unit
 
 interface TakeResult = take : Unit -> Int
 
@@ -79,7 +79,7 @@ modify : {Ref X -> {X -> [RefState]X} -> [RefState]Unit}
 modify ref f = write ref (f (read ref))
 
 controller : {[Call, Result, Cancel] Unit}
-controller! = callF (pair 1 10); res 1; callF (pair 2 10); unit
+controller! = callF (pair 1 10); res 1; callF (pair 2 20); callF (pair 3 30); cancelOp 2; res 3; unit
 
 remote : {[E | Wait, RefState, Async, Console] Unit}
 remote! =
@@ -94,6 +94,8 @@ remote! =
                  | (result id) -> -- take the result from the list, and await the
                                   -- result (if it's not already done)
                                   print "\nresulting "; ouint (await (lookupHard eqn id (read calls)))
+                 | (cancel id) -> print "\ncancelling "; ouint id;
+                                  write calls (delete eqn id (read calls))
                 }
         }
 
@@ -109,6 +111,10 @@ par <waitRemote -> remote> <callF (pair id arg) -> k>  =
 
 par <waitRemote -> remote> <res id -> k>  =
     par (remote (result id)) (k unit)
+
+par <waitRemote -> remote> <cancelOp id -> k> =
+    par (remote (cancel id)) (k unit)
+
 
 par <waitRemote -> k> unit = print "\n*- No more instructions. "
 

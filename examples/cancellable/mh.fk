@@ -72,7 +72,7 @@ longF x = 10 + 20 + 30 + x
 
 remote : {Map Int Int -> <Call, Result, Cancel> Unit -> [Console]Unit}
 remote m <callF (pair value callNo) -> k> = remote (insert callNo (longF value) m) (k unit)
-remote m <result callNo -> k> = --{-- print (toString (lookupHard eqn callNo m)) ; --}
+remote m <result callNo -> k> = print (toString (lookupHard eqn callNo m));
                                 remote (delete eqn callNo m) (k unit)
 remote m <cancel callNo -> k> = remote (delete eqn callNo m) (k unit)
 remote m unit = unit
