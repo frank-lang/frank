@@ -9,6 +9,10 @@ import Data.Char
 import Data.IORef
 import Data.List
 
+import Data.Maybe (fromMaybe)
+
+import System.Process (readProcess) -- for terminal access -> web requests.
+
 import qualified Data.Map.Strict as M
 
 import Shonky.Syntax
@@ -238,9 +242,12 @@ ioHandler comp@(Call "ouint" 0 [VI k] ks) =
   do putStr (show k)
      hFlush stdout
      ioHandler (consume (VA "unit" :&& VA "") (reverse ks))
-
 ioHandler (Call "webReq" k [val] ks) =
-  do ioHandler (consume (VX (valToString val)) (reverse ks))
+  do let requestSplit = words (valToString val)
+     -- TODO: Is this the correct way to fail here?
+     let (command, args) = fromMaybe (error ("Malformed request " ++ show val)) (uncons requestSplit)
+     res <- readProcess command args []
+     ioHandler (consume (stringToVal res) (reverse ks))
 
 -- RefState stuff
 ioHandler (Call "new" 0 [v] ks) =
@@ -262,6 +269,11 @@ valToString (VX c) = c
 valToString (this :&& rest) = valToString this ++ valToString rest
 valToString _ = ""
 
+-- and back again. shonky has a strange encoding where you need these `VA ""`s
+-- at the end of everything
+stringToVal :: String -> Val
+stringToVal [] = VA "nil" :&& VA ""
+stringToVal (c:cs) = VA "cons" :&& (VX [c] :&& ((stringToVal cs) :&& VA ""))
 
 -- A helper to simplify strings (list of characters)
 -- this allows regular list append [x|xs] to function like [|`x``xs`|] but
