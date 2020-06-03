@@ -508,7 +508,13 @@ builtinItfs = [Itf "Console" [] [Cmd "inch" [] [] (CharTy b) b
                                 ,Cmd "ouch" [] [CharTy b]
                                  (DTTy "Unit" [] b) b
                                 ,Cmd "ouint" [] [IntTy b]
-                                 (DTTy "Unit" [] b) b] b
+                                 (DTTy "Unit" [] b) b
+                                -- ,Cmd "webReq" [] [StringTy b]
+                                --  (StringTy b) b]
+                                ,Cmd "webReq" [] [stringTy]
+                                 (stringTy) b]
+                                 b
+                
               ,Itf "RefState" [] [Cmd "new" [("X", VT)] [TVar "X" b]
                                                             (DTTy "Ref" [VArg (TVar "X" b) b] b) b
                                    ,Cmd "write" [("X", VT)] [DTTy "Ref" [VArg (TVar "X" b) b] b
@@ -517,6 +523,7 @@ builtinItfs = [Itf "Console" [] [Cmd "inch" [] [] (CharTy b) b
                                    ,Cmd "read" [("X", VT)] [DTTy "Ref" [VArg (TVar "X" b) b] b]
                                                               (TVar "X" b) b] b]
   where b = Raw BuiltIn
+        stringTy = DTTy "List" [VArg (CharTy b) b] b
 
 builtinItfAliases :: [ItfAlias Raw]
 builtinItfAliases = []

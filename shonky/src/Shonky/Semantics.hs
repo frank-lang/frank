@@ -27,6 +27,7 @@ data Val
   | VD Double                                                               -- float (double)
   | Val :&& Val                                                             -- cons
   | VX String                                                               -- string
+                                                                            -- (except really just single characters)
   | VF Env [([Adap], [String])] [([Pat], Exp)]                              -- function (anonymous), has environment, for each port: list of adaptors + list of commands to be captured, list of patterns + handling expressions
   | VB String Env                                                           -- built-in function
   | VC Comp                                                                 -- comp
@@ -223,6 +224,7 @@ consume v []                       = Ret v
 -- only if the level is 0 --TODO LC: rethink this?
 ioHandler :: Comp -> IO Val
 ioHandler (Ret v) = return v
+-- Console stuff
 ioHandler (Call "inch" 0 [] ks) =
   do c <- getChar
      -- HACK: for some reason backspace seems to produce '\DEL' instead of '\b'
@@ -236,6 +238,11 @@ ioHandler comp@(Call "ouint" 0 [VI k] ks) =
   do putStr (show k)
      hFlush stdout
      ioHandler (consume (VA "unit" :&& VA "") (reverse ks))
+
+ioHandler (Call "webReq" k [val] ks) =
+  do ioHandler (consume (VX (valToString val)) (reverse ks))
+
+-- RefState stuff
 ioHandler (Call "new" 0 [v] ks) =
   do ref <- newIORef v
      ioHandler (consume (VR ref) (reverse ks))
@@ -248,6 +255,13 @@ ioHandler (Call "read" 0 [VR ref] ks) =
 ioHandler (Call c n vs ks) = error $ "Unhandled command: " ++ c ++ "." ++
                                      show n ++ concat (map (\v -> " " ++
                                     (show . ppVal) v) vs)
+
+-- takes a value representing a string and extracts the actual string out of it.
+valToString :: Val -> String
+valToString (VX c) = c
+valToString (this :&& rest) = valToString this ++ valToString rest
+valToString _ = ""
+
 
 -- A helper to simplify strings (list of characters)
 -- this allows regular list append [x|xs] to function like [|`x``xs`|] but
