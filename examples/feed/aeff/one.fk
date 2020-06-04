@@ -1,0 +1,49 @@
+-- Paper example written in Frank style
+
+include std
+
+
+hook Request = request Int
+
+hook Response = Response (List Int)
+
+hook NextItem = nextItem
+
+
+-- the server just installs the promise for incoming requests and returns.
+server : {[-Request] [Response] Unit}
+server = promise requestPromise
+
+-- when a request interrupt comes in, server invokes the response and then reinstalls.
+-- `comp` is the computation that was interrupted by the request message.
+-- it then reinstalls itself.
+requestPromise : {<Request> -> [Response]Unit}
+requestPromise <request offset> = response (range offset (offset + 10)); requestPromise
+
+
+
+client : {[-Response, -NextItem] [Response, RefState]}
+client = promise nextItemResponse
+
+responsePromise : {<Response> -> [RefState] Unit}
+responsePromise <response newData> = write cachedData (concat (read cachedData) newData);
+                                     write requestInProgress false
+
+-- On the receipt of a nextItem interrupt, we do all that stuff
+nextItemResponse : {<NextItem> -> -[Response]+[Request, RefState]Unit}
+nextItemResponse <nextItem> =
+        (if (and ((len (read cachedData) - (div (read batchSize) 2)) < read currItem) (not (read reqInProg)))
+            { print ("\n*- Requesting more data\n");
+              request (len (read cachedData));
+              write reqInProg true;
+              promise responsePromise}
+
+            {if (read currItem == len (read cachedData))
+                { print "\n*- please wait and retry.\n" }
+
+                { ouint (nth (read currItem) (read cachedData));
+                  print " ";
+                  write currItem ((read currItem) + 1)}
+            });
+        -- reinvoke client loop afterwards
+        client

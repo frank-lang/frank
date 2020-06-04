@@ -1,0 +1,29 @@
+concat : String -> String -> String
+concat nil ys = ys
+concat (cons x xs) ys = cons x (concat xs ys)
+
+if : {Bool -> {X} -> {X} -> X}
+if true  t f = t!
+if false t f = f!
+
+eqn : {Int -> Int -> Bool}
+eqn x y = x == y
+
+------ map stuff
+data Map K V = mentry K V (Map K V) | mnil
+
+lookup : {{K -> K -> Bool} -> K -> Map K V -> Maybe V}
+lookup _ _ mnil = nothing
+lookup eq k (mentry k' v rest) = if (eq k k') {just v} {lookup eq k rest}
+
+lookupHard : {{K -> K -> Bool} -> K -> Map K V -> V}
+-- lookupHard _ _ (map nil) = nothing
+lookupHard eq k (mentry k' v rest) = if (eq k k') {v} {lookupHard eq k rest}
+
+delete : {{K -> K -> Bool} -> K -> Map K V -> Map K V}
+delete _ _ mnil = mnil
+delete eq k (mentry k' v rest) = if (eq k k') {delete eq k rest} {mentry k' v (delete eq k rest)}
+
+insert : K -> V -> Map K V -> Map K V
+insert key value m = mentry key value m
+------ end map stuff

@@ -1,0 +1,107 @@
+include printint
+
+include std
+
+--- Interfaces and data types
+
+interface Next = next : Unit
+
+interface Idle = idle : Unit
+
+interface IdleServer = idleServer : ServerAction
+
+data ServerAction = dataReq Int | batchReq
+
+interface BatchSizeRequest = batchSizeRequest : Maybe Int
+
+interface BatchSizeResponse = batchSizeResponse : Int -> Unit
+
+interface NewData = newData : List Int -> Unit
+
+interface Request = request : Pair Int {List Int -> [Console, RefState]Unit} -> Unit
+
+interface Collect = collect : Maybe (List Int)
+
+data Maybe X = nothing | just X
+
+
+user : {[Console, Next]Unit}
+user! = inch!; next!; user!
+
+awaitBSR : {[Console, BatchSizeRequest]Int}
+awaitBSR! = case (batchSizeRequest!) { (just x) -> x
+                                     | nothing -> awaitBSR!}
+
+clientInit : [Console, Idle, Collect, Request, RefState] Unit
+clientInit! = --let batchsize = awaitBSR! in
+              -- clientLoop batchsize
+              clientLoop 10
+
+server : {[NewData, BatchSizeResponse, IdleServer, Console]Unit}
+server! = case (idleServer!) { (dataReq x) -> newData (range x (x + 10)); server!
+                             | batchReq    -> batchSizeResponse 10; server!}
+
+-- awaiting
+clientLoop : Int -> [Console, Idle, Collect, Request, RefState]Unit
+clientLoop bs =
+    let currItem = new 0 in
+    let reqInProg = new false in
+    let cachedData = new nil in
+    let batchSize = new bs in
+
+    while {true}
+    {
+        idle!;
+        -- check if we need to make a request for extra data
+        (if (and ((len (read cachedData) - (div (read batchSize) 2)) < read currItem) (not (read reqInProg)))
+          {print ("\n*- requesting more data\n");
+           -- invoke the request effect with the 'interrupt handler' as an argument.
+           request (pair (len (read cachedData))
+                         -- callback of the "receiving" process
+                         ({newdata -> write cachedData (concat (read cachedData) newdata);
+                                      write reqInProg false}));
+           write reqInProg true}
+
+           -- if we're at the end, try and collect the rest of the data
+           {if (read currItem == len (read cachedData))
+               { print "*- please wait and try again.\n" }
+
+               -- if none of the previous conditions are true, just print out the current data point and move on.
+               {ouint (nth (read currItem) (read cachedData));
+                print " ";
+                write currItem ((read currItem) + 1)}
+           })
+    }
+
+--------------
+--- Scheduler
+--------------
+schedule : {(Maybe {List Int -> [Console, RefState]Unit}) -> -- thunk for writing new data to client
+           <Next>Unit ->                                     -- User
+           <NewData, IdleServer, BatchSizeResponse> Unit ->  -- Server
+           <Idle, Collect, Request>Unit ->               -- Client
+           [Console, RefState]Unit}
+
+
+-- here we take the data from the newData effect and invoke the callback with it.
+schedule (just update) <user>          <newData strs -> server> <client> =
+         update strs;
+         schedule nothing user! (server unit) client!
+
+-- user requesting more data to be displayed
+schedule th <next -> user> <server> <idle -> client> =
+         schedule th (user unit) server! (client unit)
+
+-- client requesting more data
+schedule _ <user>         <idleServer -> server> <request (pair n thunk) -> client> =
+         schedule (just thunk) user!  (server (dataReq n)) (client unit)
+
+
+-- exiting.
+schedule _ unit _ _ = print "\n*-User exits.\n"
+schedule _ _ unit _ = print "\n*-Client exits.\n"
+schedule _ _ _ unit = print "\n*-Server exits.\n"
+
+
+main : {[E | Console, RefState]Unit}
+main! = schedule nothing user! server! clientInit!
