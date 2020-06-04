@@ -509,11 +509,10 @@ builtinItfs = [Itf "Console" [] [Cmd "inch" [] [] (CharTy b) b
                                  (DTTy "Unit" [] b) b
                                 ,Cmd "ouint" [] [IntTy b]
                                  (DTTy "Unit" [] b) b
-                                -- ,Cmd "webReq" [] [StringTy b]
-                                --  (StringTy b) b]
-                                ,Cmd "webReq" [] [stringTy]
-                                 (stringTy) b]
-                                 b
+                                ] b
+
+              ,Itf "Web" [] [Cmd "getRequest" [] [stringTy]
+                             (stringTy) b] b
                 
               ,Itf "RefState" [] [Cmd "new" [("X", VT)] [TVar "X" b]
                                                             (DTTy "Ref" [VArg (TVar "X" b) b] b) b

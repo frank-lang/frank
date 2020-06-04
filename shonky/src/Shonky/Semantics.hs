@@ -11,7 +11,8 @@ import Data.List
 
 import Data.Maybe (fromMaybe)
 
-import System.Process (readProcess) -- for terminal access -> web requests.
+-- for terminal access -> web requests via curl.
+import System.Process (readProcessWithExitCode)
 
 import qualified Data.Map.Strict as M
 
@@ -228,7 +229,7 @@ consume v []                       = Ret v
 -- only if the level is 0 --TODO LC: rethink this?
 ioHandler :: Comp -> IO Val
 ioHandler (Ret v) = return v
--- Console stuff
+-- Console commands
 ioHandler (Call "inch" 0 [] ks) =
   do c <- getChar
      -- HACK: for some reason backspace seems to produce '\DEL' instead of '\b'
@@ -242,14 +243,16 @@ ioHandler comp@(Call "ouint" 0 [VI k] ks) =
   do putStr (show k)
      hFlush stdout
      ioHandler (consume (VA "unit" :&& VA "") (reverse ks))
-ioHandler (Call "webReq" k [val] ks) =
-  do let requestSplit = words (valToString val)
-     -- TODO: Is this the correct way to fail here?
-     let (command, args) = fromMaybe (error ("Malformed request " ++ show val)) (uncons requestSplit)
-     res <- readProcess command args []
+
+-- Web commands
+-- Use readProcessWithExitCode rather than readProcess as it doesn't also print
+-- out all the extra, useless information
+ioHandler (Call "getRequest" 0 [val] ks) =
+  do let url = valToString val
+     (_, res, _) <- readProcessWithExitCode "curl" ["--request", "GET", url] []
      ioHandler (consume (stringToVal res) (reverse ks))
 
--- RefState stuff
+-- RefState commands
 ioHandler (Call "new" 0 [v] ks) =
   do ref <- newIORef v
      ioHandler (consume (VR ref) (reverse ks))
