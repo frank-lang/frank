@@ -1,0 +1,123 @@
+include printint
+
+include std
+
+--- Interfaces and data types
+
+interface Next = next : Unit
+
+interface Idle = idle : Unit
+
+interface IdleServer = idleServer : ServerAction
+
+data ServerAction = dataReq Int | batchReq
+
+interface BatchSizeRequest = batchSizeRequest : Maybe Int
+
+interface BatchSizeResponse = batchSizeResponse : Int -> Unit
+
+interface NewData = newData : List Int -> Unit
+
+interface Request = request : Int -> Unit
+
+interface Collect = collect : Maybe (List Int)
+
+interface PromiseNext = promiseNext : {Unit -> [Console, RefState, Request, PromiseResponse]Unit} -> Unit
+
+interface PromiseResponse = promiseResponse : {List Int -> [Console, RefState]Unit} -> Unit
+
+data Maybe X = nothing | just X
+
+
+user : {[Console, Next]Unit}
+user! = inch!; next!; user!
+
+clientInit : [Console, Idle, Request, RefState, PromiseResponse] Unit
+clientInit! =
+    let currItem = new 0 in
+    let reqInProg = new false in
+    let cachedData = new nil in
+    let batchSize = new 10 in
+        clientLoop currItem reqInProg cachedData batchSize
+
+server : {[NewData, IdleServer, Console]Unit}
+server! = case (idleServer!) { (dataReq x) -> newData (range x (x + 10)); server! }
+                            
+
+-- nextPromise : {Ref Int -> Ref Bool -> Ref (List Int) -> Ref Int -> Unit ->
+--               [Console, Request, RefState] Unit}
+-- nextPromise currItem reqInProg cachedData batchSize unit =
+
+responsePromise_fn : Ref (List Int) -> Ref Bool -> {List Int -> [RefState]Unit}
+responsePromise_fn cachedData reqInProg =
+                   {newdata ->
+                     write cachedData (concat (read cachedData) newdata);
+                     write reqInProg false}
+
+-- awaiting
+clientLoop : {Ref Int -> Ref Bool -> Ref (List Int) -> Ref Int ->
+             [Console, Idle, Request, PromiseResponse, RefState]Unit}
+clientLoop currItem reqInProg cachedData batchSize =
+        idle!;
+        -- check if we need to make a request for extra data
+        let cachedSize = len (read cachedData) in
+        if (and ((cachedSize - (div (read batchSize) 2)) < read currItem)
+                 (not (read reqInProg)))
+          {print ("\n*- requesting more data\n");
+           -- invoke the request effect with the 'interrupt handler' as an argument.
+           request cachedSize;
+           -- invoke the promise response effect with this
+           -- irritatingly, we can't use this as a separate function ... Not sure why
+           promiseResponse (
+                   {newdata ->
+                     write cachedData (concat (read cachedData) newdata);
+                     write reqInProg false
+                   });
+                         -- callback of the "receiving" process
+           write reqInProg true}
+           {unit};
+
+        -- if we're at the end, try and collect the rest of the data
+        if (read currItem == len (read cachedData))
+            { print "*- please wait and try again.\n" }
+
+            -- if none of the previous conditions are true, just print out the current data point and move on.
+            {ouint (nth (read currItem) (read cachedData));
+             print " ";
+             write currItem ((read currItem) + 1)};
+        clientLoop currItem reqInProg cachedData batchSize
+
+--------------
+--- Scheduler
+--------------
+schedule : {(Maybe {List Int -> [Console, RefState]Unit}) -> -- thunk for writing new data to client
+           <NewData, IdleServer> Unit ->                     -- Server
+           <Idle, Request, PromiseResponse>Unit ->                            -- Client
+           <Next>Unit ->                                     -- User
+           [Console, RefState]Unit}
+
+
+-- here we take the data from the newData effect and invoke the callback with it.
+schedule (just update)           <newData strs -> server> <client> <user> =
+         update strs;
+         schedule nothing (server unit) client! user!
+
+-- user requesting more data to be displayed
+schedule th  <server> <idle -> client> <next -> user> =
+         schedule th  server! (client unit) (user unit)
+
+-- client requesting more data
+schedule cb          <idleServer -> server> <request n -> client> <user> =
+         schedule cb (server (dataReq n)) (client unit) user!
+
+schedule _ <server> <promiseResponse callback -> client> <user> =
+         schedule (just callback) server! (client unit) user!
+
+-- exiting.
+schedule _ unit _ _ = print "\n*-User exits.\n"
+schedule _ _ unit _ = print "\n*-Client exits.\n"
+schedule _ _ _ unit = print "\n*-Server exits.\n"
+
+
+main : {[E | Console, RefState]Unit}
+main! = schedule nothing server! clientInit! user!
