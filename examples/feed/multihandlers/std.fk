@@ -2,6 +2,11 @@
 
 data Pair X Y = pair X Y
 
+data Maybe X = nothing | just X
+
+
+
+
 map : {{X -> Y} -> List X -> List Y}
 map f []        = []
 map f (x :: xs) = f x :: map f xs

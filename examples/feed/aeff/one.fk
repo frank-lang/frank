@@ -3,6 +3,8 @@
 include std
 
 
+-- Hooks; basically just commands without the type they are resumed with
+-- Are these actually all just implicitly resumed with unit???
 hook Request = request Int
 
 hook Response = Response (List Int)
@@ -11,26 +13,26 @@ hook NextItem = nextItem
 
 
 -- the server just installs the promise for incoming requests and returns.
-server : {[-Request] [Response] Unit}
+server : {-[Request] +[Response] Unit}
 server = promise requestPromise
 
 -- when a request interrupt comes in, server invokes the response and then reinstalls.
 -- `comp` is the computation that was interrupted by the request message.
 -- it then reinstalls itself.
-requestPromise : {<Request> -> [Response]Unit}
-requestPromise <request offset> = response (range offset (offset + 10)); requestPromise
+requestPromise : {<<Request>> -> [Response]Unit}
+requestPromise <<request offset>> = response (range offset (offset + 10)); requestPromise
 
 
 
-client : {[-Response, -NextItem] [Response, RefState]}
+client : {[-Response, -NextItem] [Response, RefState]Unit}
 client = promise nextItemResponse
 
-responsePromise : {<Response> -> [RefState] Unit}
-responsePromise <response newData> = write cachedData (concat (read cachedData) newData);
+responsePromise : {<<Response>> -> [RefState] Unit}
+responsePromise <<response newData>> = write cachedData (concat (read cachedData) newData);
                                      write requestInProgress false
 
 -- On the receipt of a nextItem interrupt, we do all that stuff
-nextItemResponse : {<NextItem> -> -[Response]+[Request, RefState]Unit}
+nextItemResponse : {<NextItem> -> -[Response][Request, RefState]Unit}
 nextItemResponse <nextItem> =
         (if (and ((len (read cachedData) - (div (read batchSize) 2)) < read currItem) (not (read reqInProg)))
             { print ("\n*- Requesting more data\n");
@@ -47,3 +49,14 @@ nextItemResponse <nextItem> =
             });
         -- reinvoke client loop afterwards
         client
+
+-- Scheduler, basically just bounces the signals from one to the other
+schedule : {-[Response] <Request> Unit -- client
+         -> -[Request] <Response> Unit -- server
+         -> [RefState] Unit}
+
+-- When a signal is invoked, it can be handled by just resuming the rest of the
+-- computation that invoked it. We also want to /interrupt/ the other computation
+-- with the corresponding signal.
+schedule <<request -> client>> <m> =
+         schedule (client!) (interrupt m request)

@@ -18,7 +18,7 @@ interface BatchSizeResponse = batchSizeResponse : Int -> Unit
 
 interface NewData = newData : List Int -> Unit
 
-interface Request = request : Pair Int {List Int -> [Console, RefState]Unit} -> Unit
+interface Request = request : Int -> {List Int -> [Console, RefState]Unit} -> Unit
 
 interface Collect = collect : Maybe (List Int)
 
@@ -56,10 +56,10 @@ clientLoop bs =
         (if (and ((len (read cachedData) - (div (read batchSize) 2)) < read currItem) (not (read reqInProg)))
           {print ("\n*- requesting more data\n");
            -- invoke the request effect with the 'interrupt handler' as an argument.
-           request (pair (len (read cachedData))
+           request (len (read cachedData))
                          -- callback of the "receiving" process
-                         ({newdata -> write cachedData (concat (read cachedData) newdata);
-                                      write reqInProg false}));
+                   ({newdata -> write cachedData (concat (read cachedData) newdata);
+                                write reqInProg false});
            write reqInProg true}
 
            -- if we're at the end, try and collect the rest of the data
@@ -93,7 +93,7 @@ schedule th <next -> user> <server> <idle -> client> =
          schedule th (user unit) server! (client unit)
 
 -- client requesting more data
-schedule _ <user>         <idleServer -> server> <request (pair n thunk) -> client> =
+schedule _ <user>         <idleServer -> server> <request n thunk -> client> =
          schedule (just thunk) user!  (server (dataReq n)) (client unit)
 
 

@@ -1,0 +1,60 @@
+include std
+
+-- A small example to show how we could block whilst awaiting.
+
+interface BSRequest = bsRequest : Unit
+
+interface BSResponse = bsResponse : Int -> Unit
+
+
+interface PromiseBSRequest  =
+  promiseBSRequest : {Unit -> [Console, BSResponse, PromiseBSRequest]Unit} -> Unit
+
+interface PromiseBSResponse = promiseBSResponse : {Int -> [Console]Int} -> Ref Int
+
+
+
+-- clientInit : {[BSRequest, PromiseBSResponse, Console] Unit}
+clientInit : {[BSRequest] Unit}
+clientInit! = -- let batchSize = new -1 in
+          let batchSize = promiseBSResponse {bs -> print "bsrespons"; bs} in
+          bsRequest! ouint (read batchSize) --clientLoop (batchSize)
+
+-- clientLoop : {Int -> [Console]Unit}
+clientLoop : {Int -> [Console]Unit}
+clientLoop bs = print "\nBatch size is "; ouint bs
+
+server : {[Console, BSResponse, PromiseBSRequest]Unit}
+server! = promiseBSRequest {x -> print "going"; bsResponse 10}
+
+
+schedule : {(Maybe {Unit -> [Console, BSResponse, PromiseBSRequest]Unit}) -- bs request promise
+         -- -> <BSRequest, PromiseBSResponse>Unit
+         -> <BSRequest>Unit
+         -> <BSResponse, PromiseBSRequest>Unit
+         -> [Console]Unit}
+
+-- Collecting and storing the callback
+schedule _ <client> <promiseBSRequest cb -> server> =
+         schedule (just cb) client! (server unit)
+
+-- Executing callback upon request
+schedule (just cb) <bsRequest -> client> <server> =
+         schedule nothing (client unit) (cb unit; server!)
+
+-- Collecting response
+schedule cb <client> <bsResponse n -> server> =
+         print "BS is "; ouint n;
+         schedule cb (client!) (server unit)
+
+schedule _ unit _ = print "\nclient stops\n"
+
+schedule _ _ unit = print "\nserver stops\n"
+
+
+-- schedule _
+
+
+
+main : {[Console]Unit}
+main! = schedule nothing clientInit! server!

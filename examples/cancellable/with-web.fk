@@ -15,17 +15,17 @@ interface Wait = wait : RemoteSignal
 data RemoteSignal = call Int String | cancel Int | result Int | pass
 
 -- This is the remote web request
-remoteRequest : {String -> [Console]String}
-remoteRequest arg = webReq (concat "curl --request GET http://api.mathjs.org/v4/?expr=10*" arg)
+remoteRequest : {String -> [Web]String}
+remoteRequest arg = getRequest (concat "http://api.mathjs.org/v4/?expr=10*" arg)
 
 -- sum : {Int}
 -- sum! = 2+2
 
-remote : {Map Int (Promise String [Console]) -> [E | Wait, Console, Async [Console]] Unit}
+remote : {Map Int (Promise String [Web]) -> [E | Wait, Console, Async [Web]] Unit}
 remote map = case wait!
              {
                   (call id arg) -> -- Create new thread to do the request.
-                                   remote (insert id (async {webReq (concat "curl --request GET http://api.mathjs.org/v4/?expr=10*" arg)}) map)
+                                   remote (insert id (async {remoteRequest arg}) map)
                 | (result id) ->  -- Await the thread.
                                    print (await (lookupHard eqn id map));
                                    remote (delete eqn id map)
@@ -49,5 +49,5 @@ par <wait -> remote> <resultEff id -> k> =
 par unit <m> = print "Remote done"
 par <m> unit = print "Controller done"
 
-main : {[Console, RefState] Unit}
+main : {[Console, RefState, Web] Unit}
 main! = runAsync (par (remote mnil) controller!)
