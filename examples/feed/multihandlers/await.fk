@@ -10,15 +10,15 @@ interface BSResponse = bsResponse : Int -> Unit
 interface PromiseBSRequest  =
   promiseBSRequest : {Unit -> [Console, BSResponse, PromiseBSRequest]Unit} -> Unit
 
-interface PromiseBSResponse = promiseBSResponse : {Int -> [Console]Int} -> Ref Int
+-- interface PromiseBSResponse = promiseBSResponse : {Int -> [RefState]Int} -> Ref Int
 
 
 
--- clientInit : {[BSRequest, PromiseBSResponse, Console] Unit}
-clientInit : {[BSRequest] Unit}
+clientInit : {[BSRequest, Console] Unit}
+-- clientInit : {[RefState, Console, BSRequest, PromiseBSResponse] Unit}
 clientInit! = -- let batchSize = new -1 in
-          let batchSize = promiseBSResponse {bs -> print "bsrespons"; bs} in
-          bsRequest! ouint (read batchSize) --clientLoop (batchSize)
+          -- let batchSize = promiseBSResponse {bs -> bs} in
+          bsRequest! --; ouint (read (promiseBSResponse {bs -> bs}))
 
 -- clientLoop : {Int -> [Console]Unit}
 clientLoop : {Int -> [Console]Unit}
@@ -30,7 +30,8 @@ server! = promiseBSRequest {x -> print "going"; bsResponse 10}
 
 schedule : {(Maybe {Unit -> [Console, BSResponse, PromiseBSRequest]Unit}) -- bs request promise
          -- -> <BSRequest, PromiseBSResponse>Unit
-         -> <BSRequest>Unit
+         -- -> <BSRequest, PromiseBSResponse>Unit
+         -> <BSRequest> Unit
          -> <BSResponse, PromiseBSRequest>Unit
          -> [Console]Unit}
 
@@ -50,9 +51,6 @@ schedule cb <client> <bsResponse n -> server> =
 schedule _ unit _ = print "\nclient stops\n"
 
 schedule _ _ unit = print "\nserver stops\n"
-
-
--- schedule _
 
 
 
