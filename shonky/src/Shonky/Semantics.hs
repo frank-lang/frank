@@ -13,6 +13,7 @@ import Data.Maybe (fromMaybe)
 
 -- for terminal access -> web requests via curl.
 import System.Process (readProcessWithExitCode)
+import Control.Concurrent
 
 import qualified Data.Map.Strict as M
 
@@ -241,6 +242,10 @@ ioHandler comp@(Call "ouch" 0 [VX [c]] ks) =
      ioHandler (consume (VA "unit" :&& VA "") (reverse ks))
 ioHandler comp@(Call "ouint" 0 [VI k] ks) =
   do putStr (show k)
+     hFlush stdout
+     ioHandler (consume (VA "unit" :&& VA "") (reverse ks))
+ioHandler comp@(Call "sleep" 0 [VI k] ks) =
+  do putStr ("\nsleeping!\n")
      hFlush stdout
      ioHandler (consume (VA "unit" :&& VA "") (reverse ks))
 

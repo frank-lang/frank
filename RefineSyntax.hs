@@ -509,6 +509,8 @@ builtinItfs = [Itf "Console" [] [Cmd "inch" [] [] (CharTy b) b
                                  (DTTy "Unit" [] b) b
                                 ,Cmd "ouint" [] [IntTy b]
                                  (DTTy "Unit" [] b) b
+                                ,Cmd "sleep" [] [IntTy b]
+                                 (DTTy "Unit" [] b) b
                                 ] b
 
               ,Itf "Web" [] [Cmd "getRequest" [] [stringTy]
