@@ -16,9 +16,6 @@ interface PromiseResponse =
 
 interface AwaitResponse = awaitResponse : Ref (Maybe Int) -> Maybe Int
 
--- client makes the request and installs the promise. it waits for a result and
--- then will continue computing.
-
 awaitResp : {Ref (Maybe Int) -> [AwaitResponse, RefState]Int}
 awaitResp cell = case (awaitResponse cell) { nothing  -> awaitResp cell
                                            | (just x) -> x}

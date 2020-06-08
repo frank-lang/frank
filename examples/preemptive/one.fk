@@ -1,0 +1,84 @@
+include std
+
+-- An attempt at pre-emptive concurrency.
+
+
+interface Stop = stop : Unit
+
+interface Go = go : Unit
+
+interface PromiseStop = promiseStop : {Unit -> [RefState, PromiseGo, AwaitGo, PromiseStop, Console]Unit} -> Unit
+
+interface PromiseGo = promiseGo : {Unit -> [RefState, PromiseGo, AwaitGo, PromiseStop, Console]Unit} -> Unit
+
+interface AwaitGo = awaitGo : Ref (Maybe Unit) -> Maybe Unit
+
+waitForStop : {[PromiseStop, Console, PromiseGo, RefState, AwaitGo]Unit}
+-- First we wait for the stop signal to come in.
+-- This wait is done non-blocking.
+waitForStop! = promiseStop { _ ->
+                            print "Stopping\n";
+                            -- When we receive stop we have to stop computing.
+                            -- Hence we make a new promise for Go and await
+                            -- this.
+                            let res = new nothing in
+                            promiseGo {p -> write res (just unit); unit};
+                            -- promiseGo {p -> new nothing; unit};
+                            print "promised";
+                            awaiter res;
+                            print "awaited";
+                            -- When we receive Go, we start computing again
+                            -- and reinstall the stop waiter.
+                            waitForStop!}
+
+thread : {[PromiseStop, Console, PromiseGo, RefState, AwaitGo]Unit}
+thread! = waitForStop!; print "adding\n"-- ; 10 + 10 + 10; print "done" ;unit
+
+controller : {[Stop, Go, Console]Unit}
+controller! = stop!; go!-- ; controller!
+
+awaiter : {Ref (Maybe Unit) -> [AwaitGo]Unit}
+awaiter cell = case (awaitGo cell) { nothing  -> awaiter cell
+                                   | (just x) -> x }
+
+sch : {Maybe {Unit -> [RefState, PromiseGo, AwaitGo, PromiseStop, Console]Unit}    -- stopper
+    -> Maybe {Unit -> [RefState, PromiseGo, AwaitGo, PromiseStop, Console]Unit}    -- goer
+    -> <PromiseStop, PromiseGo, AwaitGo>Unit
+    -> <Stop, Go>Unit
+    -> [Console, RefState]Unit}
+
+-- Installing Promises
+sch _ goer <promiseStop stpr -> thread> <control> =
+    sch (just stpr) goer (thread unit) control!
+
+sch stpr _ <promiseGo goer -> thread> <control> =
+    print "go installed";
+    sch stpr (just goer) (thread unit) control!
+
+-- Executing promises
+sch (just stpr) goer <thread> <stop -> control> =
+    sch nothing goer (stpr unit; thread!) (control unit)
+
+sch stpr (just goer) <thread> <go -> control> =
+    sch stpr nothing (goer unit; thread!) (control unit)
+
+sch nothing goer <thread> <stop -> control> =
+    sch nothing goer thread! (control unit)
+
+sch stpr nothing <thread> <go -> control> =
+    print "gone";
+    sch stpr nothing thread! (control unit)
+
+-- Awaiting
+-- TODO
+sch stpr goer <awaitGo cell -> thread> <control> =
+    print "\np\n";
+    sch stpr goer (thread (read cell)) control!
+
+-- Finishing
+sch _ _ unit _ = print "\nThread finished"
+sch _ _ _ unit = print "\nController finished"
+
+
+main : {[Console, RefState]Unit}
+main! = sch nothing nothing thread! controller!
