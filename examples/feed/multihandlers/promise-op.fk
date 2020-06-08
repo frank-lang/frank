@@ -25,11 +25,11 @@ interface Collect = collect : Maybe (List Int)
 interface PromiseNext =
           promiseNext : {Unit -> [PromiseNext, Idle, Console, RefState, Request, PromiseResponse]Unit} -> Unit
 
-interface PromiseResponse = promiseResponse : {List Int -> [Console, RefState]Unit} -> Unit
+interface PromiseResponse = promiseResponse : {List Int -> [Console, RefState, Idle, PromiseNext, PromiseResponse, Request]Unit} -> Unit
 
 interface PromiseRequest = promiseRequest : {Int -> [Console, RefState, PromiseRequest, Response]Unit} -> Unit
 
-data Maybe X = nothing | just X
+-- data Maybe X = nothing | just X
 
 
 user : {[Console, Next]Unit}
@@ -50,8 +50,7 @@ serverPromise : {Int -> [Response, PromiseRequest, Console, RefState]Unit}
 serverPromise x = response (range x (x + 10)); promiseRequest (serverPromise)
 
 server2 : {[Response, PromiseRequest, Console, RefState]Unit}
-server2! = -- let serverPromise = {x -> (range x (x + 10)); promiseRequest (serverPromise)} in
-              promiseRequest serverPromise
+server2! = promiseRequest serverPromise
                             
 
 -- awaiting
@@ -93,9 +92,8 @@ clientLoop currItem reqInProg cachedData batchSize =
 --------------
 --- Scheduler
 --------------
-schedule : {(Maybe {List Int -> [Console, RefState]Unit}) ->  -- response callback
+schedule : {(Maybe {List Int -> [Console, RefState, Idle, Request, PromiseResponse, PromiseNext]Unit}) ->  -- response callback
            (Maybe {Int -> [Response, PromiseRequest, Console, RefState]Unit}) -> -- request callback
-           -- <Response, IdleServer> Unit ->                     -- Server
            <Response, PromiseRequest> Unit ->                     -- Server
            <Idle, Request, PromiseResponse, PromiseNext>Unit -> -- Client
            <Next>Unit ->                                     -- User
@@ -104,8 +102,7 @@ schedule : {(Maybe {List Int -> [Console, RefState]Unit}) ->  -- response callba
 -- here we take the data from the response effect and invoke the callback with it.
 -- the actual update action should probably be done on the client "thread"
 schedule (just respCB) reqCB <response strs -> server> <client> <user> =
-         respCB strs;
-         schedule nothing reqCB (server unit) (client!) user!
+         schedule nothing reqCB (server unit) (respCB strs; client!) user!
 
 -- user requesting more data to be displayed
 schedule respCB  reqCB <server> <idle -> client> <next -> user> =

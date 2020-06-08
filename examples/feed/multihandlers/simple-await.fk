@@ -1,0 +1,51 @@
+include std
+
+-- Let's have two threads. The client requests the server for data, and installs
+-- a promise that it acts on when the server returns. The server can do some
+-- other things, but will eventually send the request.
+
+-- How does awaiting work? I suppose we can do it by writing to a Ref cell when the task is complete.
+--
+
+-- interface PromiseRequest = promiseRequest : {Unit -> [Response, PromiseRequest]Unit} -> Unit
+
+interface Whatever = whatever : Unit
+
+interface Response = response : Int -> Unit
+
+interface Request = request : Unit
+
+-- interface PromiseResponse = promiseResponse : {Int -> [PromiseResponse]Unit} -> Unit
+interface PromiseResponse = promiseResponse : {Int -> [RefState, PromiseResponse]Unit} -> Unit
+
+-- client makes the request and installs the promise. it waits for a result and
+-- then will continue computing.
+
+comp : {Int -> [RefState]Unit}
+comp x = let cell = new x in
+         x + 10;  unit
+
+client : {[PromiseResponse, RefState]Unit}
+client! = promiseResponse comp
+
+server : {[Response] Unit}
+server! = response 10
+
+schedule : {Maybe {Int -> [PromiseResponse, RefState]Unit}
+         -> <PromiseResponse> Unit
+         -> <Response> Unit
+         -> [RefState]Unit}
+
+schedule _ <promiseResponse cb -> client> <server> =
+         schedule (just cb) (client unit) server!
+
+schedule (just cb) <client> <response x -> server> =
+         schedule nothing (cb x; client!) (server unit)
+
+schedule _ unit _ = unit
+schedule _ _ unit = unit
+
+
+main : {[RefState]Unit}
+main! = schedule nothing client! server!
+-- main! = schedule nothing server! client!

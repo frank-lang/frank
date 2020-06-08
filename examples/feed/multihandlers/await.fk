@@ -10,15 +10,15 @@ interface BSResponse = bsResponse : Int -> Unit
 interface PromiseBSRequest  =
   promiseBSRequest : {Unit -> [Console, BSResponse, PromiseBSRequest]Unit} -> Unit
 
--- interface PromiseBSResponse = promiseBSResponse : {Int -> [RefState]Int} -> Ref Int
+interface PromiseBSResponse =
+  promiseBSResponse : {Int -> Int} -> Int
 
 
 
-clientInit : {[BSRequest, Console] Unit}
--- clientInit : {[RefState, Console, BSRequest, PromiseBSResponse] Unit}
+clientInit : {[PromiseBSResponse, BSRequest, Console] Unit}
 clientInit! = -- let batchSize = new -1 in
           -- let batchSize = promiseBSResponse {bs -> bs} in
-          bsRequest! --; ouint (read (promiseBSResponse {bs -> bs}))
+          bsRequest! ; ouint ((promiseBSResponse {bs -> bs}))
 
 -- clientLoop : {Int -> [Console]Unit}
 clientLoop : {Int -> [Console]Unit}
@@ -29,9 +29,7 @@ server! = promiseBSRequest {x -> print "going"; bsResponse 10}
 
 
 schedule : {(Maybe {Unit -> [Console, BSResponse, PromiseBSRequest]Unit}) -- bs request promise
-         -- -> <BSRequest, PromiseBSResponse>Unit
-         -- -> <BSRequest, PromiseBSResponse>Unit
-         -> <BSRequest> Unit
+         -> <BSRequest, PromiseBSResponse>Unit
          -> <BSResponse, PromiseBSRequest>Unit
          -> [Console]Unit}
 
@@ -42,6 +40,9 @@ schedule _ <client> <promiseBSRequest cb -> server> =
 -- Executing callback upon request
 schedule (just cb) <bsRequest -> client> <server> =
          schedule nothing (client unit) (cb unit; server!)
+
+schedule cb <promiseBSResponse _ -> client> <server> =
+         schedule cb (client 0) server!
 
 -- Collecting response
 schedule cb <client> <bsResponse n -> server> =
