@@ -13,7 +13,8 @@ import Data.Maybe (fromMaybe)
 
 -- for terminal access -> web requests via curl.
 import System.Process (readProcessWithExitCode)
-import Control.Concurrent
+-- for sleep command
+import Control.Concurrent (threadDelay)
 
 import qualified Data.Map.Strict as M
 
@@ -244,9 +245,10 @@ ioHandler comp@(Call "ouint" 0 [VI k] ks) =
   do putStr (show k)
      hFlush stdout
      ioHandler (consume (VA "unit" :&& VA "") (reverse ks))
+-- Uses threadDelay to sleep for the given amount of time.
+-- Unit of k is microseconds; so `sleep 1000000` will sleep for one second.
 ioHandler comp@(Call "sleep" 0 [VI k] ks) =
-  do putStr ("\nsleeping!\n")
-     hFlush stdout
+  do threadDelay k
      ioHandler (consume (VA "unit" :&& VA "") (reverse ks))
 
 -- Web commands
