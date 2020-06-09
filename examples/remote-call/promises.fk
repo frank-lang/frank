@@ -1,0 +1,17 @@
+include std
+
+interface Result = result : Int -> Unit
+
+interface Call = call : Int -> String -> Unit
+
+interface PromiseCall = promiseCall {Int -> String -> [Web]String} -> Unit
+
+-- This is the remote web request
+remoteRequest : {String -> [Web]String}
+remoteRequest arg = getRequest (concat "http://api.mathjs.org/v4/?expr=10*" arg)
+
+callBody : {Int -> String -> [Web]String}
+callBody id st = remoteRequest st
+
+remote : {[Web, Console, PromiseCall]}
+remote = promiseCall

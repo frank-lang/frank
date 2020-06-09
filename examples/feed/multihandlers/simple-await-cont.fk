@@ -22,8 +22,8 @@ client! = promiseResponse {x -> x};
            ouint awaitResponse!;
            print ", the end\n"
 
-server : {[Response, Whatever] Unit}
-server! = whatever!; whatever!; response 10
+server : {[Response, Whatever, Console] Unit}
+server! = whatever!; sleep 500000; whatever!; sleep 500000; response 10
 
 schedule : {Maybe {Int -> [PromiseResponse, AwaitResponse, Console]Int} -- Response Callback
          -> Maybe {Int -> [PromiseResponse, AwaitResponse, Console]Unit} -- The rest of Client, which gets awaited
@@ -47,7 +47,6 @@ schedule cb _ <awaitResponse -> client> <server> =
          schedule cb (just client) unit server!
 
 schedule _ _ _ unit = print "\nserver exits\n"
-
 
 main : {[Console]Unit}
 main! = schedule nothing nothing client! server!

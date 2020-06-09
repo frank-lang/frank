@@ -15,10 +15,6 @@ interface Cancel = cancelEff : Int -> Unit
 interface Wait = wait : RemoteSignal
 
 
-
-
-
-
 data RemoteSignal = call Int String {String -> [RefState]Unit}
                   | result Int
 
@@ -60,11 +56,6 @@ par <wait -> remote> <resultEff id -> k> =
 -- finishing
 par unit <m> = print "Remote done"
 par <m> unit = print "Controller done"
-
-
-
-
-
 
 intermediate : {[Console, RefState, Web, Async[Web, RefState]]Unit}
 intermediate! = par (remote ) controller!

@@ -29,8 +29,6 @@ interface PromiseResponse = promiseResponse : {List Int -> [Console, RefState, I
 
 interface PromiseRequest = promiseRequest : {Int -> [Console, RefState, PromiseRequest, Response]Unit} -> Unit
 
--- data Maybe X = nothing | just X
-
 
 user : {[Console, Next]Unit}
 user! = inch!; next!; user!

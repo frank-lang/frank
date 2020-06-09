@@ -1,21 +1,47 @@
+include std
 
+-- Let's have two threads. The client requests the server for data, and installs
+-- a promise that it acts on when the server returns. The server can do some
+-- other things, but will eventually send the request.
 
+interface Whatever = whatever : Unit
 
+interface Response = response : Int -> Unit
 
-interface Request = request : Int -> Unit
+interface Request = request : Unit
 
-interface Response = response : List Int -> Unit
+client : {[Promise Response, Await Response, Console]Unit}
+client! = promise response {x -> x};
+          print "response is ";
+          ouint (await response);
+          print ", the end\n"
 
+server : {[Response, Whatever, Console] Unit}
+server! = whatever!; sleep 500000; whatever!; sleep 500000; response 10
 
+schedule : {Maybe {Int -> [Promise Response, Await Response, Console]Int} -- Response Callback
+         -> Maybe {Int -> [Promise Response, Await Response, Console]Unit} -- The rest of Client, which gets awaited
+         -> <PromiseResponse, AwaitResponse> Unit
+         -> <Response, Whatever> Unit
+         -> [Console]Unit}
 
--- Installs an interrupt handler for the `request` signal.
-requestPromiser : {[Response, Promise Request]Unit}
-requestPromiser = promise request {newBatch -> response (range x (x + 10))}; requestPromiser!
+schedule _ res <promise response cb -> client> <server> =
+         schedule (just cb) res (client unit) server!
 
--- server could then install extra promises if so desired
-server : {[Response, Promise Request] Unit}
-server = requestPromiser!
+-- When response comes in, we perform the callback as well as restarting the
+-- thread that was suspended.
+schedule (just cb) (just res) unit <response x -> server> =
+         schedule nothing nothing (let result = cb x in res result) (server unit)
 
+schedule cb res <client> <whatever -> server> =
+         schedule cb res client! (print "whatever\n"; server unit)
 
-client : {[Request, Promise Response] Unit}
-client =
+-- When we await, we take the continuation and store it. We then wait for the
+-- corresponding signal to come in, at which point we resume it.
+schedule cb _ <awaitResponse -> client> <server> =
+         schedule cb (just client) unit server!
+
+schedule _ _ _ unit = print "\nserver exits\n"
+
+main : {[Console]Unit}
+main! = schedule nothing nothing client! server!
