@@ -1,0 +1,74 @@
+include async
+include printint
+include std
+
+-- calcProg : {Int -> Int -> Int -> [E | Async [Console], Console]Int}
+-- calcProg a b c = print "M1  ";
+--                  let p1 = async {print "p1  "; a + b} in
+--                  let p2 = async {print "p2  "; b + c} in
+--                  print "M2  ";
+--                  let v2 = await p2 in
+--                  print "M3  ";
+--                  let v1 = await p1 in
+--                  print "M4  ";
+--                  v1 + v2
+--
+
+
+user : {[Console]Unit}
+user! = inch!; unit
+
+server : {Int -> List Int}
+server x = range x (x + 10)
+
+client : {[E | Async [Console, RefState], Console, RefState] Unit}
+client! = let currItem = new 0 in
+          let requestInProgress = new false in
+          let cachedData = new nil in
+          let serverRequest = new (async {unit}) in
+
+          (while {true}
+          {
+              -- 1. Wait for the user to press enter, meaning that we want to
+              -- have more information.
+
+              -- Very interesting - if user is done in a queue the later thread is executed earlier?
+              await (async {user!});
+              -- user!;
+
+              -- 2. See if we need to collect.
+              (if (and ((read currItem) == (len (read cachedData)))
+                       (read requestInProgress))
+                  {print "\n*- awaiting\n";
+                   await (read serverRequest)
+                   }
+                  {unit});
+
+              -- 3. See if we need to issue a new request.
+              let cacheLength = len (read cachedData) in
+              (if (and ((cacheLength - 5) < read currItem)
+                       (not (read requestInProgress)))
+                 {print "\n*-requesting\n";
+                  write requestInProgress true;
+                  write serverRequest (async {let newData = server cacheLength in
+                                              write cachedData (concat (read cachedData) newData);
+                                              write requestInProgress false
+                                              })
+                  }
+                 {unit});
+
+              -- 4. Print the current item and increment the pointer.
+              if (read (currItem) < len (read cachedData))
+                 {print (toString (nth (read currItem) (read cachedData))); print (" ");
+                  write currItem (read currItem + 1)
+                 }
+                 {print ("\n*- Out of data; please wait and try again.\n")}
+          })
+
+
+
+
+
+
+main : {[RefState, Console]Unit}
+main! = runAsync client!

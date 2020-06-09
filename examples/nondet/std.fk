@@ -1,0 +1,56 @@
+--- start of standard stuff ---
+
+data Pair X Y = pair X Y
+
+data Maybe X = nothing | just X
+
+map : {{X -> Y} -> List X -> List Y}
+map f []        = []
+map f (x :: xs) = f x :: map f xs
+
+print : {String -> [Console]Unit}
+print s = map ouch s; unit
+
+-- lazy conditional
+if : {Bool -> {X} -> {X} -> X}
+if true  t f = t!
+if false t f = f!
+
+while : {Bool} -> {Unit} -> Unit
+while cond body = if cond! { body!; while cond body }
+                            { unit }
+
+and : {Bool -> Bool -> Bool}
+and true  y = y
+and false _ = false
+
+not : Bool -> Bool
+not true = false
+not false = true
+
+take : {Int -> List X -> List X}
+take 0 _ = nil
+take k (cons x xs) = cons x (take (k - 1) xs)
+
+drop : {Int -> List X -> List X}
+drop 0 xs = xs
+drop k nil = nil
+drop k (cons x xs) = drop (k - 1) xs
+
+range : Int -> Int -> List Int
+range from to = if (from == to)
+                   {nil}
+                   {cons from (range (from + 1) to)}
+
+nth : {Int -> List X -> X}
+nth 0 (cons s _)  = s
+nth k (cons _ xs) = nth (k - 1) xs
+
+len : {List X -> Int}
+len nil = 0
+len (cons _ xs) = 1 + len xs
+
+concat : {List X -> List X -> List X}
+concat nil ys = ys
+concat (cons x xs) ys = cons x (concat xs ys)
+--- end of standard stuff ---

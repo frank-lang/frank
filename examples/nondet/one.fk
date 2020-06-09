@@ -1,0 +1,115 @@
+include std
+
+-- Looking at Nondeterminism in Frank, and where it can come from.
+
+interface Op1 = op1 : Unit
+
+interface Op2 = op2 : Unit
+
+interface PromiseOp1 = promiseOp1 : {Unit -> [RefState, Console, PromiseOp1, PromiseOp2, AwaitOp2]Unit} -> Unit
+
+interface PromiseOp2 = promiseOp2 : {Unit -> [RefState, Console, PromiseOp1, PromiseOp2, AwaitOp2]Unit} -> Unit
+
+interface AwaitOp2 = awaitOp2 : Ref (Maybe Unit) -> Maybe Unit
+
+awaitOp2Blocker : {Ref (Maybe Unit) -> [AwaitOp2]Unit}
+awaitOp2Blocker cell = case (awaitOp2 cell) { nothing  -> awaitOp2Blocker cell
+                                            | (just y) -> y}
+
+client : {[PromiseOp1, PromiseOp2, AwaitOp2, Console, RefState]Unit}
+-- client! = promiseOp1 {x -> print "\nop1 received\n"}; promiseOp2 {y -> print "op2 received\n"};
+-- client! = promiseOp1 {x ->
+--             print "\nop1 received\n";
+--             let result = new nothing in
+--              (promiseOp2 {y -> print "\nop2 received\n"; write result (just unit)}
+--               -- awaitOp2 result
+--               )
+--           };
+client! = promiseOp1 {x ->
+                      print "\nop1 received\n";
+                      let result = new nothing in
+                        promiseOp2 {y -> print "\nop2 received\n"; write result (just unit)};
+                        awaitOp2Blocker result
+                        };
+          print "one"; print "two"; unit
+
+server : {[Op1, Op2]Unit}
+server! = op1!
+-- server! = op2!; op1!
+
+-- Scheduler 1; Client comes before server
+sch : {Maybe {Unit -> [RefState, Console, PromiseOp1, PromiseOp2, AwaitOp2]Unit}      -- Promise op1
+    -> Maybe {Unit -> [RefState, Console, PromiseOp1, PromiseOp2, AwaitOp2]Unit}
+    -> <PromiseOp1, PromiseOp2, AwaitOp2> Unit        -- Client
+    -> <Op1, Op2> Unit                                -- Server
+    -> [Console, RefState] Unit}
+
+
+-- Executing Promises
+sch (just cb1) cb2 <client> <op1 -> server> =
+    sch nothing cb2 (cb1 unit; client!) (server unit)
+
+sch cb1 (just cb2) <client> <op2 -> server> =
+    sch cb1 nothing (cb2 unit; client!) (server unit)
+
+sch nothing cb2 <client> <op1 -> server> =
+    sch nothing cb2 client! (server unit)
+
+sch cb1 nothing <client> <op2 -> server> =
+    sch cb1 nothing client! (server unit)
+
+-- Installing promises
+sch _ cb2 <promiseOp1 cb1 -> client> <server> =
+    print "installing 1";
+    sch (just cb1) cb2 (client unit) server!
+
+sch cb1 _ <promiseOp2 cb2 -> client> <server> =
+    sch cb1 (just cb2) (client unit) server!
+
+-- Awaiting
+sch cb1 cb2 <awaitOp2 cell -> client> <server> =
+    sch cb1 cb2 (client (read cell)) server!
+
+-- Stopping
+sch _ _ unit _ = print "\nClient stops\n"
+sch _ _ _ unit = print "\nServer stops\n"
+
+
+-- Scheduler 2; Server before client
+sch2 : {Maybe {Unit -> [RefState, Console, PromiseOp1, PromiseOp2, AwaitOp2]Unit}      -- Promise op1
+    ->  Maybe {Unit -> [RefState, Console, PromiseOp1, PromiseOp2, AwaitOp2]Unit}
+    ->  <Op1, Op2> Unit                                -- Server
+    ->  <PromiseOp1, PromiseOp2, AwaitOp2> Unit        -- Client
+    ->  [Console, RefState] Unit}
+
+-- Installing promises
+sch2 _ cb2 <server> <promiseOp1 cb1 -> client>  =
+    sch2 (just cb1) cb2 server! (client unit)
+
+sch2 cb1 _ <server> <promiseOp2 cb2 -> client>  =
+    sch2 cb1 (just cb2) server! (client unit)
+
+-- Executing Promises
+sch2 (just cb1) cb2  <op1 -> server> <client> =
+    sch2 nothing cb2 (server unit) (cb1 unit; client!)
+
+sch2 cb1 (just cb2)  <op2 -> server> <client> =
+    sch2 cb1 nothing (server unit) (cb2 unit; client!)
+
+sch2 nothing cb2  <op1 -> server> <client> =
+    sch2 nothing cb2 (server unit) client!
+
+sch2 cb1 nothing <op2 -> server> <client> =
+    sch2 cb1 nothing (server unit) client!
+
+-- Awaiting
+sch2 cb1 cb2 <server> <awaitOp2 cell -> client> =
+    sch2 cb1 cb2 server! (client (read cell))
+
+-- Stopping
+sch2 _ _ unit _ = print "\nServer stops\n"
+sch2 _ _ _ unit = print "\nClient stops\n"
+
+main : {[Console, RefState]Unit}
+main! = sch nothing nothing client! server!
+-- main! = sch2 nothing nothing server! client!

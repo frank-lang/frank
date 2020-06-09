@@ -1,0 +1,21 @@
+
+
+
+
+interface Request = request : Int -> Unit
+
+interface Response = response : List Int -> Unit
+
+
+
+-- Installs an interrupt handler for the `request` signal.
+requestPromiser : {[Response, Promise Request]Unit}
+requestPromiser = promise request {newBatch -> response (range x (x + 10))}; requestPromiser!
+
+-- server could then install extra promises if so desired
+server : {[Response, Promise Request] Unit}
+server = requestPromiser!
+
+
+client : {[Request, Promise Response] Unit}
+client =

@@ -1,0 +1,44 @@
+--- Standards
+
+data Pair X Y = pair X Y
+
+--- end standard
+
+-- data declarations
+data PromiseStat X = done X | waiting (List {X -> Unit})
+
+data Promise X = promise (Ref (PromiseStat X))
+
+interface Async = async X Y: (Pair { X -> Y } X) -> Promise Y
+                | await X  : Promise X -> X
+
+
+-- Calculation example
+
+binOp : {Int -> Int -> Int}
+binOp x y = x + y
+
+calcProg : {Int -> Int -> Int -> [Async] Int}
+calcProg a b c = let p1 = async (pair {binOp a b} a) in
+                 let p2 = async (pair {binOp b c} b) in
+                 let v1 = await p1 in
+                 let v2 = await p2 in
+                 v1 + v2
+
+-- handlers?
+
+-- why do we put the [] afterwards?
+step : Promise X [RefState] -> <Async [RefState]> X -> [RefState]Unit
+
+-- the promise has been fulfilled, so we stop
+step promise v = unit
+
+-- we need to enqueue something here?
+step p <async f v -> k> = let ref' = new (waiting []) in
+                          step p (k (promise ref'))
+
+step p <await (promise ref) -> k> = case (read ref)
+                                    { (done v) -> step p (k v)
+                                    | (waiting js) ->
+                                        let job = { v -> step p (k v)} in
+                                        write ref (waiting (job :: js)) }

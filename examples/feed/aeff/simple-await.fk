@@ -1,0 +1,17 @@
+
+
+
+interface Response = response : Int -> Unit
+
+interface Request = request : Unit
+
+server : {[Response, Whatever] Unit}
+server = whatever!; whatever!; response 10
+
+client : {[Promise Response, Await Response, Console]Unit}
+client = let result = promise response {x -> map print (range x (x + 10)); x}
+         print "response is "; ouint (await response result); print ", the end.\n"
+
+
+main : {[Console]Unit}
+main! = par (server!) (client!)

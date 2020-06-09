@@ -1,0 +1,62 @@
+include std
+
+include asynclib
+
+-- Interfaces
+
+interface Result = resultEff : Int -> Unit
+
+interface WebResult = webResult : String -> Unit
+
+interface Call = callEff : Int -> String -> Unit
+
+interface Cancel = cancelEff : Int -> Unit
+
+interface Wait = wait : RemoteSignal
+
+data RemoteSignal = call Int String | cancel Int | result Int | pass
+
+-- This is the remote web request
+remoteRequest : {String -> [Web]String}
+remoteRequest arg = getRequest (concat "http://api.mathjs.org/v4/?expr=10*" arg)
+
+remote : {Map Int (Promise Unit [Web, WebResult]) -> [E | Wait, Console, Async [Web, WebResult]] Unit}
+remote map = case wait!
+             {
+               (call id arg) -> -- Create new thread to do the request.
+                                remote (insert id (async {webResult (remoteRequest arg)}) map)
+             | (result id) -> -- Await the thread.
+                              -- print (await (lookupHard eqn id map));
+                              remote (delete eqn id map)
+             }
+
+controller : {[Call, Result]Unit}
+controller! = callEff 1 "10"; callEff 2 "20"; resultEff 2; resultEff 1
+
+par : {<Wait>Unit ->
+       <Call, Result>Unit ->
+       [Console] Unit}
+
+-- controller calls the remote function.
+par <wait -> remote> <callEff id arg -> k> =
+    par (remote (call id arg)) (k unit)
+
+-- par <webResult x -> remote> <whatever> =
+--     print x; par (remote unit) whatever!
+
+par <wait -> remote> <resultEff id -> k> =
+    par (remote (result id)) (k unit)
+
+-- finishing
+par unit <m> = print "Remote done"
+par <m> unit = print "Controller done"
+
+handleWeb : {<WebResult>Unit -> [Console]Unit}
+handleWeb <webResult res -> k> = print res; handleWeb (k unit)
+handleWeb unit = unit
+
+main : {[Console, RefState, Web] Unit}
+main! =
+        runAsync
+        (handleWeb
+        (par (remote mnil) controller!))

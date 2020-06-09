@@ -1,0 +1,38 @@
+
+------- BEGIN STD -----------------------
+-- lazy conditional
+if : {Bool -> {X} -> {X} -> X}
+if true  t f = t!
+if false t f = f!
+
+and : {Bool -> Bool -> Bool}
+and true  y = y
+and false _ = false
+
+not : Bool -> Bool
+not true = false
+not false = true
+
+len : {List X -> Int}
+len nil = 0
+len (cons _ xs) = 1 + len xs
+
+range : Int -> Int -> List Int
+range from to = if (from == to)
+                   {nil}
+                   {cons from (range (from + 1) to)}
+
+
+while : {Bool} -> {Unit} -> Unit
+while cond body = if cond! { body!; while cond body }
+                            { unit }
+
+nth : {Int -> List X -> X}
+nth 0 (cons s _)  = s
+nth k (cons _ xs) = nth (k - 1) xs
+
+concat : {List X -> List X -> List X}
+concat nil ys = ys
+concat (cons x xs) ys = cons x (concat xs ys)
+
+------- END STD --------------------------
