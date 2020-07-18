@@ -1,2 +1,0 @@
-main : {Bool}
-main! = (toFloat 4) ==~ 4.1
