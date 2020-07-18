@@ -162,6 +162,7 @@ desugarVType (SCTy ty a) = do ty' <- desugarCType ty
 desugarVType (StringTy a) = return $ desugaredStrTy (refToDesug a)
 desugarVType (IntTy a) = return $ IntTy (refToDesug a)
 desugarVType (CharTy a) = return $ CharTy (refToDesug a)
+desugarVType (FloatTy a) = return $ FloatTy (refToDesug a)
 
 -- nothing happens on this level
 desugarTyArg :: TyArg Refined -> Desugar (TyArg Desugared)
@@ -221,6 +222,7 @@ desugarTm (SC x a) = SC <$> desugarSComp x <*> pure (refToDesug a)
 desugarTm (StrTm s a) = return $ StrTm s (refToDesug a)
 desugarTm (IntTm n a) = return $ IntTm n (refToDesug a)
 desugarTm (CharTm c a) = return $ CharTm c (refToDesug a)
+desugarTm (FloatTm f a) = return $ FloatTm f (refToDesug a)
 desugarTm (TmSeq tm1 tm2 a) = TmSeq <$> desugarTm tm1 <*> desugarTm tm2 <*> pure (refToDesug a)
 desugarTm (Use u a) = Use <$> desugarUse u <*> pure (refToDesug a)
 desugarTm (DCon d a) = DCon <$> desugarDCon d <*> pure (refToDesug a)
@@ -239,6 +241,7 @@ desugarVPat (DataPat x xs a) =
 desugarVPat (IntPat i a) = return $ IntPat i (refToDesug a)
 desugarVPat (CharPat c a) = return $ CharPat c (refToDesug a)
 desugarVPat (StrPat s a) = return $ StrPat s (refToDesug a)
+desugarVPat (FloatPat s a) = return $ FloatPat s (refToDesug a)
 
 desugarSComp :: SComp Refined -> Desugar (SComp Desugared)
 desugarSComp (SComp xs a) =

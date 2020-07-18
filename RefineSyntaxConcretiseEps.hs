@@ -42,7 +42,7 @@ hasNoEps = HasEpsIfAny []
 -- explicitly have it, are added an additional [£] eff var.
 concretiseEps :: [DataT Raw] -> [Itf Raw] -> [ItfAlias Raw] -> ([DataT Raw], [Itf Raw], [ItfAlias Raw])
 concretiseEps dts itfs itfAls =
-  let posNodes = decideGraph (nodes, [], [])
+  let posNodes = decideGraph (nodeElems, [], [])
       posDts    = [getId x | DtNode x    <- posNodes]
       posItfs   = [getId x | ItfNode x   <- posNodes]
       posItfAls = [getId x | ItfAlNode x <- posNodes] in
@@ -51,21 +51,32 @@ concretiseEps dts itfs itfAls =
    map (concretiseEpsInItfAl posItfAls) itfAls)
   where
 
-  nodes :: [Node]
-  nodes = map DtNode dts ++ map ItfNode itfs ++ map ItfAlNode itfAls
+  nodes :: M.Map Id Node
+  nodes = M.fromList labelledNodes
+    where
+      labelledNodes = map (\d -> (getId d, DtNode d)) dts ++
+               map (\d -> (getId d, ItfNode d)) itfs ++
+               map (\d -> (getId d, ItfAlNode d)) itfAls
+
+  nodeElems :: [Node]
+  nodeElems = M.elems nodes
 
   resolveDataId :: Id -> Maybe Node
-  resolveDataId x = case [DtNode d | DtNode d <- nodes, getId d == x] of
-                      [x] -> Just x
-                      _   -> Nothing
-  -- TODO: LC: Use Map datastructure
+  resolveDataId x = M.lookup x nodes
 
+  -- TODO: LP: This function might not have the exact same performance as the
+  -- old one make sure it does ...
   resolveItfId :: Id -> Maybe Node
-  resolveItfId x = case ([i | ItfNode i <- nodes, getId i == x],
-                         [i | ItfAlNode i <- nodes, getId i == x]) of
-                     ([i], []) -> Just $ ItfNode i
-                     ([], [i]) -> Just $ ItfAlNode i
+  resolveItfId x = case (M.lookup x nodes,
+                         M.lookup x nodes) of
+                     (Just (ItfNode i), Nothing) -> Just $ ItfNode i
+                     (Nothing, Just (ItfAlNode i)) -> Just $ ItfAlNode i
                      _ -> Nothing
+  -- resolveItfId x = case ([i | ItfNode i <- nodes, getId i == x],
+  --                        [i | ItfAlNode i <- nodes, getId i == x]) of
+  --                    ([i], []) -> Just $ ItfNode i
+  --                    ([], [i]) -> Just $ ItfAlNode i
+  --                    _ -> Nothing
 
   -- Given graph (undecided-nodes, positive-nodes, negative-nodes), decide
   -- subgraphs as long as there are unvisited nodes. Finally (base case),
@@ -150,7 +161,7 @@ concretiseEps dts itfs itfAls =
   hasEpsVType tvs (DTTy x ts a) =
     if x `elem` dtIds then hasEpsDTTy tvs x ts                   -- indeed data type
                       else anyHasEps $ map (hasEpsTyArg tvs) ts  -- ... or not (but type var)
-    where dtIds = [getId d | DtNode d <- nodes]
+    where dtIds = [getId d | DtNode d <- nodeElems]
   hasEpsVType tvs (SCTy ty a)   = hasEpsCType tvs ty
   hasEpsVType tvs (TVar x a)    = if x `elem` tvs then hasNoEps      -- indeed type variable
                                                   else hasEpsDTTy tvs x [] -- ... or not (but data type)
