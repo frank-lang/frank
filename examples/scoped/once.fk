@@ -1,0 +1,20 @@
+append : {List X -> List X -> List X}
+append []        ys = ys
+append (x :: xs) ys = x :: append xs ys
+
+interface ND = fail X : X
+             | or X : {[ND]X} -> {[ND]X} -> X
+             | once X : {[ND]X} -> X
+
+example : [ND]Int
+example! = let x = once {or {1} {5}} in or {x} {x+1}
+
+nd : {<ND>X -> List X}
+nd x             = [x]
+nd <fail -> _>   = []
+nd <or l r -> k> = append (nd (k l!)) (nd (k r!))
+nd <once m -> k> = case (nd m!) { []       -> []
+                                | (x :: _) -> nd (k x)}
+
+main : {List Int}
+main! = nd example!

@@ -1,0 +1,53 @@
+print : {String -> [Console]Unit}
+print s = map ouch s; unit
+
+map : {{X -> Y} -> List X -> List Y}
+map f []        = []
+map f (x :: xs) = f x :: map f xs
+
+interface Con = act X : {X} -> X
+              | spawn X Y : {[Con]X} -> {[Con]Y} -> X
+              | atomic X : {[Con]X} -> X
+
+data Resumption X = more {Resumption X} | done X
+
+con : {<Con>X -> Resumption X}
+con x                = done x
+con <act m -> k>     = more {let x = m! in con (k x)}
+con <spawn l r -> k> = bind (interleave (con l!) (con r!)) {x -> con (k x)}
+con <atomic m -> k>  = more {let x = retraction (con m!) in con (k x)}
+
+interleave : {Resumption X -> Resumption Y -> Resumption X}
+interleave l        (done _) = l
+interleave (done x) (more r) = more {r!; done x}
+interleave (more l) (more r) = more {let x = l! in more {let y = r! in interleave x y}}
+
+bind : {Resumption X -> {X -> Resumption Y} -> Resumption Y}
+bind (done x) k = k x
+bind (more m) k = more {bind m! k}
+
+retraction : {Resumption X -> X}
+retraction (done x) = x
+retraction (more m) = retraction m!
+
+say : {String -> [Con [Console], Console]Unit}
+say s = act {print s}
+
+says : {List String -> [Con [Console], Console]Unit}
+says ss = map say ss; unit
+
+test1 : {[Con [Console], Console]Unit}
+test1! = spawn {say "hello "; say "world "}
+               {say "goodbye "; say "cruel "; say "world "}
+
+test2 : {[Con [Console], Console]Unit}
+test2! = spawn {atomic {spawn {says ["a", "b", "c"]}
+                              {says ["A", "B", "C"]}}}
+               {atomic {spawn {says ["1", "2", "3"]}
+                              {says ["-", "-", "-"]}}}
+
+runCon : {<Con>X -> X}
+runCon <m> = retraction (con m!)
+
+main : {[Console]Unit}
+main! = runCon test1!

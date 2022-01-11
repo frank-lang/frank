@@ -1,0 +1,28 @@
+append : {List X -> List X -> List X}
+append []        ys = ys
+append (x :: xs) ys = x :: append xs ys
+
+data Either X Y = left X | right Y
+
+interface Exc S = throw X : S -> X
+                | catch X : {[Exc S]X} -> {S -> [Exc S]X} -> X
+
+data DivByZero = divByZero
+
+div : {Int -> Int -> Int}
+div m n = 42
+
+example : {Int -> [Exc DivByZero]Int}
+example n = let x = catch {case n { 0 -> throw divByZero
+                                  | _ -> div 100 n}}
+                          {divByZero -> -1}
+            in x
+
+exc : {<Exc S>X -> Either X S}
+exc x                = left x
+exc <throw s -> _>   = right s
+exc <catch p q -> k> = case (exc p!) { (left x)  -> exc (k x)
+                                     | (right s) -> exc (k (q s))}
+
+main : {Either Int DivByZero}
+main! = exc (example 0)
