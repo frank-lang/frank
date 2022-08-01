@@ -1,0 +1,22 @@
+-- #desc Regression test for a special case involving multiple instances of the same interface
+-- #return cannot unify abilities [£ | Eff ( A ) , Eff ( B ) , Eff ( B )] (line 13 , column 24) and [£ | Eff ( B ) , Eff ( B ) , Eff ( A )] (line 13 , column 24)
+
+interface Eff X = oper : X
+
+data A = a
+data B = b
+
+handleA : <Eff A> X -> X
+handleA x = x
+handleA <oper -> k> = handleA (k a)
+
+single : <Eff B> X -> [Eff A, Eff B] X
+single x = x
+single <oper -> k> = <Eff(s a b -> s b b a)> (k b)
+
+full : <Eff B> X -> [Eff A] X
+full x = x
+full <m> = full (single (<Eff(s a b b -> s b a)> m!))
+
+main : {B}
+main! = handleA (full oper!)

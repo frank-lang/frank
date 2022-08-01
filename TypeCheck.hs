@@ -508,13 +508,15 @@ applyAdaptor adp ab@(Ab v p@(ItfMap m a') a) =
   case adpToCompilableAdp ab adp of
     Nothing -> Nothing
     Just adp'@(CompilableAdp x m' ns a'') ->
-      let instances = (reverse . bwd2fwd) (M.findWithDefault BEmp x m) in
-      let instances' = map (instances !!) ns in
+      let instances = bwd2fwd (M.findWithDefault BEmp x m) in
+      -- The indices in ns index from the end of instances, thus we reverse
+      -- instances before indexing into it
+      let instances' = map (reverse instances !!) ns in
       if null instances' then
         Just (adp', Ab v (ItfMap (M.delete x m) a') a)
       else
         Just (adp', Ab v (ItfMap (
-          M.insert x ((fwd2bwd . reverse) instances') m
+          M.insert x (fwd2bwd instances') m
         ) a') a)
 
 adpToCompilableAdp :: Ab Desugared -> Adaptor Desugared -> Maybe (Adaptor Desugared)
