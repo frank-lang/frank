@@ -509,6 +509,8 @@ applyAdaptor adp ab@(Ab v p@(ItfMap m a') a) =
     Nothing -> Nothing
     Just adp'@(CompilableAdp x m' ns a'') ->
       let instances = bwd2fwd (M.findWithDefault BEmp x m) in
+      -- The indices in ns index from the end of instances, thus we reverse
+      -- instances before indexing into it
       let instances' = map (reverse instances !!) ns in
       if null instances' then
         Just (adp', Ab v (ItfMap (M.delete x m) a') a)
