@@ -15,6 +15,7 @@ import Shonky.Renaming
 data Exp
   = EV String                               -- variable
   | EI Int                                  -- int
+  | ED Double                               -- float (double)
   | EA String                               -- atom
   | Exp :& Exp                              -- cons
   | Exp :$ [Exp]                            -- n-ary application
@@ -58,6 +59,7 @@ data Pat
 data VPat
   = VPV String              -- LC: ?
   | VPI Int                 -- int value
+  | VPD Double              -- float value
   | VPA String              -- atom value
   | VPat :&: VPat           -- cons value
   | VPX [Either Char VPat]  -- LC: ?
